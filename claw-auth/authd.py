@@ -34,7 +34,11 @@ SESSION_COOKIE = os.environ.get("CLAW_AUTH_COOKIE", "claw_session")
 SECURE_COOKIES = os.environ.get("CLAW_AUTH_SECURE", "auto").lower()
 AUTH_PREFIX = os.environ.get("CLAW_AUTH_PREFIX", "").rstrip("/")
 LOG_PATH = Path(
-    os.environ.get("CLAW_AUTH_LOG", Path.home() / ".claw-auth" / "auth.log")
+    os.environ.get(
+        "CLAW_AUTH_LOG",
+        Path(os.environ.get("CLAW_AUTH_HOME", Path.home() / ".claw-auth")).expanduser()
+        / "auth.log",
+    )
 ).expanduser()
 SECRET_KEY_PATH = Path(
     os.environ.get(
@@ -87,15 +91,30 @@ def _setup_logging() -> logging.Logger:
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(LOG_PATH)
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-    )
-    logger.addHandler(handler)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+    # Always log to stderr -> journalctl --user -u claw-auth
+    stream = logging.StreamHandler()
+    stream.setFormatter(fmt)
+    logger.addHandler(stream)
+
+    try:
+        file_handler = logging.FileHandler(LOG_PATH)
+        file_handler.setFormatter(fmt)
+        logger.addHandler(file_handler)
+    except OSError as exc:
+        logger.warning("file_log_unavailable path=%s err=%s", LOG_PATH, exc)
+
     return logger
 
 
 log = _setup_logging()
+log.info(
+    "startup log_path=%s auth_prefix=%s port=%s",
+    LOG_PATH,
+    AUTH_PREFIX or "(direct)",
+    os.environ.get("CLAW_AUTH_PORT", "8780"),
+)
 
 
 def _client_ip() -> str:
@@ -124,6 +143,16 @@ def _inject_urls():
 
 def _external_url(path: str) -> str:
     return _external_path(path)
+
+
+@app.before_request
+def _access_log():
+    log.info(
+        "request ip=%s method=%s path=%s",
+        _client_ip(),
+        request.method,
+        request.path,
+    )
 
 STYLE = """
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;

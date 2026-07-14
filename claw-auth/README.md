@@ -95,14 +95,32 @@ only the session cookie is port-scoped.
 
 ## Auth logs
 
-Login attempts and failures are written to **`~/.claw-auth/auth.log`**:
+Login and every HTTP request are logged two ways:
+
+1. **journald (always):** `journalctl --user -u claw-auth -f`
+2. **File:** `~/.claw-auth/auth.log` (once the first event is written)
+
+Run diagnostics:
 
 ```bash
-tail -f ~/.claw-auth/auth.log
-journalctl --user -u claw-auth -f
+bash ~/clawlab/claw-auth/doctor.sh
 ```
 
-Events logged: `login_ok`, `login_failed`, `logout`, and `verify_fail` (invalid/expired session cookie).
+Events: `startup`, `request`, `login_ok`, `login_failed`, `logout`, `verify_fail`.
+
+**No log file?** Check whether the service is running:
+
+```bash
+systemctl --user status claw-auth
+curl http://127.0.0.1:8780/healthz
+```
+
+If `healthz` fails, claw-auth is not listening — reinstall or restart:
+
+```bash
+systemctl --user restart claw-auth
+journalctl --user -u claw-auth -n 30
+```
 
 ## Troubleshooting login loops
 
