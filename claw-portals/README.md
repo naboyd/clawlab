@@ -46,6 +46,9 @@ Requires `~/mcp/acme/godaddy.env` for LE mode.
 - ssh-ops GUI quadlet (`8765`)
 - OpenClaw gateway (`18789`)
 - GoDaddy API creds in `~/mcp/acme/godaddy.env` for LE issuance
+- `python3-venv` (installer runs `sudo apt install python3-venv python3-full` if needed)
+
+Python packages install into **`~/.clawlab/venv`** (avoids PEP 668 system pip errors).
 
 ## After install
 

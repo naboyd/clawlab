@@ -139,13 +139,16 @@ SCHEME=$(scheme_for_mode)
 CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/
 CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/
 CLAW_PORTAL_DEFENSECLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/
+CLAWLAB_VENV=${CLAWLAB_VENV:-$HOME/.clawlab/venv}
+CLAW_PYTHON=${CLAW_PYTHON:-$CLAWLAB_VENV/bin/python}
 EOF
   chmod 0600 "$CONFIG_FILE"
 }
 
 install_python_deps() {
-  local dir="$1"
-  python3 -c 'import flask' 2>/dev/null || python3 -m pip install --user -r "$dir/requirements.txt"
+  # shellcheck disable=SC1091
+  CLAWLAB_REPO="$REPO" source "$SRC/ensure-venv.sh"
+  ensure_clawlab_venv
 }
 
 install_systemd_user_unit() {
@@ -162,7 +165,7 @@ start_user_service() {
 
 install_claw_auth() {
   echo "==> Installing claw-auth"
-  install_python_deps "$REPO/claw-auth"
+  install_python_deps
   install_systemd_user_unit \
     "$REPO/claw-auth/claw-auth.service" \
     "claw-auth.service" \
@@ -172,14 +175,14 @@ install_claw_auth() {
   loginctl enable-linger "$USER" 2>/dev/null || true
   start_user_service claw-auth.service
 
-  python3 -c "import sys; sys.path.insert(0, '$REPO/claw-auth'); import store; store.init_db(); print(store.user_count())" | {
+  "$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$REPO/claw-auth'); import store; store.init_db(); print(store.user_count())" | {
     read -r count
     if [[ "${count:-0}" -eq 0 ]]; then
       echo "==> Create the first admin user for claw-auth"
       if [[ "$NON_INTERACTIVE" -eq 1 ]]; then
-        echo "WARN: No users exist. Run: python3 $REPO/claw-auth/manage.py create-user admin"
+        echo "WARN: No users exist. Run: $CLAW_PYTHON $REPO/claw-auth/manage.py create-user admin"
       else
-        python3 "$REPO/claw-auth/manage.py" create-user admin
+        "$CLAW_PYTHON" "$REPO/claw-auth/manage.py" create-user admin
       fi
     fi
   }
@@ -187,7 +190,7 @@ install_claw_auth() {
 
 install_backend_services() {
   echo "==> Installing backend GUIs (loopback only)"
-  install_python_deps "$REPO/defenseclaw-webgui"
+  install_python_deps
   install_systemd_user_unit \
     "$REPO/defenseclaw-webgui/defenseclaw-webgui.service" \
     "defenseclaw-webgui.service" \
@@ -368,6 +371,7 @@ echo "  OpenClaw:   $(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/"
 echo "  DefenseClaw $(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/"
 echo
 
+install_python_deps
 write_config_env
 issue_le_cert_if_needed
 
@@ -393,8 +397,10 @@ Auth: $AUTH_MODE
 Config saved: $CONFIG_FILE
 
 Manage claw-auth users:
-  python3 $REPO/claw-auth/manage.py create-user USER
-  python3 $REPO/claw-auth/manage.py list-users
+  $CLAW_PYTHON $REPO/claw-auth/manage.py create-user USER
+  $CLAW_PYTHON $REPO/claw-auth/manage.py list-users
+
+Python venv: ${CLAWLAB_VENV:-$HOME/.clawlab/venv}
 
 Logs:
   journalctl --user -u claw-auth -f

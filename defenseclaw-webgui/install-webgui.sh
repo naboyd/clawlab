@@ -28,13 +28,13 @@ fi
 UNIT_DIR="$HOME/.config/systemd/user"
 UNIT="defenseclaw-webgui.service"
 
-echo "==> Checking python3 + flask + pyyaml"
-python3 -c 'import flask, yaml' 2>/dev/null || {
-  python3 -m pip install --user -r "$SRC/requirements.txt"
-}
+echo "==> Python venv (PEP 668 safe)"
+# shellcheck disable=SC1091
+CLAWLAB_REPO="$REPO" source "$REPO/claw-portals/ensure-venv.sh"
+ensure_clawlab_venv
 
 echo "==> Dry-check config"
-python3 -c "
+"$CLAW_PYTHON" -c "
 import sys
 sys.path.insert(0, '$SRC')
 import policy_store as ps
@@ -53,4 +53,5 @@ systemctl --user daemon-reload
 systemctl --user enable --now "$UNIT"
 
 echo "Done. http://127.0.0.1:8770 (loopback only)"
-echo "For LAN access: $REPO/claw-portals/install-portals.sh"
+echo "Python: $CLAW_PYTHON"
+echo "For LAN access: bash $PORTALS"
