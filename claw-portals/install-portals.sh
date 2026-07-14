@@ -30,6 +30,7 @@ PORT_DEFENSECLAW="${PORT_DEFENSECLAW:-}"
 LE_CERT="${LE_CERT:-$HOME/mcp/acme/lego/certificates/${DOMAIN}.crt}"
 LE_KEY="${LE_KEY:-$HOME/mcp/acme/lego/certificates/${DOMAIN}.key}"
 NON_INTERACTIVE=0
+DEPLOY_NGINX_ONLY=0
 
 usage() {
   cat <<EOF
@@ -50,6 +51,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --non-interactive) NON_INTERACTIVE=1 ;;
+    --deploy-nginx-only) DEPLOY_NGINX_ONLY=1 ;;
     --tls=*) TLS_MODE="${1#*=}" ;;
     --auth=*) AUTH_MODE="${1#*=}" ;;
     --lan-ip=*) LAN_IP="${1#*=}" ;;
@@ -302,6 +304,7 @@ deploy_nginx() {
     return
   fi
 
+  echo "==> Deploying nginx site configs (root)"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -o Acquire::Retries=3
   if [[ "$AUTH_MODE" == "pam" ]]; then
@@ -336,10 +339,12 @@ issue_le_cert_if_needed() {
   DOMAIN="$DOMAIN" LE_EMAIL="$LE_EMAIL" bash "$REPO/acme/issue-cert.sh"
 }
 
-# Re-exec entry for sudo nginx deploy
-if [[ "${1:-}" == "--deploy-nginx-only" ]]; then
-  : "${CONFIG_FILE:=$HOME/.claw-portals/config.env}"
-  : "${REPO:=$HOME/clawlab}"
+# Re-exec entry for sudo nginx deploy (after helper functions are defined)
+if [[ "${DEPLOY_NGINX_ONLY:-0}" -eq 1 ]]; then
+  DEPLOY_USER="${SUDO_USER:-${USER:-naboyd}}"
+  DEPLOY_HOME="$(getent passwd "$DEPLOY_USER" 2>/dev/null | cut -d: -f6 || echo "/home/$DEPLOY_USER")"
+  : "${CONFIG_FILE:=$DEPLOY_HOME/.claw-portals/config.env}"
+  : "${REPO:=$DEPLOY_HOME/clawlab}"
   # shellcheck disable=SC1090
   source "$CONFIG_FILE"
   set_default_ports
