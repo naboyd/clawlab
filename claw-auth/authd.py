@@ -13,10 +13,11 @@ Run:
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from flask import (
     Flask,
@@ -31,6 +32,10 @@ import store
 
 SESSION_COOKIE = os.environ.get("CLAW_AUTH_COOKIE", "claw_session")
 SECURE_COOKIES = os.environ.get("CLAW_AUTH_SECURE", "auto").lower()
+AUTH_PREFIX = os.environ.get("CLAW_AUTH_PREFIX", "").rstrip("/")
+LOG_PATH = Path(
+    os.environ.get("CLAW_AUTH_LOG", Path.home() / ".claw-auth" / "auth.log")
+).expanduser()
 SECRET_KEY_PATH = Path(
     os.environ.get(
         "CLAW_AUTH_SECRET",
@@ -75,6 +80,51 @@ def _safe_next(raw: str | None) -> str:
 app = Flask(__name__)
 app.secret_key = _load_secret_key()
 
+
+def _setup_logging() -> logging.Logger:
+    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    logger = logging.getLogger("claw-auth")
+    if logger.handlers:
+        return logger
+    logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(LOG_PATH)
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    )
+    logger.addHandler(handler)
+    return logger
+
+
+log = _setup_logging()
+
+
+def _client_ip() -> str:
+    forwarded = (request.headers.get("X-Real-IP") or "").strip()
+    return forwarded or (request.remote_addr or "unknown")
+
+
+def _external_path(path: str) -> str:
+    """Browser-visible path including nginx mount prefix."""
+    if not path.startswith("/"):
+        path = "/" + path
+    if AUTH_PREFIX and not path.startswith(AUTH_PREFIX + "/") and path != AUTH_PREFIX:
+        return AUTH_PREFIX + path
+    return path
+
+
+def _login_redirect(next_path: str | None = None):
+    n = _safe_next(next_path or request.full_path or "/")
+    return redirect(_external_path(f"/login?next={quote(n, safe='/')}"))
+
+
+@app.context_processor
+def _inject_urls():
+    return dict(ext_url=_external_url, auth_prefix=AUTH_PREFIX)
+
+
+def _external_url(path: str) -> str:
+    return _external_path(path)
+
 STYLE = """
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;
      margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#fafafa}
@@ -99,7 +149,7 @@ LOGIN_PAGE = """
   <h1 style="margin-top:0">clawlab admin login</h1>
   <p class="hint">Shared login for ssh-ops, OpenClaw Control UI, and DefenseClaw policy editor.</p>
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
-  <form method="post" action="{{ url_for('login') }}">
+  <form method="post" action="">
     <input type="hidden" name="next" value="{{ next_url }}">
     <label>Username</label>
     <input type="text" name="username" autocomplete="username" required autofocus>
@@ -116,14 +166,14 @@ HUB_PAGE = """
 <style>{{ style }}</style></head><body>
 <div class="card">
   <h1 style="margin-top:0">clawlab admin portals</h1>
-  <p>Signed in as <b>{{ user.username }}</b> · <a href="{{ url_for('logout') }}">sign out</a></p>
+  <p>Signed in as <b>{{ user.username }}</b> · <a href="{{ ext_url('/logout') }}">sign out</a></p>
   <ul>
     {% for link in links %}
     <li><a href="{{ link.url }}">{{ link.label }}</a> <span class="hint">{{ link.hint }}</span></li>
     {% endfor %}
   </ul>
   {% if user.role == 'admin' %}
-  <p><a href="{{ url_for('admin_users') }}">Manage users</a></p>
+  <p><a href="{{ ext_url('/admin/users') }}">Manage users</a></p>
   {% endif %}
 </div>
 </body></html>
@@ -134,7 +184,7 @@ ADMIN_PAGE = """
 <style>{{ style }}</style></head><body>
 <div class="card">
   <h1 style="margin-top:0">Users</h1>
-  <p><a href="{{ url_for('hub') }}">&larr; portal hub</a></p>
+  <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
   {% if msg %}<div class="banner">{{ msg }}</div>{% endif %}
   <table>
     <tr><th>Username</th><th>Role</th><th>Created</th><th></th></tr>
@@ -231,7 +281,9 @@ def login():
     store.purge_expired_sessions()
     next_url = _safe_next(request.values.get("next"))
     if request.method == "GET":
-        if _session_user():
+        existing = _session_user()
+        if existing:
+            log.info("login_skip ip=%s user=%s next=%s", _client_ip(), existing["username"], next_url)
             return redirect(next_url)
         return render_template_string(
             LOGIN_PAGE,
@@ -244,6 +296,12 @@ def login():
     password = request.form.get("password") or ""
     user = store.authenticate(username, password)
     if not user:
+        log.warning(
+            "login_failed ip=%s user=%s next=%s",
+            _client_ip(),
+            username.lower() if username else "-",
+            next_url,
+        )
         return render_template_string(
             LOGIN_PAGE,
             style=STYLE,
@@ -252,6 +310,7 @@ def login():
         ), 401
 
     token = store.create_session(user["username"])
+    log.info("login_ok ip=%s user=%s next=%s", _client_ip(), user["username"], next_url)
     resp = make_response(redirect(next_url))
     _set_session_cookie(resp, token)
     return resp
@@ -260,9 +319,12 @@ def login():
 @app.route("/logout")
 def logout():
     token = request.cookies.get(SESSION_COOKIE)
+    user = store.get_session(token)
     if token:
         store.delete_session(token)
-    resp = make_response(redirect(url_for("login")))
+    if user:
+        log.info("logout ip=%s user=%s", _client_ip(), user["username"])
+    resp = make_response(redirect(_external_path("/login")))
     _clear_session_cookie(resp)
     return resp
 
@@ -273,6 +335,8 @@ def verify():
     store.purge_expired_sessions()
     sess = _session_user()
     if not sess:
+        if request.cookies.get(SESSION_COOKIE):
+            log.warning("verify_fail ip=%s reason=invalid_or_expired_session", _client_ip())
         return ("", 401)
     resp = make_response("", 200)
     resp.headers["X-Auth-User"] = sess["username"]
@@ -284,7 +348,7 @@ def verify():
 def hub():
     sess = _session_user()
     if not sess:
-        return redirect(url_for("login", next=request.full_path))
+        return _login_redirect(request.full_path)
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
@@ -297,7 +361,7 @@ def hub():
 def admin_users():
     sess = _session_user()
     if not sess:
-        return redirect(url_for("login", next=request.full_path))
+        return _login_redirect(request.full_path)
     if sess["role"] != "admin":
         return ("forbidden", 403)
 

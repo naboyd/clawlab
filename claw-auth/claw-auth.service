@@ -10,6 +10,7 @@ Environment=CLAW_AUTH_HOME=%h/.claw-auth
 Environment=CLAW_AUTH_HOST=127.0.0.1
 Environment=CLAW_AUTH_PORT=8780
 Environment=CLAW_AUTH_SECURE=auto
+Environment=CLAW_AUTH_PREFIX=/_claw_auth
 EnvironmentFile=-%h/.claw-portals/config.env
 ExecStart=%h/.clawlab/venv/bin/python %h/clawlab/claw-auth/authd.py
 Restart=on-failure

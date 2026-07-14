@@ -137,6 +137,7 @@ LE_CERT=$LE_CERT
 LE_KEY=$LE_KEY
 CLAW_AUTH_REQUIRED=$([[ "$AUTH_MODE" == "claw-auth" ]] && echo 1 || echo 0)
 CLAW_AUTH_SECURE=$([[ "$TLS_MODE" == "http" ]] && echo 0 || echo auto)
+CLAW_AUTH_PREFIX=/_claw_auth
 SCHEME=$(scheme_for_mode)
 CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/
 CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/

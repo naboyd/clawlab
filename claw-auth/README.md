@@ -92,3 +92,24 @@ only the session cookie is port-scoped.
 - Never store plaintext passwords
 - Session tokens are random 256-bit values
 - Use HTTPS in production (`install-portals.sh` → Let's Encrypt)
+
+## Auth logs
+
+Login attempts and failures are written to **`~/.claw-auth/auth.log`**:
+
+```bash
+tail -f ~/.claw-auth/auth.log
+journalctl --user -u claw-auth -f
+```
+
+Events logged: `login_ok`, `login_failed`, `logout`, and `verify_fail` (invalid/expired session cookie).
+
+## Troubleshooting login loops
+
+If the login page reloads with no error after submitting credentials:
+
+1. Confirm the form posts to `/_claw_auth/login` (not `/login`) — fixed in recent authd versions
+2. Check auth log: `grep login_ ~/.claw-auth/auth.log`
+3. List users: `~/.clawlab/venv/bin/python ~/clawlab/claw-auth/manage.py list-users`
+4. Reset password: `~/.clawlab/venv/bin/python ~/clawlab/claw-auth/manage.py set-password USER`
+5. Restart auth: `systemctl --user restart claw-auth`
