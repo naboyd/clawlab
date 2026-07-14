@@ -3,29 +3,29 @@
 # Install (rootless):
 #   mkdir -p ~/.config/containers/systemd
 #   cp ssh-ops-gui.container ~/.config/containers/systemd/
-#   # edit paths below if your project isn't at ~/ssh_ops_mcp
 #   systemctl --user daemon-reload
 #   systemctl --user start ssh-ops-gui
-#   loginctl enable-linger "$USER"      # keep it running after logout
+#   loginctl enable-linger "$USER"
 #
-# Build the image first:  podman build -t ssh-ops:latest ~/ssh_ops_mcp
+# Build the image first:  podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp
+#
+# LAN access: use nginx + claw-auth on port 8443 (install-portals.sh).
+# Do NOT publish 8765 beyond loopback. CLAW_AUTH_REQUIRED=1 rejects direct access.
 
 [Unit]
 Description=ssh-ops config GUI
-After=network-online.target
+After=network-online.target claw-auth.service
 Wants=network-online.target
 
 [Container]
 Image=localhost/ssh-ops:latest
 Exec=gui
-# Publish to loopback only — never 0.0.0.0.
+# Loopback only — nginx on :8443 is the LAN entry with claw-auth.
 PublishPort=127.0.0.1:8765:8765
-# Persistent data (hosts.yaml, encrypted .env, master.key, audit log).
 Volume=%h/ssh_ops_mcp/data:/data:Z
-# SSH keys + known_hosts, read-only. In hosts.yaml use container paths
-# (e.g. key_path: /root/.ssh/id_ed25519) — or skip keys and use encrypted
-# login/enable passwords set in the GUI.
 Volume=%h/.ssh:/root/.ssh:ro,Z
+EnvironmentFile=%h/.claw-portals/config.env
+Environment=CLAW_AUTH_REQUIRED=1
 
 [Service]
 Restart=always

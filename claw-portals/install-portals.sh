@@ -142,6 +142,7 @@ SCHEME=$(scheme_for_mode)
 CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/
 CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/
 CLAW_PORTAL_DEFENSECLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/
+CLAW_PORTAL_SSH_OPS_PORT=${PORT_SSH_OPS}
 CLAWLAB_VENV=${CLAWLAB_VENV:-$HOME/.clawlab/venv}
 CLAW_PYTHON=${CLAW_PYTHON:-$CLAWLAB_VENV/bin/python}
 EOF
@@ -199,13 +200,33 @@ install_backend_services() {
     "defenseclaw-webgui.service" \
     "s|%h/clawlab/defenseclaw-webgui|$REPO/defenseclaw-webgui|g"
 
-  # Append EnvironmentFile for shared portal config
   if ! grep -q 'claw-portals/config.env' "$UNIT_DIR/defenseclaw-webgui.service"; then
     sed -i '/^\[Service\]/a EnvironmentFile=-'"$CONFIG_FILE" "$UNIT_DIR/defenseclaw-webgui.service"
   fi
 
   start_user_service defenseclaw-webgui.service
-  echo "NOTE: ssh-ops GUI and OpenClaw gateway must already be running (quadlets / openclaw-gateway.service)."
+  install_ssh_ops_quadlet
+  echo "NOTE: OpenClaw gateway must already be running (openclaw-gateway.service)."
+}
+
+install_ssh_ops_quadlet() {
+  echo "==> Updating ssh-ops Podman quadlet (claw-auth via nginx :${PORT_SSH_OPS})"
+  local qdir="$HOME/.config/containers/systemd"
+  install -d -m 0755 "$qdir"
+  install -m 0644 "$REPO/quadlets/ssh-ops-gui.container" "$qdir/ssh-ops-gui.container"
+
+  if command -v podman >/dev/null 2>&1; then
+    echo "==> Rebuilding ssh-ops image (includes claw_auth_middleware)"
+    podman build -t ssh-ops:latest "$REPO/ssh-ops-mcp"
+    systemctl --user daemon-reload
+    systemctl --user try-restart ssh-ops-gui.service 2>/dev/null \
+      || systemctl --user restart ssh-ops-gui.service 2>/dev/null \
+      || echo "WARN: start ssh-ops-gui manually after first quadlet install"
+  else
+    echo "WARN: podman not found — rebuild ssh-ops image manually:"
+    echo "  podman build -t ssh-ops:latest $REPO/ssh-ops-mcp"
+    echo "  systemctl --user restart ssh-ops-gui"
+  fi
 }
 
 nginx_auth_claw_block() {
@@ -418,4 +439,8 @@ NOTE: Browsers treat each port as a separate origin — sign in once per portal.
 OpenClaw trusted-proxy (recommended with claw-auth):
   Merge admin-access/openclaw.trusted-proxy.json5 into ~/.openclaw/openclaw.json
   and update allowedOrigins to use port ${PORT_OPENCLAW}.
+
+ssh-ops admin GUI (Podman):
+  Use $(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/ — NOT http://127.0.0.1:8765
+  nginx runs claw-auth; the container only accepts proxied requests (X-Auth-User).
 EOF

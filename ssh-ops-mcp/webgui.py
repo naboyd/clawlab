@@ -26,14 +26,8 @@ from flask import Flask, redirect, render_template_string, request, url_for
 
 import secrets_store
 
-# Optional centralized auth (claw-auth)
-_AUTH_DIR = Path(__file__).resolve().parent.parent / "claw-auth"
-if _AUTH_DIR.is_dir():
-    import sys
-
-    sys.path.insert(0, str(_AUTH_DIR))
 try:
-    import middleware as claw_auth
+    import claw_auth_middleware as claw_auth
 except ImportError:
     claw_auth = None
 
@@ -108,7 +102,8 @@ PAGE = """
 <h1>ssh-ops — host &amp; secret manager</h1>
 <div class="banner">Editing <code>{{ config_path }}</code>. Sudo passwords are stored
 <b>encrypted</b> in the .env file; the master key is in a separate 0600 keyfile.
-This UI is bound to <code>127.0.0.1</code> only.</div>
+{% if auth_required %}LAN access requires <b>claw-auth</b> via nginx (not raw :8765).{% else %}
+This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 
 {% if msg %}<div class="banner">{{ msg }}</div>{% endif %}
 
@@ -345,6 +340,8 @@ def index():
         msg=request.args.get("msg"),
         edit_name=edit_name,
         edit_host=edit_host,
+        auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
+        in ("1", "true", "yes", "on"),
     )
 
 
