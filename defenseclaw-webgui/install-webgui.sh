@@ -7,17 +7,22 @@ set -Eeuo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SRC/.." && pwd)"
+PORTALS="$REPO/claw-portals/install-portals.sh"
+
+run_portals() {
+  exec bash "$PORTALS" "$@"
+}
 
 if [[ "${1:-}" == "--portals" ]] || [[ ! -t 0 ]]; then
-  exec "$REPO/claw-portals/install-portals.sh" "$@"
+  run_portals "$@"
 fi
 
 echo "For TLS (HTTP/HTTPS) and centralized claw-auth, use:"
-echo "  $REPO/claw-portals/install-portals.sh"
+echo "  bash $PORTALS"
 echo
 read -r -p "Continue with loopback-only install? [y/N]: " ans
 if [[ ! "$ans" =~ ^[Yy]$ ]]; then
-  exec "$REPO/claw-portals/install-portals.sh"
+  run_portals
 fi
 
 UNIT_DIR="$HOME/.config/systemd/user"
