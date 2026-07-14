@@ -1,0 +1,19 @@
+[Unit]
+Description=clawlab centralized auth (SQLite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/clawlab/claw-auth
+Environment=CLAW_AUTH_HOME=%h/.claw-auth
+Environment=CLAW_AUTH_HOST=127.0.0.1
+Environment=CLAW_AUTH_PORT=8780
+Environment=CLAW_AUTH_SECURE=auto
+EnvironmentFile=-%h/.claw-portals/config.env
+ExecStart=/usr/bin/python3 %h/clawlab/claw-auth/authd.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

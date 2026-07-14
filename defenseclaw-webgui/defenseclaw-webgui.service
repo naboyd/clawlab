@@ -1,0 +1,19 @@
+[Unit]
+Description=DefenseClaw policy editor web GUI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/clawlab/defenseclaw-webgui
+Environment=DEFENSECLAW_HOME=%h/.defenseclaw
+Environment=DEFENSECLAW_CONFIG=%h/.defenseclaw/config.yaml
+Environment=DEFENSECLAW_GUI_HOST=127.0.0.1
+Environment=DEFENSECLAW_GUI_PORT=8770
+EnvironmentFile=-%h/.claw-portals/config.env
+ExecStart=/usr/bin/python3 %h/clawlab/defenseclaw-webgui/webgui.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

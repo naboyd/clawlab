@@ -14,6 +14,9 @@ PAM-authenticated admin UIs, and alerting into Cisco Webex.
 | Path | What it is |
 |------|-----------|
 | `ssh-ops-mcp/` | The ssh-ops MCP server (FastMCP): `server.py`, `secrets_store.py` (Fernet), `webgui.py` (admin GUI + token rotation), `Dockerfile`, `entrypoint.sh`, `hosts.example.yaml`. |
+| `claw-auth/` | Centralized SQLite auth for all admin portals (replaces PAM). |
+| `claw-portals/` | Unified installer: HTTP/HTTPS+LE, claw-auth or PAM, nginx for all three portals. |
+| `defenseclaw-webgui/` | Policy editor web UI (Flask): guardrail settings, rule-pack YAML, actions, webhooks, firewall. Loopback :8770; optional nginx+PAM on :8445. |
 | `defenseclaw-webex-bridge/` | Audit→Webex alert bridge (`dc-webex-bridge.py`) + systemd unit + installer. Fires Webex on HIGH/CRITICAL DefenseClaw violations (closes the 0.8.4 dispatch gap). |
 | `quadlets/` | Rootless podman Quadlet units for the ssh-ops MCP + admin GUI containers. |
 | `systemd-user/` | User services/timers: gateway, lego cert renewal, DefenseClaw ext self-heal, webex bridge. |
@@ -32,12 +35,14 @@ PAM-authenticated admin UIs, and alerting into Cisco Webex.
    - Note: each model provider needs a `models: [...]` array — the `anthropic` provider entry
      must include one or the gateway crashes in failover (`reading 'find'`). See the sample.
 3. Copy `config-templates/defenseclaw.sample.yaml` → `~/.defenseclaw/config.yaml`, set `room_id`.
-4. Install units: `ssh-ops-mcp/` (quadlets), `defenseclaw-webex-bridge/install-webex-bridge.sh`,
-   `admin-access/setup-admin-access.sh` (sudo), `claw-sysupdate/install-claw-sysupdate.sh` (sudo).
-5. Issue the LE cert with lego (GoDaddy DNS-01), then `systemctl --user enable --now` the timers.
+4. Install portals: `claw-portals/install-portals.sh` (TLS + claw-auth + nginx for all admin UIs).
+   Or individually: `ssh-ops-mcp/` (quadlets), `defenseclaw-webgui/install-webgui.sh`,
+   `defenseclaw-webex-bridge/install-webex-bridge.sh`, `claw-sysupdate/install-claw-sysupdate.sh` (sudo).
+5. Issue the LE cert with lego (GoDaddy DNS-01) if not using `install-portals.sh --tls=https-le`, then `systemctl --user enable --now` the timers.
 
 ## Notes
 
-- ssh-ops MCP: streamable-http on :8766, bearer-token auth, TLS; admin GUI on :8765 behind nginx PAM.
+- Admin GUIs: loopback Flask apps; LAN via nginx + **claw-auth** (SQLite) or legacy PAM.
+  Unified setup: `claw-portals/install-portals.sh` (HTTP/HTTPS+LE).
 - DefenseClaw enforces via subprocess shims + tool-call inspection (deterministic `strict` rule pack);
   the webex bridge tails `audit.db` and posts violations.

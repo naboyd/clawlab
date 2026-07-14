@@ -26,6 +26,17 @@ from flask import Flask, redirect, render_template_string, request, url_for
 
 import secrets_store
 
+# Optional centralized auth (claw-auth)
+_AUTH_DIR = Path(__file__).resolve().parent.parent / "claw-auth"
+if _AUTH_DIR.is_dir():
+    import sys
+
+    sys.path.insert(0, str(_AUTH_DIR))
+try:
+    import middleware as claw_auth
+except ImportError:
+    claw_auth = None
+
 CONFIG_PATH = Path(
     os.environ.get("SSH_OPS_CONFIG", Path(__file__).parent / "hosts.yaml")
 ).expanduser()
@@ -38,6 +49,8 @@ DEFAULT_SETTINGS = {
 }
 
 app = Flask(__name__)
+if claw_auth:
+    claw_auth.install_auth(app)
 
 
 # --------------------------------------------------------------------------- #
