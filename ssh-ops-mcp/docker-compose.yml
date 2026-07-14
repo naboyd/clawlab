@@ -1,0 +1,27 @@
+# Runs the config GUI. The MCP server itself is launched on-demand by your MCP
+# client via `docker run -i` (see README), not as a long-running service.
+services:
+  gui:
+    build: .
+    image: ssh-ops:latest
+    command: ["gui"]
+    # Publish ONLY to the host's loopback — never 0.0.0.0 on the host.
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      # Persistent data: hosts.yaml, .env (encrypted secrets), master.key, audit log.
+      - ./data:/data
+      # SSH keys + known_hosts, read-only. Adjust the source path to yours.
+      # In hosts.yaml set key_path to the CONTAINER path, e.g. /root/.ssh/id_ed25519.
+      - ${HOME}/.ssh:/root/.ssh:ro
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/healthz',timeout=4).status==200 else 1)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

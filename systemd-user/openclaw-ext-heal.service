@@ -1,0 +1,6 @@
+[Unit]
+Description=Heal the DefenseClaw OpenClaw plugin extension if a sidecar restart corrupts it
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -lc 'test -f "$HOME/.openclaw/extensions/defenseclaw/dist/index.js" || { rm -rf "$HOME/.openclaw/extensions/defenseclaw"; cp -r "$HOME/.defenseclaw/extensions/defenseclaw" "$HOME/.openclaw/extensions/defenseclaw"; systemctl --user try-restart openclaw-gateway; echo restored; }'

@@ -1,0 +1,31 @@
+# ---- secrets: never commit ----
+*.env
+.env
+!*.env.example
+master.key
+*.key
+*.pem
+*.crt
+*.pfx
+godaddy.env
+data/            # ssh-ops runtime secrets store + hosts.yaml
+**/data/.env
+hosts.yaml       # real host inventory (use hosts.example.yaml)
+gateway.systemd.env
+
+# ---- runtime state / logs / dbs ----
+*.log
+logs/
+*.db
+*.db-shm
+*.db-wal
+audit.db*
+__pycache__/
+*.pyc
+*.bak
+*.bak.*
+.DS_Store
+
+# ---- local certs / lego ----
+acme/lego/
+certificates/

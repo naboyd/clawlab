@@ -1,0 +1,9 @@
+# Never commit secrets or keys
+.env
+master.key
+*.key
+hosts.yaml
+ssh_ops_audit.log
+.venv/
+__pycache__/
+*.pyc

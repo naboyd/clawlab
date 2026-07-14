@@ -1,0 +1,10 @@
+.env
+master.key
+*.key
+hosts.yaml
+ssh_ops_audit.log
+data/
+.venv/
+__pycache__/
+*.pyc
+.git/

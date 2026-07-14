@@ -1,0 +1,7 @@
+# /etc/pam.d/openclaw-admin
+# PAM service used by nginx (auth_pam) to authenticate Control UI users against
+# the local Linux user database.
+# To limit access to a group later, add before the includes, e.g.:
+#   auth requisite pam_succeed_if.so user ingroup openclaw-admins
+@include common-auth
+@include common-account

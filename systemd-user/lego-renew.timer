@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily renewal check for the ssh-ops MCP TLS cert
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=DefenseClaw audit -> Webex alert bridge
+Documentation=file:%h/.defenseclaw/webex-bridge/README.md
+# Start after the DefenseClaw gateway is up (best-effort; bridge is read-only
+# and self-heals if audit.db is briefly unavailable).
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.defenseclaw/webex-bridge/dc-webex-bridge.py --poll 5
+Restart=always
+RestartSec=5
+# Hardening: read-only everywhere except its own state dir.
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.defenseclaw
+NoNewPrivileges=true
+PrivateTmp=true
+# Keep logs in the journal (journalctl --user -u dc-webex-bridge)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

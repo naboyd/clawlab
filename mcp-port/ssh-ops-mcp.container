@@ -1,0 +1,25 @@
+# Quadlet unit for the SSH-ops MCP as a rootless, systemd-managed container.
+# Install to:  ~/.config/containers/systemd/ssh-ops-mcp.container
+# Then:        systemctl --user daemon-reload && systemctl --user start ssh-ops-mcp
+# Requires:    sudo loginctl enable-linger naboyd
+[Unit]
+Description=SSH-ops MCP server (rootless podman)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/ssh-ops-mcp:latest
+AutoUpdate=registry
+PublishPort=127.0.0.1:8765:8765
+Volume=%h/mcp/ssh-ops/hosts.yaml:/app/hosts.yaml:ro,Z
+Volume=%h/mcp/ssh-ops/keys:/app/keys:ro,Z
+EnvironmentFile=%h/mcp/ssh-ops/.env
+ReadOnly=true
+NoNewPrivileges=true
+
+[Service]
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

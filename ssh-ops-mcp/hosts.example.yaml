@@ -1,0 +1,61 @@
+# ssh-ops MCP server — host inventory
+# Copy to hosts.yaml and edit. Point the server at it with:
+#   export SSH_OPS_CONFIG=/absolute/path/to/hosts.yaml
+
+settings:
+  # Where to write the audit log of every tool call.
+  audit_log: ./ssh_ops_audit.log
+  # Sandbox folder for file transfers (upload/download confined here on the
+  # container side). Defaults to /data/transfers in the container.
+  transfers_dir: /data/transfers
+  max_transfer_mb: 200
+  # Seconds before a command is killed.
+  command_timeout: 30
+  # Seconds to wait when establishing the SSH connection.
+  connect_timeout: 10
+  # Host key policy: "reject" (safest), "warn", or "auto" (trust on first use).
+  # "reject" requires the host to already be in ~/.ssh/known_hosts.
+  host_key_policy: reject
+
+hosts:
+  web1:
+    description: "Front-end web node"
+    hostname: 10.0.0.11
+    port: 22
+    username: deploy
+    key_path: ~/.ssh/id_ed25519     # omit to rely on ssh-agent / default keys
+    # passphrase: "..."             # only if your key needs one (prefer ssh-agent)
+    allowed_services:               # services restart_service may touch
+      - nginx
+      - myapp
+    use_sudo_for_restart: true      # needs passwordless sudo for these units
+    allow_write: false              # true = enable run_write_command + upload_file
+                                    # (arbitrary/mutating). Default read-only.
+
+  web2:
+    description: "Front-end web node (replica)"
+    hostname: 10.0.0.12
+    username: deploy
+    key_path: ~/.ssh/id_ed25519
+    allowed_services:
+      - nginx
+      - myapp
+
+  db1:
+    description: "Primary database"
+    hostname: 10.0.0.21
+    username: deploy
+    key_path: ~/.ssh/id_ed25519
+    allowed_services:
+      - postgresql
+
+  # Network device (Cisco IOS-XE). No key/sudo — uses login + enable passwords,
+  # both stored ENCRYPTED via the GUI (or `secrets_store.py`). Read-only:
+  # run_command allows show / dir / ping / traceroute only.
+  sw1:
+    description: "Core switch"
+    platform: cisco_ios       # aliases: ios, ios-xe -> cisco_ios; also cisco_nxos, cisco_asa, arista_eos, juniper_junos
+    hostname: 10.0.0.2
+    port: 22
+    username: netadmin
+    # login + enable passwords are NOT stored here — set them in the GUI.

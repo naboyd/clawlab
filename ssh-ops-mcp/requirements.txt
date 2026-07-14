@@ -1,0 +1,6 @@
+mcp>=1.2.0
+paramiko>=3.4.0
+PyYAML>=6.0
+cryptography>=42.0.0
+Flask>=3.0.0
+netmiko>=4.3.0

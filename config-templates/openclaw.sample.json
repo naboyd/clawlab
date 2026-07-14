@@ -1,0 +1,595 @@
+{
+ "agents": {
+  "defaults": {
+   "model": {
+    "fallbacks": [
+     "anthropic/claude-sonnet-5"
+    ],
+    "primary": "ollama/llama3.1:8b"
+   },
+   "workspace": "/home/naboyd/.openclaw/workspace"
+  }
+ },
+ "gateway": {
+  "auth": {
+   "mode": "token",
+   "token": "<TOKEN_REDACTED>"
+  },
+  "bind": "loopback",
+  "controlUi": {
+   "allowedOrigins": [
+    "https://icecream.naboydciscolab.com:8444",
+    "https://192.168.128.93:8444",
+    "https://icecream:8444"
+   ]
+  },
+  "mode": "local",
+  "port": 18789,
+  "tailscale": {
+   "mode": "off",
+   "resetOnExit": false
+  }
+ },
+ "hooks": {
+  "internal": {
+   "entries": {
+    "session-memory": {
+     "enabled": true
+    }
+   }
+  }
+ },
+ "mcp": {
+  "servers": {
+   "ssh-ops": {
+    "headers": {
+     "Authorization": "Bearer <SSH_OPS_MCP_TOKEN>"
+    },
+    "transport": "streamable-http",
+    "url": "https://icecream.naboydciscolab.com:8766/mcp"
+   }
+  }
+ },
+ "meta": {
+  "lastTouchedAt": "2026-07-14T02:10:31.412Z",
+  "lastTouchedVersion": "2026.7.2"
+ },
+ "models": {
+  "mode": "merge",
+  "providers": {
+   "anthropic": {
+    "apiKey": "ANTHROPIC_API_KEY",
+    "api": "anthropic-messages",
+    "models": [
+     {
+      "id": "claude-sonnet-5",
+      "name": "claude-sonnet-5",
+      "input": [
+       "text",
+       "image"
+      ],
+      "contextWindow": 200000,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      }
+     },
+     {
+      "id": "claude-haiku-4-5",
+      "name": "claude-haiku-4-5",
+      "input": [
+       "text",
+       "image"
+      ],
+      "contextWindow": 200000,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      }
+     },
+     {
+      "id": "<ID_REDACTED>",
+      "name": "<NAME_REDACTED>",
+      "input": [
+       "text",
+       "image"
+      ],
+      "contextWindow": 200000,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      }
+     },
+     {
+      "id": "claude-opus-4-8",
+      "name": "claude-opus-4-8",
+      "input": [
+       "text",
+       "image"
+      ],
+      "contextWindow": 1049000,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      }
+     },
+     {
+      "id": "claude-fable-5",
+      "name": "claude-fable-5",
+      "input": [
+       "text",
+       "image"
+      ],
+      "contextWindow": 1000000,
+      "maxTokens": 8192,
+      "reasoning": true,
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      }
+     }
+    ]
+   },
+   "ollama": {
+    "api": "ollama",
+    "apiKey": "OLLAMA_API_KEY",
+    "baseUrl": "http://127.0.0.1:11434",
+    "models": [
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 128000,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "gemma4",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "gemma4",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": false,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "deepseek-r1:32b",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "deepseek-r1:32b",
+      "reasoning": true
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "huihui_ai/llama3.3-abliterated:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "huihui_ai/llama3.3-abliterated:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": false,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 2048,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hf.co/TheBloke/WizardLM-13B-Uncensored-GGUF:Q4_K_M",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hf.co/TheBloke/WizardLM-13B-Uncensored-GGUF:Q4_K_M",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": false,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "dolphin-mixtral:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "dolphin-mixtral:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-specialist-config-v1:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-specialist-config-v1:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-specialist-network-v1:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-specialist-network-v1:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-specialist-splunk-v1:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-specialist-splunk-v1:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": false,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "llama3.1:8b",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "llama3.1:8b",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-q25-v2-7b-field-defs-v3.2:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-q25-v2-7b-field-defs-v3.2:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-q25-v2-7b:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-q25-v2-7b:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-q25-v1-7b-field-defs-v3.2:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-q25-v1-7b-field-defs-v3.2:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-q25-v1-7b-field-defs-v3.1:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-q25-v1-7b-field-defs-v3.1:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 32768,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "hannah-q25-v1-7b-field-defs:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "hannah-q25-v1-7b-field-defs:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "tool-selector-v5:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "tool-selector-v5:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "tool-selector-v4:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "tool-selector-v4:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "tool-selector-v1.0:latest",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "tool-selector-v1.0:latest",
+      "reasoning": false
+     },
+     {
+      "compat": {
+       "supportsTools": true,
+       "supportsUsageInStreaming": true
+      },
+      "contextWindow": 131072,
+      "cost": {
+       "cacheRead": 0,
+       "cacheWrite": 0,
+       "input": 0,
+       "output": 0
+      },
+      "id": "llama3.2:1b",
+      "input": [
+       "text"
+      ],
+      "maxTokens": 8192,
+      "name": "llama3.2:1b",
+      "reasoning": false
+     }
+    ]
+   }
+  }
+ },
+ "plugins": {
+  "allow": [
+   "defenseclaw"
+  ],
+  "entries": {
+   "defenseclaw": {
+    "enabled": true
+   },
+   "ollama": {
+    "enabled": true
+   }
+  },
+  "load": {
+   "paths": [
+    "/home/naboyd/.openclaw/extensions/defenseclaw"
+   ]
+  }
+ },
+ "session": {
+  "dmScope": "per-channel-peer"
+ },
+ "skills": {
+  "install": {
+   "nodeManager": "npm"
+  }
+ },
+ "tools": {
+  "profile": "coding"
+ },
+ "wizard": {
+  "lastRunAt": "2026-07-13T20:37:26.877Z",
+  "lastRunCommand": "onboard",
+  "lastRunMode": "local",
+  "lastRunVersion": "2026.7.2"
+ }
+}

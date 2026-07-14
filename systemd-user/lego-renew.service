@@ -1,0 +1,10 @@
+[Unit]
+Description=Renew Let's Encrypt cert for ssh-ops MCP (lego + GoDaddy DNS-01)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/mcp/acme/godaddy.env
+Environment=PATH=%h/go/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/go/bin/lego --accept-tos --email boydn@me.com --dns godaddy --dns.propagation-wait=120s --domains icecream.naboydciscolab.com --path %h/mcp/acme/lego renew --days 30 --renew-hook "systemctl --user restart ssh-ops-mcp; sudo systemctl reload nginx"

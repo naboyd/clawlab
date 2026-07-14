@@ -1,0 +1,245 @@
+data_dir: /home/naboyd/.defenseclaw
+llm:
+  model: ollama/hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
+  provider: ollama
+  api_key: ''
+  api_key_env: ''
+  base_url: http://127.0.0.1:11434
+  timeout: 30
+  max_retries: 3
+  region: ''
+  instance_name: ''
+default_llm_api_key_env: ''
+default_llm_model: ''
+audit_db: /home/naboyd/.defenseclaw/audit.db
+quarantine_dir: /home/naboyd/.defenseclaw/quarantine
+plugin_dir: /home/naboyd/.defenseclaw/plugins
+policy_dir: /home/naboyd/.defenseclaw/policies
+environment: linux
+tenant_id: ''
+workspace_id: ''
+deployment_mode: ''
+discovery_source: ''
+claw:
+  mode: openclaw
+  home_dir: ~/.openclaw
+  config_file: ~/.openclaw/openclaw.json
+  workspace_dir: ''
+  openclaw_home_original: ''
+inspect_llm:
+  provider: ''
+  model: ''
+  api_key: ''
+  api_key_env: ''
+  base_url: ''
+  timeout: 0
+  max_retries: 0
+cisco_ai_defense:
+  endpoint: https://us.api.inspect.aidefense.security.cisco.com
+  api_key: ''
+  api_key_env: CISCO_AI_DEFENSE_API_KEY
+  timeout_ms: 3000
+  enabled_rules: []
+scanners:
+  skill_scanner:
+    binary: skill-scanner
+    use_llm: false
+    use_behavioral: false
+    enable_meta: false
+    use_trigger: false
+    use_virustotal: false
+    use_aidefense: false
+    llm_consensus_runs: 0
+    policy: permissive
+    lenient: true
+    virustotal_api_key: ''
+    virustotal_api_key_env: ''
+  mcp_scanner:
+    binary: mcp-scanner
+    analyzers: auto
+    scan_prompts: false
+    scan_resources: false
+    scan_instructions: false
+  codeguard: /home/naboyd/.defenseclaw/codeguard-rules
+openshell:
+  binary: openshell
+  policy_dir: /etc/openshell/policies
+  mode: ''
+  version: 0.6.2
+  sandbox_home: /home/sandbox
+  auto_pair: null
+  host_networking: true
+watch:
+  debounce_ms: 500
+  auto_block: true
+  allow_list_bypass_scan: true
+  rescan_enabled: true
+  rescan_interval_min: 60
+firewall:
+  config_file: /home/naboyd/.defenseclaw/firewall.yaml
+  rules_file: /home/naboyd/.defenseclaw/firewall.pf.conf
+  anchor_name: com.defenseclaw
+guardrail:
+  enabled: true
+  mode: action
+  scanner_mode: local
+  host: localhost
+  port: 4000
+  model: ''
+  model_name: ''
+  api_key_env: ''
+  api_base: ''
+  original_model: ''
+  block_message: ''
+  judge:
+    enabled: true
+    injection: true
+    pii: true
+    pii_prompt: true
+    pii_completion: true
+    tool_injection: true
+    exfil: true
+    timeout: 30.0
+    model: ollama/hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
+    api_key_env: DEFENSECLAW_LLM_KEY
+    api_base: http://127.0.0.1:11434
+    fallbacks: []
+    adjudication_timeout: 5.0
+    hook_connectors:
+    - '*'
+    llm:
+      model: ollama/hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
+      provider: ''
+      api_key: ''
+      api_key_env: ''
+      base_url: ''
+      timeout: 0
+      max_retries: 0
+      region: ''
+      instance_name: ''
+  detection_strategy: regex_judge
+  detection_strategy_prompt: ''
+  detection_strategy_completion: regex_judge
+  detection_strategy_tool_call: ''
+  judge_sweep: true
+  rule_pack_dir: /home/naboyd/.defenseclaw/policies/guardrail/strict
+  connector: openclaw
+  hilt:
+    enabled: false
+    min_severity: HIGH
+  hook_fail_mode: closed
+  llm_role: judge_and_agent
+otel:
+  enabled: false
+  traces:
+    sampler: always_on
+    sampler_arg: '1.0'
+  logs:
+    emit_individual_findings: false
+  metrics:
+    export_interval_s: 60
+    temporality: delta
+  batch:
+    max_export_batch_size: 512
+    scheduled_delay_ms: 5000
+    max_queue_size: 2048
+  resource:
+    attributes: {}
+  destinations: []
+gateway:
+  host: 127.0.0.1
+  port: 18789
+  api_bind: ''
+  token_env: OPENCLAW_GATEWAY_TOKEN
+  device_key_file: /home/naboyd/.defenseclaw/device.key
+  auto_approve_safe: false
+  reconnect_ms: 800
+  max_reconnect_ms: 15000
+  approval_timeout_s: 30
+  api_port: 18970
+  watcher:
+    enabled: true
+    skill:
+      enabled: true
+      take_action: false
+      dirs: []
+    plugin:
+      enabled: true
+      take_action: false
+      dirs: []
+skill_actions:
+  critical:
+    file: none
+    runtime: enable
+    install: none
+  high:
+    file: none
+    runtime: enable
+    install: none
+  medium:
+    file: none
+    runtime: enable
+    install: none
+  low:
+    file: none
+    runtime: enable
+    install: none
+  info:
+    file: none
+    runtime: enable
+    install: none
+mcp_actions:
+  critical:
+    file: none
+    runtime: enable
+    install: block
+  high:
+    file: none
+    runtime: enable
+    install: block
+  medium:
+    file: none
+    runtime: enable
+    install: none
+  low:
+    file: none
+    runtime: enable
+    install: none
+  info:
+    file: none
+    runtime: enable
+    install: none
+plugin_actions:
+  critical:
+    file: none
+    runtime: enable
+    install: none
+  high:
+    file: none
+    runtime: enable
+    install: none
+  medium:
+    file: none
+    runtime: enable
+    install: none
+  low:
+    file: none
+    runtime: enable
+    install: none
+  info:
+    file: none
+    runtime: enable
+    install: none
+webhooks:
+- name: webex-webexapis-com
+  url: https://webexapis.com/v1/messages
+  type: webex
+  secret_env: DEFENSECLAW_WEBEX_TOKEN
+  room_id: <WEBEX_ROOM_ID>
+  min_severity: HIGH
+  events:
+  - block
+  - drift
+  - guardrail
+  timeout_seconds: 10
+  enabled: true

@@ -1,0 +1,13 @@
+[Unit]
+Description=Claw system updater (apply all apt updates; notify, never reboot)
+Documentation=file:/usr/local/sbin/claw-sysupdate.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/claw-sysupdate.sh
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=idle
+# Environment=CLAW_UPDATE_WEBHOOK=https://hooks.example.com/xxxx

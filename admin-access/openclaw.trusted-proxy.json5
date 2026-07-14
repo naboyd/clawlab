@@ -1,0 +1,26 @@
+// Merge into ~/.openclaw/openclaw.json (strip // comments). Apply AFTER
+// `openclaw onboard`. Schema per OpenClaw gateway/trusted-proxy-auth.
+{
+  gateway: {
+    bind: "loopback",
+    host: "127.0.0.1",
+    port: 18789,
+    trustedProxies: ["127.0.0.1"],
+    auth: {
+      mode: "trusted-proxy",
+      trustedProxy: {
+        userHeader: "x-forwarded-user",
+        requiredHeaders: ["x-forwarded-proto", "x-forwarded-host"],
+        allowUsers: [],
+        allowLoopback: true,
+      },
+      password: "OPENCLAW_GATEWAY_PASSWORD",
+    },
+    controlUi: {
+      allowedOrigins: [
+        "https://192.168.128.93:8443",
+        "https://icecream:8443",
+      ],
+    },
+  },
+}

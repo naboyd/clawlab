@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the OpenClaw defenseclaw extension for corruption
+
+[Path]
+PathChanged=%h/.openclaw/extensions/defenseclaw
+Unit=openclaw-ext-heal.service
+
+[Install]
+WantedBy=default.target
