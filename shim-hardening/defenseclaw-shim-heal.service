@@ -1,0 +1,5 @@
+[Unit]
+Description=Re-apply DefenseClaw shim hardening (full-command inspection)
+[Service]
+Type=oneshot
+ExecStart=%h/.defenseclaw/shims-heal/patch-shims.sh

@@ -1,0 +1,13 @@
+[Unit]
+Description=Watch DefenseClaw shims; re-harden when regenerated
+[Path]
+PathModified=%h/.defenseclaw/shims/nc
+PathModified=%h/.defenseclaw/shims/curl
+PathModified=%h/.defenseclaw/shims/wget
+PathModified=%h/.defenseclaw/shims/ssh
+PathModified=%h/.defenseclaw/shims/npm
+PathModified=%h/.defenseclaw/shims/pip
+PathChanged=%h/.defenseclaw/shims
+Unit=defenseclaw-shim-heal.service
+[Install]
+WantedBy=default.target
