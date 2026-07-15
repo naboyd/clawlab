@@ -25,6 +25,39 @@ def staging_path(hosts_yaml: Path) -> Path:
     return hosts_yaml.parent / ".discovery_staging.yaml"
 
 
+def job_path(hosts_yaml: Path) -> Path:
+    return hosts_yaml.parent / ".discovery_job.json"
+
+
+def load_job(hosts_yaml: Path) -> dict[str, Any]:
+    path = job_path(hosts_yaml)
+    if not path.is_file():
+        return {"status": "idle", "message": ""}
+    try:
+        import json
+
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {"status": "idle", "message": ""}
+    except (OSError, ValueError):
+        return {"status": "idle", "message": ""}
+
+
+def save_job(hosts_yaml: Path, job: dict[str, Any]) -> None:
+    import json
+
+    path = job_path(hosts_yaml)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(job, fh)
+
+
+def clear_job(hosts_yaml: Path) -> None:
+    path = job_path(hosts_yaml)
+    if path.is_file():
+        path.unlink()
+
+
 def sanitize_host_key(hostname: str, ip: str) -> str:
     """Produce a stable, unique hosts.yaml key from hostname or IP."""
     base = (hostname or "").split(".")[0].strip().lower()

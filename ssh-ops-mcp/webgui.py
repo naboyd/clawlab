@@ -19,10 +19,12 @@ Passwords are never written to hosts.yaml or shown back in the page; only a
 from __future__ import annotations
 
 import os
+import threading
+import time
 from pathlib import Path
 
 import yaml
-from flask import Flask, redirect, render_template_string, request, url_for
+from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 
 import secrets_store
 import inventory
@@ -156,7 +158,47 @@ function validateForm(){
   }
   return true;
 }
-document.addEventListener('DOMContentLoaded',function(){togglePlatform();toggleMethod();});
+function setDiscoveryRunning(running){
+  var btn=document.getElementById('discovery-run-btn');
+  var status=document.getElementById('discovery-status');
+  if(btn){btn.disabled=running; btn.textContent=running?'Running discovery…':'Run discovery';}
+  if(status && running){status.style.display='block'; status.className='banner'; status.textContent='Discovery in progress — connecting to seed device. This may take several minutes.';}
+}
+function pollDiscoveryStatus(){
+  fetch('{{ url_for("discovery_status") }}',{credentials:'same-origin'})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      var status=document.getElementById('discovery-status');
+      if(!status) return;
+      if(j.status==='running'){
+        status.style.display='block';
+        status.className='banner';
+        status.textContent=j.message||'Discovery running…';
+        setDiscoveryRunning(true);
+        setTimeout(pollDiscoveryStatus, 2500);
+      } else if(j.status==='done'){
+        status.style.display='block';
+        status.className='banner';
+        status.textContent=j.message||'Discovery complete.';
+        setDiscoveryRunning(false);
+        if(j.reload){ window.location='{{ url_for("index", tab="discovery") }}&msg='+encodeURIComponent(j.message||'Done'); }
+      } else if(j.status==='error'){
+        status.style.display='block';
+        status.className='banner err';
+        status.textContent=j.message||'Discovery failed.';
+        setDiscoveryRunning(false);
+      } else {
+        setDiscoveryRunning(false);
+      }
+    })
+    .catch(function(){ setDiscoveryRunning(false); });
+}
+document.addEventListener('DOMContentLoaded',function(){
+  togglePlatform();toggleMethod();
+  var form=document.getElementById('discovery-run-form');
+  if(form){ form.addEventListener('submit',function(){ setDiscoveryRunning(true); }); }
+  {% if job_status.status == 'running' %}pollDiscoveryStatus();{% endif %}
+});
 </script></head><body>
 <h1>ssh-ops — MCP Admin</h1>
 <div class="banner">Editing <code>{{ config_path }}</code>. Secrets are stored
@@ -288,7 +330,11 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 
 <h2>Run discovery</h2>
 <p class="hint">CDP/LLDP hop or CIDR scan via SSH. Results land in the staging list below for review before import.</p>
-<form class="card" method="post" action="{{ url_for('discovery_run') }}">
+<div id="discovery-status" class="banner {% if job_status.status == 'error' %}err{% endif %}"
+     style="{% if job_status.status in ['running','done','error'] %}display:block{% else %}display:none{% endif %}">
+  {{ job_status.message }}
+</div>
+<form id="discovery-run-form" class="card" method="post" action="{{ url_for('discovery_run') }}">
   <div class="row">
     <div><label>Method</label>
       <select name="method" id="method" onchange="toggleMethod()">
@@ -300,7 +346,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
     <div><label>Max workers</label><input type="number" name="max_workers" value="{{ defaults.max_workers }}" min="1" max="50"></div>
   </div>
   <div class="row" id="seed-row">
-    <div><label>Seed device IP</label><input type="text" name="seed" value="{{ defaults.seed }}" placeholder="10.0.0.1"></div>
+    <div><label>Seed device IP</label><input type="text" name="seed" id="seed" value="{{ defaults.seed }}" placeholder="10.0.0.1"></div>
   </div>
   <div class="row" id="range-row" style="display:none">
     <div><label>IP range (CIDR)</label><input type="text" name="ip_range" value="{{ defaults.ip_range }}" placeholder="192.168.1.0/24"></div>
@@ -311,7 +357,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
     <div><label>Enable password</label><input type="password" name="enable_password" autocomplete="new-password"></div>
   </div>
   <label><input type="checkbox" name="merge" value="1" style="width:auto"> Merge into existing staging (unchecked = replace staging)</label>
-  <button type="submit" {% if not netmiko_ok %}disabled{% endif %}>Run discovery</button>
+  <button id="discovery-run-btn" type="submit" {% if not netmiko_ok or job_status.status == 'running' %}disabled{% endif %}>Run discovery</button>
 </form>
 
 <h2>Upload discovery YAML</h2>
@@ -519,6 +565,12 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
     if edit_name and not edit_host:
         edit_name = ""
     devices = discovery_import.load_staging(CONFIG_PATH)
+    job_status = discovery_import.load_job(CONFIG_PATH)
+    if job_status.get("status") in ("done", "error"):
+        if msg is None and not request.args.get("msg"):
+            msg = job_status.get("message")
+        discovery_import.clear_job(CONFIG_PATH)
+        job_status = {"status": "idle", "message": ""}
     ctx = dict(
         common_style=COMMON_STYLE,
         tab=active,
@@ -537,6 +589,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         edit_tags=_tags_for_form(edit_host),
         devices=devices,
         staging_count=len(devices),
+        job_status=discovery_import.load_job(CONFIG_PATH),
         defaults=_discovery_defaults(),
         netmiko_ok=run_discovery is not None,
         auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
@@ -690,10 +743,77 @@ def _discovery_defaults() -> dict:
     }
 
 
+def _discovery_job_worker(
+    *,
+    method: str,
+    username: str,
+    password: str,
+    seed: str,
+    ip_range: str,
+    enable_password: str | None,
+    max_hops: int,
+    max_workers: int,
+    merge: bool,
+) -> None:
+    discovery_import.save_job(CONFIG_PATH, {
+        "status": "running",
+        "message": f"Discovery running ({method}) — connecting to seed…",
+        "started_at": time.time(),
+    })
+    try:
+        found = run_discovery(
+            method=method,
+            username=username,
+            password=password,
+            seed=seed,
+            ip_range=ip_range,
+            enable_password=enable_password,
+            max_hops=max_hops,
+            max_workers=max_workers,
+        )
+        if not found:
+            discovery_import.save_job(CONFIG_PATH, {
+                "status": "error",
+                "message": (
+                    "No devices discovered. Check seed IP, credentials, enable password, "
+                    "and that the ssh-ops container can reach the network."
+                ),
+            })
+            return
+        if merge:
+            found = _merge_staging(discovery_import.load_staging(CONFIG_PATH), found)
+        discovery_import.save_staging(
+            CONFIG_PATH,
+            found,
+            meta={"method": method, "seed": seed, "ip_range": ip_range},
+        )
+        importable = sum(1 for d in found if discovery_import.is_importable(d))
+        discovery_import.save_job(CONFIG_PATH, {
+            "status": "done",
+            "message": f"Discovery complete: {len(found)} staged, {importable} importable.",
+            "count": len(found),
+            "reload": True,
+        })
+    except Exception as exc:
+        discovery_import.save_job(CONFIG_PATH, {
+            "status": "error",
+            "message": f"Discovery failed: {exc}",
+        })
+
+
+@app.route("/discovery/status")
+def discovery_status():
+    job = discovery_import.load_job(CONFIG_PATH)
+    return jsonify(job)
+
+
 @app.route("/discovery/run", methods=["POST"])
 def discovery_run():
     if run_discovery is None:
         return _discovery_redirect("netmiko is not available.", err=True)
+    job = discovery_import.load_job(CONFIG_PATH)
+    if job.get("status") == "running":
+        return _discovery_redirect("Discovery already in progress.", err=True)
     f = request.form
     method = (f.get("method") or "cdp").strip()
     username = (f.get("username") or "").strip()
@@ -709,30 +829,28 @@ def discovery_run():
         return _discovery_redirect("Invalid max_hops or max_workers.", err=True)
     if not username or not password:
         return _discovery_redirect("Username and password are required.", err=True)
-    try:
-        found = run_discovery(
-            method=method,
-            username=username,
-            password=password,
-            seed=seed,
-            ip_range=ip_range,
-            enable_password=enable_password,
-            max_hops=max_hops,
-            max_workers=max_workers,
-        )
-    except Exception as exc:
-        return _discovery_redirect(f"Discovery failed: {exc}", err=True)
-    if merge:
-        found = _merge_staging(discovery_import.load_staging(CONFIG_PATH), found)
-    discovery_import.save_staging(
-        CONFIG_PATH,
-        found,
-        meta={"method": method, "seed": seed, "ip_range": ip_range},
+    if method in ("cdp", "lldp") and not seed:
+        return _discovery_redirect("Seed device IP is required for CDP/LLDP discovery.", err=True)
+    if method == "range" and not (ip_range or seed):
+        return _discovery_redirect("IP range (CIDR) is required for range discovery.", err=True)
+
+    thread = threading.Thread(
+        target=_discovery_job_worker,
+        kwargs={
+            "method": method,
+            "username": username,
+            "password": password,
+            "seed": seed,
+            "ip_range": ip_range,
+            "enable_password": enable_password,
+            "max_hops": max_hops,
+            "max_workers": max_workers,
+            "merge": merge,
+        },
+        daemon=True,
     )
-    importable = sum(1 for d in found if discovery_import.is_importable(d))
-    return _discovery_redirect(
-        f"Discovery complete: {len(found)} staged, {importable} importable."
-    )
+    thread.start()
+    return _discovery_redirect("Discovery started — status updates below.")
 
 
 @app.route("/discovery/upload", methods=["POST"])
@@ -867,4 +985,4 @@ if __name__ == "__main__":
     # publish the port ONLY to the host's loopback, e.g. -p 127.0.0.1:8765:8765,
     # so it still isn't reachable from the network.
     host = os.environ.get("SSH_OPS_GUI_HOST", "127.0.0.1")
-    app.run(host=host, port=port, debug=False)
+    app.run(host=host, port=port, debug=False, threaded=True)

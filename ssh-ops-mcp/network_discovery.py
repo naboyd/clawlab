@@ -82,14 +82,24 @@ class NetworkDiscovery:
             "username": self.username,
             "password": self.password,
             "secret": self.enable_password,
-            "timeout": 10,
-            "conn_timeout": 10,
+            "timeout": 15,
+            "conn_timeout": 15,
+            "auth_timeout": 15,
+            "session_timeout": 20,
+            "fast_cli": False,
         }
 
         try:
             logger.info(f"Connecting to {ip}...")
             connection = ConnectHandler(**device)
-            connection.enable()
+            try:
+                if not connection.check_enable_mode():
+                    connection.enable()
+            except Exception as exc:
+                logger.warning("Enable failed for %s: %s", ip, exc)
+                if not connection.check_enable_mode():
+                    connection.disconnect()
+                    return None
             return connection
         except NetmikoAuthenticationException:
             logger.error(f"Authentication failed for {ip}")
