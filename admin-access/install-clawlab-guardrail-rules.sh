@@ -26,11 +26,23 @@ for f in clawlab-local-user-crud.yaml clawlab-local-user-intent.yaml; do
   echo "Installed ${RULES_DIR}/${f}"
 done
 
-if command -v defenseclaw-gateway >/dev/null 2>&1; then
-  systemctl --user try-restart defenseclaw-gateway.service 2>/dev/null \
-    || systemctl --user restart defenseclaw-gateway.service 2>/dev/null \
-    || echo "NOTE: restart defenseclaw-gateway manually to load new rules"
-fi
+reload_gateway() {
+  if systemctl --user restart openclaw-gateway.service 2>/dev/null; then
+    echo "Reloaded guardrail via openclaw-gateway.service"
+    return 0
+  fi
+  if command -v defenseclaw-gateway >/dev/null 2>&1; then
+    if defenseclaw-gateway restart 2>/dev/null; then
+      echo "Reloaded guardrail via defenseclaw-gateway restart"
+      return 0
+    fi
+  fi
+  echo "NOTE: restart openclaw-gateway to load new rules:"
+  echo "  systemctl --user restart openclaw-gateway"
+  return 1
+}
+
+reload_gateway || true
 
 echo "Done. Verify with:"
 echo "  defenseclaw guardrail status"
