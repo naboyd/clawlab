@@ -601,7 +601,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 <h2>Propose IOS config lines</h2>
 <p class="hint">Lines must match an <code>allow_groups</code> entry in
 <code>ios-xe-policy.yaml</code> and must not hit <code>always_block</code>.
-Groups: <code>interface_l2</code>, <code>vlan</code>.</p>
+Groups: <code>interface_l2</code>, <code>vlan</code>, <code>vlan_svi</code>, <code>vlan_l3</code>.</p>
 <form method="post" action="{{ url_for('change_propose_lines') }}" class="card">
   <input type="hidden" name="tab" value="changes">
   <div class="row">
@@ -617,6 +617,8 @@ Groups: <code>interface_l2</code>, <code>vlan</code>.</p>
       <select name="group" required>
         <option value="interface_l2">interface_l2</option>
         <option value="vlan">vlan</option>
+        <option value="vlan_svi">vlan_svi</option>
+        <option value="vlan_l3">vlan_l3</option>
       </select>
     </div>
   </div>

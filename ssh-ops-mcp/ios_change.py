@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import ios_xe_policy
+
 
 def normalize_interface_state(spec: dict[str, Any]) -> str:
     state = str(spec.get("state") or "").strip().lower().replace(" ", "_").replace("-", "_")
