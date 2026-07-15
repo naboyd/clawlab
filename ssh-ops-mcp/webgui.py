@@ -26,6 +26,12 @@ from flask import Flask, redirect, render_template_string, request, url_for
 
 import secrets_store
 import inventory
+import discovery_import
+
+try:
+    from network_discovery import run_discovery
+except ImportError:
+    run_discovery = None  # type: ignore[misc, assignment]
 
 try:
     import claw_auth_middleware as claw_auth
@@ -81,59 +87,104 @@ def save_config(cfg: dict) -> None:
 # Templates
 # --------------------------------------------------------------------------- #
 
-PAGE = """
-<!doctype html>
-<html><head><meta charset="utf-8"><title>ssh-ops config</title>
-<style>
-  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:900px;
+COMMON_STYLE = """
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:1050px;
        margin:2rem auto;padding:0 1rem;color:#1a1a1a;background:#fafafa}
-  h1{font-size:1.4rem} h2{font-size:1.1rem;margin-top:2rem}
+  h1{font-size:1.4rem} h2{font-size:1.1rem;margin-top:1.5rem}
   table{border-collapse:collapse;width:100%;background:#fff;box-shadow:0 1px 3px #0001}
-  th,td{border:1px solid #e2e2e2;padding:.5rem .6rem;text-align:left;font-size:.9rem}
+  th,td{border:1px solid #e2e2e2;padding:.45rem .55rem;text-align:left;font-size:.85rem;vertical-align:top}
   th{background:#f0f0f0}
   .pill{padding:.1rem .5rem;border-radius:10px;font-size:.75rem}
   .yes{background:#d8f5dd;color:#0a5c22} .no{background:#f5e0e0;color:#8a1f1f}
   form.card{background:#fff;padding:1.2rem;border:1px solid #e2e2e2;border-radius:8px;
             box-shadow:0 1px 3px #0001;margin-top:1rem}
-  label{display:block;margin:.6rem 0 .2rem;font-size:.85rem;font-weight:600}
-  input[type=text],input[type=password],input[type=number]{width:100%;padding:.45rem;
-       border:1px solid #ccc;border-radius:5px;font-size:.9rem;box-sizing:border-box}
-  .row{display:flex;gap:1rem}.row>div{flex:1}
+  label{display:block;margin:.5rem 0 .15rem;font-size:.82rem;font-weight:600}
+  input[type=text],input[type=password],input[type=number],input[type=file],select{
+       width:100%;padding:.4rem;border:1px solid #ccc;border-radius:5px;font-size:.88rem;box-sizing:border-box}
+  .row{display:flex;gap:.8rem}.row>div{flex:1}
   .hint{font-weight:400;color:#777;font-size:.78rem}
-  button{margin-top:1rem;padding:.5rem 1.1rem;border:0;border-radius:6px;
-         background:#2c5cff;color:#fff;font-size:.9rem;cursor:pointer}
-  button.del{background:#c0392b;padding:.25rem .6rem;margin:0;font-size:.78rem}
+  button,.btn{display:inline-block;margin-top:.6rem;padding:.45rem 1rem;border:0;border-radius:6px;
+         background:#2c5cff;color:#fff;font-size:.88rem;cursor:pointer;text-decoration:none}
+  button.del,.btn.del{background:#c0392b;padding:.25rem .6rem;margin:0;font-size:.78rem}
+  button.sec,.btn.sec{background:#555}
   .banner{background:#eef4ff;border:1px solid #cdddff;padding:.6rem .8rem;border-radius:6px;
           font-size:.85rem;margin-bottom:1rem}
+  .banner.err{background:#fdecea;border-color:#f5c6cb;color:#8a1f1f}
   code{background:#eee;padding:.1rem .3rem;border-radius:3px}
-</style></head><body>
-<h1>ssh-ops — host &amp; secret manager</h1>
-<div class="banner">Editing <code>{{ config_path }}</code>. Sudo passwords are stored
+  .tabs{display:flex;gap:0;border-bottom:2px solid #ddd;margin:1.2rem 0 0}
+  .tabs a{padding:.55rem 1.1rem;text-decoration:none;color:#555;font-weight:600;font-size:.9rem;
+         border-bottom:3px solid transparent;margin-bottom:-2px}
+  .tabs a.active{color:#2c5cff;border-bottom-color:#2c5cff}
+  .tabs a .badge{background:#2c5cff;color:#fff;border-radius:10px;padding:.05rem .45rem;font-size:.72rem;margin-left:.35rem}
+  .tab-panel{display:none}.tab-panel.active{display:block}
+  .cell-in{width:100%;min-width:5rem;padding:.3rem;border:1px solid #ddd;border-radius:4px;font-size:.82rem}
+  .cell-in.sm{min-width:4rem}
+  .skip td{color:#999}
+  .actions{white-space:nowrap}
+"""
+
+PAGE = """
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ssh-ops MCP Admin</title>
+<style>{{ common_style|safe }}</style>
+<script>
+function togglePlatform(){
+  var el=document.getElementById('platform');
+  if(!el) return;
+  var net=el.value!=='linux';
+  document.getElementById('net-fields').style.display=net?'block':'none';
+  document.getElementById('linux-fields').style.display=net?'none':'block';
+}
+function toggleMethod(){
+  var m=document.getElementById('method');
+  if(!m) return;
+  document.getElementById('seed-row').style.display=(m.value==='range')?'none':'flex';
+  document.getElementById('range-row').style.display=(m.value==='range')?'flex':'none';
+}
+function toggleAll(cb){
+  document.querySelectorAll('input[name=sel]').forEach(function(el){el.checked=cb.checked;});
+}
+function validateForm(){
+  var pairs=[['ssh_login_password','ssh_login_password_confirm','SSH login password'],
+    ['sudo_password','sudo_password_confirm','sudo password'],
+    ['login_password','login_password_confirm','login password'],
+    ['enable_password','enable_password_confirm','enable password']];
+  for(var i=0;i<pairs.length;i++){
+    var a=document.getElementsByName(pairs[i][0])[0], b=document.getElementsByName(pairs[i][1])[0];
+    if(!a||!b) continue;
+    if(a.value!==b.value){alert('The '+pairs[i][2]+' entries do not match.'); b.focus(); return false;}
+  }
+  return true;
+}
+document.addEventListener('DOMContentLoaded',function(){togglePlatform();toggleMethod();});
+</script></head><body>
+<h1>ssh-ops — MCP Admin</h1>
+<div class="banner">Editing <code>{{ config_path }}</code>. Secrets are stored
 <b>encrypted</b> in the .env file; the master key is in a separate 0600 keyfile.
-{% if auth_required %}LAN access requires <b>claw-auth</b> via nginx (not raw :8765).{% else %}
+{% if auth_required %}LAN access requires <b>claw-auth</b> via nginx.{% else %}
 This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
+{% if msg %}<div class="banner {% if err %}err{% endif %}">{{ msg }}</div>{% endif %}
 
-{% if msg %}<div class="banner">{{ msg }}</div>{% endif %}
+<nav class="tabs">
+  <a href="{{ url_for('index', tab='hosts') }}" class="{% if tab=='hosts' %}active{% endif %}">Hosts</a>
+  <a href="{{ url_for('index', tab='discovery') }}" class="{% if tab=='discovery' %}active{% endif %}">Discovery{% if staging_count %}<span class="badge">{{ staging_count }}</span>{% endif %}</a>
+</nav>
 
+<div id="tab-hosts" class="tab-panel {% if tab=='hosts' %}active{% endif %}">
 <div style="margin:.6rem 0">
   <form method="post" action="{{ url_for('reload_mcp') }}" style="display:inline">
     <button type="submit">Reload hosts into MCP</button>
   </form>
-  <span class="hint">New/edited hosts are picked up automatically on the MCP's next call (hot-reload);
-  this just forces a refresh now. A full MCP <i>process</i> restart is only needed after a code
-  change (rebuild the image + reopen the app) — the web UI can't do that.</span>
+  <span class="hint">Forces MCP hot-reload; rebuild the image only after code changes.</span>
 </div>
-
-<h2>MCP access</h2>
 <div style="margin:.4rem 0">
-  <a href="{{ url_for('mcp_token') }}"><button type="button">Manage MCP access token</button></a>
-  <span class="hint">Bearer token HTTP MCP clients must send. Rotate or revoke it here.</span>
+  <a href="{{ url_for('mcp_token') }}" class="btn sec">Manage MCP access token</a>
 </div>
 
 <h2>Configured hosts</h2>
 <table>
 <tr><th>Name</th><th>Platform</th><th>Host</th><th>User</th><th>Port</th>
-    <th>Restartable services</th><th>Flags</th><th>Secrets</th><th></th></tr>
+    <th>Services</th><th>Flags</th><th>Secrets</th><th></th></tr>
 {% for name, h in hosts.items() %}
 {% set plat = (h.get('platform','linux') or 'linux')|lower %}
 {% set is_net = plat not in ['linux','unix',''] %}
@@ -159,8 +210,8 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
       {% if name in with_login %}ssh-pw <span class="pill yes">set</span>{% endif %}
     {% endif %}
   </td>
-  <td style="white-space:nowrap">
-    <a href="{{ url_for('index') }}?edit={{ name }}#form" style="font-size:.8rem;margin-right:.5rem">edit</a>
+  <td class="actions">
+    <a href="{{ url_for('index', tab='hosts', edit=name) }}#form" style="font-size:.8rem;margin-right:.5rem">edit</a>
     <form method="post" action="{{ url_for('delete') }}" style="display:inline"
           onsubmit="return confirm('Delete host {{ name }} and its secret?')">
       <input type="hidden" name="name" value="{{ name }}">
@@ -169,7 +220,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   </td>
 </tr>
 {% else %}
-<tr><td colspan="8" class="hint">No hosts yet — add one below.</td></tr>
+<tr><td colspan="9" class="hint">No hosts yet — add one below or use the Discovery tab.</td></tr>
 {% endfor %}
 </table>
 
@@ -182,8 +233,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
     <div><label>Name <span class="hint">(unique id{% if edit_name %}; locked while editing{% endif %})</span></label>
       <input type="text" name="name" required value="{{ edit_name }}" {% if edit_name %}readonly{% endif %}></div>
     <div><label>Platform</label>
-      <select name="platform" id="platform" onchange="togglePlatform()"
-              style="width:100%;padding:.45rem;border:1px solid #ccc;border-radius:5px">
+      <select name="platform" id="platform" onchange="togglePlatform()">
         {% for p, lbl in plabels.items() %}
         <option value="{{ p }}" {% if platsel==p %}selected{% endif %}>{{ lbl }}</option>
         {% endfor %}
@@ -195,76 +245,172 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   </div>
   <div class="row">
     <div><label>Username</label><input type="text" name="username" required value="{{ eh.get('username','') }}"></div>
-    <div><label>Key path <span class="hint">(optional; blank = ssh-agent / password)</span></label>
+    <div><label>Key path <span class="hint">(optional)</span></label>
       <input type="text" name="key_path" value="{{ eh.get('key_path','') }}" placeholder="/root/.ssh/id_ed25519"></div>
   </div>
-  <label>Tags <span class="hint">(comma-separated — returned by <code>list_hosts</code> for flow selection, e.g. <code>web, prod, canary</code>)</span></label>
+  <label>Tags <span class="hint">(comma-separated)</span></label>
   <input type="text" name="tags" value="{{ ', '.join(edit_tags) }}" placeholder="web, prod">
-
-  <!-- Linux-only fields -->
   <div id="linux-fields">
-    <label>SSH login password <span class="hint">(optional; encrypted. Use instead of a key. Blank keeps existing)</span></label>
+    <label>SSH login password</label>
     <div class="row"><div><input type="password" name="ssh_login_password" autocomplete="new-password" placeholder="password"></div>
       <div><input type="password" name="ssh_login_password_confirm" autocomplete="new-password" placeholder="confirm"></div></div>
-    <label>Allowed services <span class="hint">(comma-separated; restart_service is limited to these)</span></label>
+    <label>Allowed services</label>
     <input type="text" name="allowed_services" value="{{ ', '.join(eh.get('allowed_services',[])) }}" placeholder="nginx, myapp">
-    <label>Sudo password <span class="hint">(optional; encrypted, used for sudo -S. Blank keeps existing)</span></label>
-    <div class="row"><div><input type="password" name="sudo_password" autocomplete="new-password" placeholder="password"></div>
-      <div><input type="password" name="sudo_password_confirm" autocomplete="new-password" placeholder="confirm"></div></div>
+    <label>Sudo password</label>
+    <div class="row"><div><input type="password" name="sudo_password" autocomplete="new-password"></div>
+      <div><input type="password" name="sudo_password_confirm" autocomplete="new-password"></div></div>
     <div class="row" style="margin-top:.6rem">
       <div><label><input type="checkbox" name="use_sudo_for_restart" {% if eh.get('use_sudo_for_restart', True) %}checked{% endif %} style="width:auto"> Use sudo for restarts</label></div>
-      <div><label><input type="checkbox" name="use_pty" {% if eh.get('use_pty', False) %}checked{% endif %} style="width:auto"> Request PTY (for <code>requiretty</code> hosts)</label></div>
+      <div><label><input type="checkbox" name="use_pty" {% if eh.get('use_pty', False) %}checked{% endif %} style="width:auto"> Request PTY</label></div>
     </div>
-    <div class="row" style="margin-top:.2rem">
-      <div><label><input type="checkbox" name="allow_write" {% if eh.get('allow_write', False) %}checked{% endif %} style="width:auto"> <b>Allow write</b> — enable arbitrary commands + file upload on this host <span class="hint">(off = read-only)</span></label></div>
-      <div><label><input type="checkbox" name="auto_update" {% if eh.get('auto_update') or inventory.has_tag(eh, 'auto_update') %}checked{% endif %} style="width:auto"> <b>Auto-update</b> — adds <code>auto_update</code> tag for fleet-update / claw-sysupdate <span class="hint">(linux only)</span></label></div>
+    <div class="row">
+      <div><label><input type="checkbox" name="allow_write" {% if eh.get('allow_write', False) %}checked{% endif %} style="width:auto"> Allow write</label></div>
+      <div><label><input type="checkbox" name="auto_update" {% if eh.get('auto_update') or inventory.has_tag(eh, 'auto_update') %}checked{% endif %} style="width:auto"> Auto-update</label></div>
     </div>
   </div>
-
-  <!-- Network-device fields (Cisco IOS-XE etc.) -->
   <div id="net-fields" style="display:none">
     <div class="row">
-      <div><label>Login password <span class="hint">(encrypted; blank keeps existing)</span></label>
-        <input type="password" name="login_password" autocomplete="new-password" placeholder="password">
+      <div><label>Login password</label>
+        <input type="password" name="login_password" autocomplete="new-password">
         <input type="password" name="login_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
-      <div><label>Enable password <span class="hint">(privileged mode; encrypted; blank keeps existing)</span></label>
-        <input type="password" name="enable_password" autocomplete="new-password" placeholder="password">
+      <div><label>Enable password</label>
+        <input type="password" name="enable_password" autocomplete="new-password">
         <input type="password" name="enable_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
     </div>
-    <p class="hint">Network devices are read-only: run_command permits show / dir / ping / traceroute only.</p>
   </div>
-
   <button type="submit">{% if edit_name %}Update host{% else %}Save host{% endif %}</button>
-  {% if edit_name %}<a href="{{ url_for('index') }}" style="margin-left:1rem">cancel</a>{% endif %}
+  {% if edit_name %}<a href="{{ url_for('index', tab='hosts') }}" style="margin-left:1rem">cancel</a>{% endif %}
 </form>
-<script>
-function togglePlatform(){
-  var net = document.getElementById('platform').value !== 'linux';
-  document.getElementById('net-fields').style.display = net ? 'block':'none';
-  document.getElementById('linux-fields').style.display = net ? 'none':'block';
-}
-togglePlatform();
+</div>
 
-function validateForm(){
-  var pairs = [
-    ['ssh_login_password','ssh_login_password_confirm','SSH login password'],
-    ['sudo_password','sudo_password_confirm','sudo password'],
-    ['login_password','login_password_confirm','login password'],
-    ['enable_password','enable_password_confirm','enable password']
-  ];
-  for (var i=0;i<pairs.length;i++){
-    var a=document.getElementsByName(pairs[i][0])[0];
-    var b=document.getElementsByName(pairs[i][1])[0];
-    if(!a||!b) continue;
-    if(a.value !== b.value){
-      alert('The '+pairs[i][2]+' entries do not match. Please re-type them.');
-      b.focus();
-      return false;
-    }
-  }
-  return true;
-}
-</script>
+<div id="tab-discovery" class="tab-panel {% if tab=='discovery' %}active{% endif %}">
+{% if not netmiko_ok %}<div class="banner err">netmiko is not installed — live discovery cannot run (upload YAML still works).</div>{% endif %}
+
+<h2>Run discovery</h2>
+<p class="hint">CDP/LLDP hop or CIDR scan via SSH. Results land in the staging list below for review before import.</p>
+<form class="card" method="post" action="{{ url_for('discovery_run') }}">
+  <div class="row">
+    <div><label>Method</label>
+      <select name="method" id="method" onchange="toggleMethod()">
+        <option value="cdp" {% if defaults.method=='cdp' %}selected{% endif %}>CDP</option>
+        <option value="lldp" {% if defaults.method=='lldp' %}selected{% endif %}>LLDP</option>
+        <option value="range" {% if defaults.method=='range' %}selected{% endif %}>IP range (CIDR)</option>
+      </select></div>
+    <div><label>Max hops</label><input type="number" name="max_hops" value="{{ defaults.max_hops }}" min="1" max="20"></div>
+    <div><label>Max workers</label><input type="number" name="max_workers" value="{{ defaults.max_workers }}" min="1" max="50"></div>
+  </div>
+  <div class="row" id="seed-row">
+    <div><label>Seed device IP</label><input type="text" name="seed" value="{{ defaults.seed }}" placeholder="10.0.0.1"></div>
+  </div>
+  <div class="row" id="range-row" style="display:none">
+    <div><label>IP range (CIDR)</label><input type="text" name="ip_range" value="{{ defaults.ip_range }}" placeholder="192.168.1.0/24"></div>
+  </div>
+  <div class="row">
+    <div><label>SSH username</label><input type="text" name="username" required value="{{ defaults.username }}"></div>
+    <div><label>SSH password</label><input type="password" name="password" required autocomplete="new-password"></div>
+    <div><label>Enable password</label><input type="password" name="enable_password" autocomplete="new-password"></div>
+  </div>
+  <label><input type="checkbox" name="merge" value="1" style="width:auto"> Merge into existing staging (unchecked = replace staging)</label>
+  <button type="submit" {% if not netmiko_ok %}disabled{% endif %}>Run discovery</button>
+</form>
+
+<h2>Upload discovery YAML</h2>
+<form class="card" method="post" action="{{ url_for('discovery_upload') }}" enctype="multipart/form-data">
+  <label>YAML file <span class="hint">(<code>discovered_devices:</code> list)</span></label>
+  <input type="file" name="yaml_file" accept=".yaml,.yml,.txt" required>
+  <label><input type="checkbox" name="merge" value="1" style="width:auto"> Merge into existing staging</label>
+  <button type="submit" class="sec">Upload</button>
+</form>
+
+<h2>Staged devices {% if devices %}({{ devices|length }}){% endif %}</h2>
+<p class="hint">Edit, add, or remove devices here before importing into the host list. Access points and ISE appliances are marked but can be kept or removed.</p>
+
+{% if devices %}
+<form class="card" method="post" action="{{ url_for('discovery_staging_save') }}">
+  <table>
+  <tr><th>#</th><th>Host key</th><th>Hostname</th><th>IP</th><th>Model</th><th>IOS type</th><th>Tags</th><th></th></tr>
+  {% for d in devices %}
+  {% set i = loop.index0 %}
+  {% set importable = discovery_import.is_importable(d) %}
+  <tr class="{% if not importable %}skip{% endif %}">
+    <td>{{ i + 1 }}</td>
+    <td><input class="cell-in sm" type="text" name="host_key_{{ i }}" value="{{ d.get('host_key','') }}" placeholder="auto"></td>
+    <td><input class="cell-in" type="text" name="hostname_{{ i }}" value="{{ d.get('hostname','') }}"></td>
+    <td><input class="cell-in sm" type="text" name="ip_{{ i }}" value="{{ d.get('ip','') }}" required></td>
+    <td><input class="cell-in sm" type="text" name="model_{{ i }}" value="{{ d.get('model','') }}"></td>
+    <td><select class="cell-in sm" name="ios_type_{{ i }}">
+      {% for t in ['ios-xe','ios','unknown','access-point','ise-appliance'] %}
+      <option value="{{ t }}" {% if (d.get('ios_type') or 'unknown')==t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select></td>
+    <td><input class="cell-in" type="text" name="tags_{{ i }}" value="{{ tags_for_display(d) }}" placeholder="comma-separated"></td>
+    <td class="actions">
+      <button type="submit" formaction="{{ url_for('discovery_staging_remove', idx=i) }}" formmethod="post" class="del"
+              onclick="return confirm('Remove device {{ i + 1 }} from staging?')">remove</button>
+    </td>
+  </tr>
+  {% endfor %}
+  </table>
+  <input type="hidden" name="device_count" value="{{ devices|length }}">
+  <button type="submit">Save staging changes</button>
+  <button type="submit" formaction="{{ url_for('discovery_clear') }}" formmethod="post" class="del"
+          onclick="return confirm('Clear all staged devices?')">Clear all</button>
+</form>
+{% else %}
+<p class="hint">No staged devices — run discovery or upload YAML above.</p>
+{% endif %}
+
+<h2>Add device manually</h2>
+<form class="card" method="post" action="{{ url_for('discovery_staging_add') }}">
+  <div class="row">
+    <div><label>Host key <span class="hint">(optional inventory name)</span></label>
+      <input type="text" name="host_key" placeholder="sw-core-01"></div>
+    <div><label>Hostname</label><input type="text" name="hostname" placeholder="sw-core-01.example.com"></div>
+    <div><label>IP <span class="hint">(required)</span></label><input type="text" name="ip" required placeholder="10.0.0.1"></div>
+  </div>
+  <div class="row">
+    <div><label>Model</label><input type="text" name="model" placeholder="C9300-24T"></div>
+    <div><label>IOS type</label>
+      <select name="ios_type">
+        <option value="ios-xe">ios-xe</option>
+        <option value="ios">ios</option>
+        <option value="unknown" selected>unknown</option>
+        <option value="access-point">access-point</option>
+        <option value="ise-appliance">ise-appliance</option>
+      </select></div>
+    <div><label>Tags</label><input type="text" name="tags" placeholder="discovered, network, core"></div>
+  </div>
+  <button type="submit">Add to staging</button>
+</form>
+
+{% if devices %}
+<h2>Import into host list</h2>
+<p class="hint">Select devices from staging to add to <code>{{ config_path }}</code>.</p>
+<form class="card" method="post" action="{{ url_for('discovery_import') }}">
+  <table>
+  <tr><th><input type="checkbox" onclick="toggleAll(this)"></th><th>Host key</th><th>Hostname</th><th>IP</th><th>Model</th><th>IOS</th><th>Import?</th></tr>
+  {% for d in devices %}
+  {% set importable = discovery_import.is_importable(d) %}
+  <tr class="{% if not importable %}skip{% endif %}">
+    <td>{% if importable %}<input type="checkbox" name="sel" value="{{ loop.index0 }}">{% else %}—{% endif %}</td>
+    <td>{{ d.get('host_key') or discovery_import.sanitize_host_key(d.get('hostname',''), d.get('ip','')) }}</td>
+    <td>{{ d.get('hostname','?') }}</td>
+    <td>{{ d.get('ip','') }}</td>
+    <td>{{ d.get('model','') }}</td>
+    <td>{{ d.get('ios_type','') }}</td>
+    <td>{% if importable %}<span class="pill yes">yes</span>{% else %}<span class="pill no">skip</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </table>
+  <div class="row" style="margin-top:1rem">
+    <div><label>Import username</label><input type="text" name="import_username" required value="{{ defaults.username }}"></div>
+    <div><label>Login password</label><input type="password" name="import_login" required autocomplete="new-password"></div>
+    <div><label>Enable password</label><input type="password" name="import_enable" autocomplete="new-password"></div>
+  </div>
+  <button type="submit">Import selected into hosts</button>
+</form>
+{% endif %}
+</div>
 </body></html>
 """
 
@@ -272,6 +418,16 @@ function validateForm(){
 # --------------------------------------------------------------------------- #
 # Routes
 # --------------------------------------------------------------------------- #
+
+def tags_for_display(device: dict) -> str:
+    """Comma-separated tags for staging editor default value."""
+    tags = device.get("tags")
+    if isinstance(tags, list):
+        return ", ".join(str(t) for t in tags if str(t).strip())
+    if isinstance(tags, str) and tags.strip():
+        return tags
+    return ", ".join(discovery_import.build_tags(device))
+
 
 TOKEN_PAGE = """
 <!doctype html>
@@ -289,7 +445,7 @@ TOKEN_PAGE = """
  button.del{background:#c0392b}
 </style></head><body>
 <h1>MCP access token</h1>
-<p><a href="{{ url_for('index') }}">&larr; back to hosts</a></p>
+<p><a href="{{ url_for('index', tab='hosts') }}">&larr; back to hosts</a></p>
 {% if note %}<div class="banner">{{ note }}</div>{% endif %}
 {% if new_token %}
 <div class="banner"><b>New token &mdash; copy it now (won't be shown again):</b><br><br>
@@ -306,6 +462,88 @@ After rotating, update your client with the new token; the previous token keeps
 working until you click <i>Revoke previous</i>, so you won't lock yourself out.</p>
 </body></html>
 """
+
+
+def _active_tab() -> str:
+    tab = (request.args.get("tab") or request.form.get("tab") or "hosts").strip().lower()
+    return tab if tab in ("hosts", "discovery") else "hosts"
+
+
+def _discovery_redirect(msg: str, *, err: bool = False):
+    return redirect(url_for("index", tab="discovery", msg=msg, err="1" if err else None))
+
+
+def _merge_staging(existing: list[dict], new_devices: list[dict]) -> list[dict]:
+    """Merge by IP; new data wins on collision."""
+    by_ip: dict[str, dict] = {}
+    for d in existing:
+        ip = str(d.get("ip") or "").strip()
+        if ip:
+            by_ip[ip] = d
+    for d in new_devices:
+        ip = str(d.get("ip") or "").strip()
+        if ip:
+            by_ip[ip] = d
+    return list(by_ip.values())
+
+
+def _parse_staging_form(count: int) -> list[dict]:
+    f = request.form
+    devices: list[dict] = []
+    for i in range(count):
+        ip = (f.get(f"ip_{i}") or "").strip()
+        if not ip:
+            continue
+        raw = {
+            "ip": ip,
+            "hostname": f.get(f"hostname_{i}") or "",
+            "model": f.get(f"model_{i}") or "",
+            "ios_type": f.get(f"ios_type_{i}") or "unknown",
+            "host_key": f.get(f"host_key_{i}") or "",
+            "tags": f.get(f"tags_{i}") or "",
+        }
+        devices.append(discovery_import.normalize_staged_device(raw))
+    return devices
+
+
+def _tags_for_form(host: dict) -> list[str]:
+    """Tags shown in the editor (auto_update managed by its checkbox)."""
+    return [t for t in inventory.normalize_tags(host) if t.lower() != "auto_update"]
+
+
+def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = False, **extra):
+    active = tab or _active_tab()
+    cfg = load_config()
+    edit_name = (request.args.get("edit") or "").strip()
+    edit_host = cfg["hosts"].get(edit_name, {}) if edit_name else {}
+    if edit_name and not edit_host:
+        edit_name = ""
+    devices = discovery_import.load_staging(CONFIG_PATH)
+    ctx = dict(
+        common_style=COMMON_STYLE,
+        tab=active,
+        hosts=cfg["hosts"],
+        inventory=inventory,
+        discovery_import=discovery_import,
+        tags_for_display=tags_for_display,
+        with_secret=set(secrets_store.hosts_with_secret("sudo")),
+        with_login=set(secrets_store.hosts_with_secret("login")),
+        with_enable=set(secrets_store.hosts_with_secret("enable")),
+        config_path=str(CONFIG_PATH),
+        msg=msg if msg is not None else request.args.get("msg"),
+        err=err or request.args.get("err") == "1",
+        edit_name=edit_name,
+        edit_host=edit_host,
+        edit_tags=_tags_for_form(edit_host),
+        devices=devices,
+        staging_count=len(devices),
+        defaults=_discovery_defaults(),
+        netmiko_ok=run_discovery is not None,
+        auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
+        in ("1", "true", "yes", "on"),
+    )
+    ctx.update(extra)
+    return render_template_string(PAGE, **ctx)
 
 
 @app.route("/mcp-token", methods=["GET", "POST"])
@@ -339,49 +577,26 @@ def healthz():
         return {"status": "error", "detail": str(exc)}, 500
 
 
-def _tags_for_form(host: dict) -> list[str]:
-    """Tags shown in the editor (auto_update managed by its checkbox)."""
-    return [t for t in inventory.normalize_tags(host) if t.lower() != "auto_update"]
-
-
 @app.route("/")
 def index():
-    cfg = load_config()
-    edit_name = (request.args.get("edit") or "").strip()
-    edit_host = cfg["hosts"].get(edit_name, {}) if edit_name else {}
-    if edit_name and not edit_host:
-        edit_name = ""  # unknown host — fall back to add mode
-    return render_template_string(
-        PAGE,
-        hosts=cfg["hosts"],
-        inventory=inventory,
-        with_secret=set(secrets_store.hosts_with_secret("sudo")),
-        with_login=set(secrets_store.hosts_with_secret("login")),
-        with_enable=set(secrets_store.hosts_with_secret("enable")),
-        config_path=str(CONFIG_PATH),
-        msg=request.args.get("msg"),
-        edit_name=edit_name,
-        edit_host=edit_host,
-        edit_tags=_tags_for_form(edit_host),
-        auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
-        in ("1", "true", "yes", "on"),
-    )
+    return _render_page()
+
+
+@app.route("/discovery")
+def discovery_legacy():
+    """Redirect old /discovery URL to tabbed UI."""
+    return redirect(url_for("index", tab="discovery", msg=request.args.get("msg")))
 
 
 @app.route("/reload", methods=["POST"])
 def reload_mcp():
-    """Force the MCP's config hot-reload by bumping hosts.yaml's mtime.
-
-    The MCP and GUI are separate processes sharing the config; the MCP re-reads
-    it on its next tool call when the mtime changes. (We cannot restart the
-    app-spawned MCP process from here — only nudge its hot-reload.)
-    """
+    """Force the MCP's config hot-reload by bumping hosts.yaml's mtime."""
     try:
         os.utime(os.path.expanduser(str(CONFIG_PATH)), None)
         note = "Config refreshed — the MCP will load host changes on its next call (hot-reload)."
     except OSError as exc:
         note = f"Could not refresh config: {exc}"
-    return redirect(url_for("index", msg=note))
+    return redirect(url_for("index", tab="hosts", msg=note))
 
 
 @app.route("/save", methods=["POST"])
@@ -389,7 +604,7 @@ def save():
     f = request.form
     name = (f.get("name") or "").strip()
     if not name:
-        return redirect(url_for("index", msg="Name is required."))
+        return redirect(url_for("index", tab="hosts", msg="Name is required."))
 
     # Server-side backstop: password must match its confirmation (in case JS is
     # disabled). Nothing is saved on a mismatch.
@@ -399,7 +614,7 @@ def save():
                             ("enable_password", "enable password")):
         pw = f.get(pw_field) or ""
         if pw and pw != (f.get(pw_field + "_confirm") or ""):
-            return redirect(url_for("index", msg=f"{label} entries did not match — nothing saved."))
+            return redirect(url_for("index", tab="hosts", msg=f"{label} entries did not match — nothing saved."))
 
     cfg = load_config()
     host = cfg["hosts"].get(name, {})
@@ -461,7 +676,178 @@ def save():
 
     cfg["hosts"][name] = host
     save_config(cfg)
-    return redirect(url_for("index", msg="; ".join(notes) + "."))
+    return redirect(url_for("index", tab="hosts", msg="; ".join(notes) + "."))
+
+
+def _discovery_defaults() -> dict:
+    return {
+        "method": (request.args.get("method") or request.form.get("method") or "cdp").strip(),
+        "seed": (request.args.get("seed") or request.form.get("seed") or "").strip(),
+        "ip_range": (request.args.get("ip_range") or request.form.get("ip_range") or "").strip(),
+        "username": (request.args.get("username") or request.form.get("username") or "netadmin").strip(),
+        "max_hops": int(request.args.get("max_hops") or request.form.get("max_hops") or 5),
+        "max_workers": int(request.args.get("max_workers") or request.form.get("max_workers") or 10),
+    }
+
+
+@app.route("/discovery/run", methods=["POST"])
+def discovery_run():
+    if run_discovery is None:
+        return _discovery_redirect("netmiko is not available.", err=True)
+    f = request.form
+    method = (f.get("method") or "cdp").strip()
+    username = (f.get("username") or "").strip()
+    password = f.get("password") or ""
+    enable_password = (f.get("enable_password") or "").strip() or None
+    seed = (f.get("seed") or "").strip()
+    ip_range = (f.get("ip_range") or "").strip()
+    merge = f.get("merge") == "1"
+    try:
+        max_hops = max(1, min(20, int(f.get("max_hops") or 5)))
+        max_workers = max(1, min(50, int(f.get("max_workers") or 10)))
+    except ValueError:
+        return _discovery_redirect("Invalid max_hops or max_workers.", err=True)
+    if not username or not password:
+        return _discovery_redirect("Username and password are required.", err=True)
+    try:
+        found = run_discovery(
+            method=method,
+            username=username,
+            password=password,
+            seed=seed,
+            ip_range=ip_range,
+            enable_password=enable_password,
+            max_hops=max_hops,
+            max_workers=max_workers,
+        )
+    except Exception as exc:
+        return _discovery_redirect(f"Discovery failed: {exc}", err=True)
+    if merge:
+        found = _merge_staging(discovery_import.load_staging(CONFIG_PATH), found)
+    discovery_import.save_staging(
+        CONFIG_PATH,
+        found,
+        meta={"method": method, "seed": seed, "ip_range": ip_range},
+    )
+    importable = sum(1 for d in found if discovery_import.is_importable(d))
+    return _discovery_redirect(
+        f"Discovery complete: {len(found)} staged, {importable} importable."
+    )
+
+
+@app.route("/discovery/upload", methods=["POST"])
+def discovery_upload():
+    upload = request.files.get("yaml_file")
+    if not upload or not upload.filename:
+        return _discovery_redirect("No file uploaded.", err=True)
+    merge = request.form.get("merge") == "1"
+    try:
+        content = upload.read().decode("utf-8", errors="replace")
+        found = discovery_import.parse_upload_yaml(content)
+    except yaml.YAMLError as exc:
+        return _discovery_redirect(f"Invalid YAML: {exc}", err=True)
+    if not found:
+        return _discovery_redirect("No devices found in file.", err=True)
+    if merge:
+        found = _merge_staging(discovery_import.load_staging(CONFIG_PATH), found)
+    discovery_import.save_staging(CONFIG_PATH, found, meta={"source": "upload"})
+    importable = sum(1 for d in found if discovery_import.is_importable(d))
+    return _discovery_redirect(f"Loaded {len(found)} device(s), {importable} importable.")
+
+
+@app.route("/discovery/staging/save", methods=["POST"])
+def discovery_staging_save():
+    try:
+        count = int(request.form.get("device_count") or 0)
+    except ValueError:
+        count = 0
+    devices = _parse_staging_form(count)
+    if count and not devices:
+        return _discovery_redirect("Each row needs an IP address.", err=True)
+    discovery_import.save_staging(CONFIG_PATH, devices)
+    return _discovery_redirect(f"Saved {len(devices)} staged device(s).")
+
+
+@app.route("/discovery/staging/add", methods=["POST"])
+def discovery_staging_add():
+    f = request.form
+    device = discovery_import.normalize_staged_device({
+        "ip": f.get("ip") or "",
+        "hostname": f.get("hostname") or "",
+        "model": f.get("model") or "",
+        "ios_type": f.get("ios_type") or "unknown",
+        "host_key": f.get("host_key") or "",
+        "tags": f.get("tags") or "",
+    })
+    if not device.get("ip"):
+        return _discovery_redirect("IP address is required to add a device.", err=True)
+    devices = discovery_import.load_staging(CONFIG_PATH)
+    devices.append(device)
+    discovery_import.save_staging(CONFIG_PATH, devices)
+    return _discovery_redirect(f"Added {device['ip']} to staging.")
+
+
+@app.route("/discovery/staging/remove/<int:idx>", methods=["POST"])
+def discovery_staging_remove(idx: int):
+    devices = discovery_import.load_staging(CONFIG_PATH)
+    if 0 <= idx < len(devices):
+        removed = devices.pop(idx)
+        discovery_import.save_staging(CONFIG_PATH, devices)
+        return _discovery_redirect(f"Removed {removed.get('ip', idx + 1)} from staging.")
+    return _discovery_redirect("Device not found in staging.", err=True)
+
+
+@app.route("/discovery/import", methods=["POST"])
+def discovery_import_route():
+    devices = discovery_import.load_staging(CONFIG_PATH)
+    if not devices:
+        return _discovery_redirect("No staged devices — run discovery or upload YAML first.", err=True)
+    f = request.form
+    username = (f.get("import_username") or "").strip()
+    login_pw = f.get("import_login") or ""
+    enable_pw = (f.get("import_enable") or "").strip() or None
+    if not username or not login_pw:
+        return _discovery_redirect("Import username and login password required.", err=True)
+    selected = []
+    for raw in f.getlist("sel"):
+        try:
+            selected.append(int(raw))
+        except ValueError:
+            continue
+    if not selected:
+        return _discovery_redirect("Select at least one device.", err=True)
+    cfg = load_config()
+    added, skipped, messages = discovery_import.merge_selected_into_hosts(
+        cfg,
+        devices,
+        selected,
+        username=username,
+        login_password=login_pw,
+        enable_password=enable_pw,
+        secrets_store=secrets_store,
+    )
+    save_config(cfg)
+    try:
+        os.utime(os.path.expanduser(str(CONFIG_PATH)), None)
+    except OSError:
+        pass
+    remaining = [d for i, d in enumerate(devices) if i not in set(selected)]
+    if remaining:
+        discovery_import.save_staging(CONFIG_PATH, remaining)
+    else:
+        discovery_import.clear_staging(CONFIG_PATH)
+    summary = f"Imported {added} host(s), skipped {skipped}."
+    if messages:
+        summary += " " + "; ".join(messages[:6])
+        if len(messages) > 6:
+            summary += f" (+{len(messages) - 6} more)"
+    return redirect(url_for("index", tab="hosts", msg=summary))
+
+
+@app.route("/discovery/clear", methods=["POST"])
+def discovery_clear():
+    discovery_import.clear_staging(CONFIG_PATH)
+    return _discovery_redirect("Staging cleared.")
 
 
 @app.route("/delete", methods=["POST"])
@@ -472,7 +858,7 @@ def delete():
         del cfg["hosts"][name]
         save_config(cfg)
     secrets_store.delete_all_secrets(name)
-    return redirect(url_for("index", msg=f"deleted {name}."))
+    return redirect(url_for("index", tab="hosts", msg=f"deleted {name}."))
 
 
 if __name__ == "__main__":
