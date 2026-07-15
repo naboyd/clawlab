@@ -19,7 +19,9 @@ settings:
 
 hosts:
   web1:
-    description: "Front-end web node"
+    tags:
+      - web
+      - frontend
     hostname: 10.0.0.11
     port: 22
     username: deploy
@@ -30,10 +32,14 @@ hosts:
       - myapp
     use_sudo_for_restart: true      # needs passwordless sudo for these units
     allow_write: false              # true = enable run_write_command + upload_file
-                                    # (arbitrary/mutating). Default read-only.
+    auto_update: false              # true = fleet-update skill patches this host
+                                    # (also adds auto_update tag in list_hosts)
 
   web2:
-    description: "Front-end web node (replica)"
+    tags:
+      - web
+      - frontend
+      - prod
     hostname: 10.0.0.12
     username: deploy
     key_path: ~/.ssh/id_ed25519
@@ -42,7 +48,9 @@ hosts:
       - myapp
 
   db1:
-    description: "Primary database"
+    tags:
+      - database
+      - prod
     hostname: 10.0.0.21
     username: deploy
     key_path: ~/.ssh/id_ed25519
@@ -53,7 +61,9 @@ hosts:
   # both stored ENCRYPTED via the GUI (or `secrets_store.py`). Read-only:
   # run_command allows show / dir / ping / traceroute only.
   sw1:
-    description: "Core switch"
+    tags:
+      - network
+      - core
     platform: cisco_ios       # aliases: ios, ios-xe -> cisco_ios; also cisco_nxos, cisco_asa, arista_eos, juniper_junos
     hostname: 10.0.0.2
     port: 22

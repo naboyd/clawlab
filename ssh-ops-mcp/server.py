@@ -37,6 +37,7 @@ import paramiko
 import yaml
 from mcp.server.fastmcp import FastMCP
 
+import inventory
 import secrets_store
 
 # --------------------------------------------------------------------------- #
@@ -473,10 +474,13 @@ def _reject_if_network(host: str) -> dict[str, Any] | None:
 def list_hosts() -> list[dict[str, Any]]:
     """List the configured hosts and which services each may restart.
 
-    Returns non-sensitive metadata only (never keys or passwords).
+    Returns non-sensitive metadata only (never keys or passwords). Each entry
+    includes ``tags`` (list), ``allow_write``, and ``auto_update`` for fleet
+    and other tag-driven flows.
     """
     result = []
     for name, h in _current_hosts().items():
+        tags = inventory.normalize_tags(h)
         result.append(
             {
                 "name": name,
@@ -486,7 +490,10 @@ def list_hosts() -> list[dict[str, Any]]:
                 "username": h.get("username"),
                 "port": int(h.get("port", 22)),
                 "allowed_services": list(h.get("allowed_services", [])),
-                "description": h.get("description", ""),
+                "tags": tags,
+                "allow_write": bool(h.get("allow_write", False)),
+                "auto_update": bool(h.get("auto_update", False))
+                or inventory.has_tag(h, "auto_update"),
             }
         )
     return result

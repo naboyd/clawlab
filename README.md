@@ -5,6 +5,9 @@ Cisco DefenseClaw governance layer, a hardened **ssh-ops** MCP, Let's Encrypt TL
 centralized **claw-auth** admin login (SQLite, with legacy PAM optional), a unified
 tabbed portal hub, and alerting into Cisco Webex.
 
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full system diagram, ports,
+auth model, and operational runbook.
+
 > **Secrets never live here.** All tokens, API keys, the Fernet `master.key`, LE
 > private keys, and `.env` files are git-ignored. Config *templates* (with values
 > redacted to `<PLACEHOLDER>`) live in `config-templates/`. Copy them to the real

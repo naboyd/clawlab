@@ -10,11 +10,11 @@ description: >
 # Fleet Update
 
 Use the **ssh-ops** MCP tools. A host is in scope when its platform is linux AND
-it is flagged for auto-update (its `description` contains `auto_update`, or an
-`auto_update: true` field once the inventory exposes it).
+`list_hosts` reports `auto_update: true` (checkbox/tag) or `auto_update` appears
+in `tags`.
 
 ## Steps
-1. `list_hosts` → select the linux hosts that carry the auto-update flag.
+1. `list_hosts` → select the linux hosts where `auto_update` is true or `tags` contains `auto_update`.
 2. For each selected host, in sequence:
    - `run_write_command(host, "sudo systemctl start claw-sysupdate.service")`
    - `run_command(host, "cat /var/lib/claw-sysupdate/last-run.json")`

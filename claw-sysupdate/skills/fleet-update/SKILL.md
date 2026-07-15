@@ -16,14 +16,14 @@ done by each host's own claw-sysupdate service; this skill orchestrates/reports.
 
 ## Which hosts are in scope
 
-Both must be true: platform/kind is linux, AND the host carries the auto-update
-flag (see "Flag convention").
+Both must be true: platform/kind is linux, AND `auto_update` is true from
+`list_hosts` (or the `auto_update` tag is present).
 
 ## Flag convention
 
-Preferred: the host entry carries `auto_update: true` and list_hosts surfaces it.
-Interim (works today): put the token `auto_update` in the host's `description`.
-This skill treats either as the flag.
+Preferred: **Auto-update** checkbox in MCP Admin (sets `auto_update: true` and
+adds the `auto_update` tag). Alternatively include `auto_update` in **Tags**.
+Other flows can filter on any tag via `list_hosts.tags`.
 
 ## Procedure
 

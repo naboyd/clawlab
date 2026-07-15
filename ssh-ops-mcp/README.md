@@ -12,7 +12,7 @@ local — the client only ever receives the tool *results*.
 
 | Tool | What it does | Mutating? |
 |------|--------------|-----------|
-| `list_hosts` | Lists configured hosts + their restartable services | No |
+| `list_hosts` | Lists configured hosts, `tags`, flags (`allow_write`, `auto_update`), and restartable services | No |
 | `run_command` | Runs a **read-only** allowlisted command (logs, dmesg, df, ps, ss, `systemctl status`, …) | No |
 | `tail_log` | Tails the last N lines of a log file | No |
 | `get_journal` | Queries the systemd journal (filter by unit, since, priority, boot) | No |
@@ -39,6 +39,42 @@ Read-only is the default. Two things are gated behind a per-host opt-in:
 
 Enable per host in `hosts.yaml` (`allow_write: true`) or the GUI checkbox. Leave
 it off for anything you want kept strictly read-only.
+
+## Host tags
+
+Each host may carry a `tags` list (comma-separated in the GUI). `list_hosts`
+returns `tags: ["web", "prod", …]` so OpenClaw skills and other flows can
+select hosts by tag (platform filters still apply).
+
+Legacy `description` fields are migrated on read: a single description becomes
+one tag; comma-separated descriptions become multiple tags.
+
+Example `list_hosts` entry:
+
+```json
+{
+  "name": "web1",
+  "kind": "linux",
+  "tags": ["web", "prod", "auto_update"],
+  "allow_write": true,
+  "auto_update": true
+}
+```
+
+## Fleet auto-update flag
+
+Linux hosts can be flagged for patching via the **Auto-update** checkbox (adds
+the `auto_update` tag) or by including `auto_update` in **Tags**. The
+`fleet-update` skill uses `list_hosts` and selects linux hosts where
+`auto_update` is true.
+
+Requirements per auto-update host:
+
+- `auto_update: true` or `auto_update` in `tags`
+- `allow_write: true` (needed for `systemctl start claw-sysupdate.service`)
+- `claw-sysupdate` installed on the target with scoped passwordless sudo
+
+See `claw-sysupdate/` and `skills/fleet-update/SKILL.md` in the clawlab repo.
 
 ## Security model
 

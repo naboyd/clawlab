@@ -25,6 +25,7 @@ import yaml
 from flask import Flask, redirect, render_template_string, request, url_for
 
 import secrets_store
+import inventory
 
 try:
     import claw_auth_middleware as claw_auth
@@ -132,17 +133,23 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 <h2>Configured hosts</h2>
 <table>
 <tr><th>Name</th><th>Platform</th><th>Host</th><th>User</th><th>Port</th>
-    <th>Restartable services</th><th>Secrets</th><th></th></tr>
+    <th>Restartable services</th><th>Flags</th><th>Secrets</th><th></th></tr>
 {% for name, h in hosts.items() %}
 {% set plat = (h.get('platform','linux') or 'linux')|lower %}
 {% set is_net = plat not in ['linux','unix',''] %}
 <tr>
-  <td><b>{{ name }}</b><br><span class="hint">{{ h.get('description','') }}</span></td>
+  <td><b>{{ name }}</b><br><span class="hint">{{ ', '.join(inventory.normalize_tags(h)) or '—' }}</span></td>
   <td>{{ plat }}</td>
   <td>{{ h.get('hostname','') }}</td>
   <td>{{ h.get('username','') }}</td>
   <td>{{ h.get('port',22) }}</td>
   <td>{{ ', '.join(h.get('allowed_services',[])) or '—' }}</td>
+  <td>
+    {% if not is_net %}
+      {% if h.get('allow_write') %}<span class="pill yes">write</span>{% else %}<span class="pill no">read-only</span>{% endif %}
+      {% if h.get('auto_update') or inventory.has_tag(h, 'auto_update') %}<span class="pill yes">auto-update</span>{% endif %}
+    {% else %}—{% endif %}
+  </td>
   <td>
     {% if is_net %}
       login {% if name in with_login %}<span class="pill yes">set</span>{% else %}<span class="pill no">none</span>{% endif %}
@@ -162,7 +169,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   </td>
 </tr>
 {% else %}
-<tr><td colspan="7" class="hint">No hosts yet — add one below.</td></tr>
+<tr><td colspan="8" class="hint">No hosts yet — add one below.</td></tr>
 {% endfor %}
 </table>
 
@@ -191,7 +198,8 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
     <div><label>Key path <span class="hint">(optional; blank = ssh-agent / password)</span></label>
       <input type="text" name="key_path" value="{{ eh.get('key_path','') }}" placeholder="/root/.ssh/id_ed25519"></div>
   </div>
-  <label>Description</label><input type="text" name="description" value="{{ eh.get('description','') }}">
+  <label>Tags <span class="hint">(comma-separated — returned by <code>list_hosts</code> for flow selection, e.g. <code>web, prod, canary</code>)</span></label>
+  <input type="text" name="tags" value="{{ ', '.join(edit_tags) }}" placeholder="web, prod">
 
   <!-- Linux-only fields -->
   <div id="linux-fields">
@@ -209,6 +217,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
     </div>
     <div class="row" style="margin-top:.2rem">
       <div><label><input type="checkbox" name="allow_write" {% if eh.get('allow_write', False) %}checked{% endif %} style="width:auto"> <b>Allow write</b> — enable arbitrary commands + file upload on this host <span class="hint">(off = read-only)</span></label></div>
+      <div><label><input type="checkbox" name="auto_update" {% if eh.get('auto_update') or inventory.has_tag(eh, 'auto_update') %}checked{% endif %} style="width:auto"> <b>Auto-update</b> — adds <code>auto_update</code> tag for fleet-update / claw-sysupdate <span class="hint">(linux only)</span></label></div>
     </div>
   </div>
 
@@ -330,6 +339,11 @@ def healthz():
         return {"status": "error", "detail": str(exc)}, 500
 
 
+def _tags_for_form(host: dict) -> list[str]:
+    """Tags shown in the editor (auto_update managed by its checkbox)."""
+    return [t for t in inventory.normalize_tags(host) if t.lower() != "auto_update"]
+
+
 @app.route("/")
 def index():
     cfg = load_config()
@@ -340,6 +354,7 @@ def index():
     return render_template_string(
         PAGE,
         hosts=cfg["hosts"],
+        inventory=inventory,
         with_secret=set(secrets_store.hosts_with_secret("sudo")),
         with_login=set(secrets_store.hosts_with_secret("login")),
         with_enable=set(secrets_store.hosts_with_secret("enable")),
@@ -347,6 +362,7 @@ def index():
         msg=request.args.get("msg"),
         edit_name=edit_name,
         edit_host=edit_host,
+        edit_tags=_tags_for_form(edit_host),
         auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
         in ("1", "true", "yes", "on"),
     )
@@ -392,7 +408,7 @@ def save():
     is_net = platform not in ("linux", "unix", "")
 
     host["platform"] = platform
-    host["description"] = (f.get("description") or "").strip()
+    tags = inventory.parse_tags_field(f.get("tags") or "")
     host["hostname"] = (f.get("hostname") or "").strip()
     host["port"] = int(f.get("port") or 22)
     host["username"] = (f.get("username") or "").strip()
@@ -405,7 +421,7 @@ def save():
     notes = ["host saved"]
     if is_net:
         # Network device: login + enable secrets; no sudo/services.
-        for field in ("allowed_services", "use_sudo_for_restart", "use_pty"):
+        for field in ("allowed_services", "use_sudo_for_restart", "use_pty", "allow_write", "auto_update"):
             host.pop(field, None)
         login_pw = f.get("login_password") or ""
         enable_pw = f.get("enable_password") or ""
@@ -421,6 +437,13 @@ def save():
         host["use_sudo_for_restart"] = f.get("use_sudo_for_restart") == "on"
         host["use_pty"] = f.get("use_pty") == "on"
         host["allow_write"] = f.get("allow_write") == "on"
+        if f.get("auto_update") == "on":
+            host["auto_update"] = True
+            if not any(t.lower() == "auto_update" for t in tags):
+                tags.append("auto_update")
+        else:
+            host["auto_update"] = False
+            tags = [t for t in tags if t.lower() != "auto_update"]
         ssh_login = f.get("ssh_login_password") or ""
         if ssh_login:
             secrets_store.set_secret(name, "login", ssh_login)
@@ -429,6 +452,12 @@ def save():
         if pw:
             secrets_store.set_sudo_password(name, pw)
             notes.append("sudo pw encrypted")
+
+    if tags:
+        host["tags"] = tags
+    else:
+        host.pop("tags", None)
+    host.pop("description", None)
 
     cfg["hosts"][name] = host
     save_config(cfg)
