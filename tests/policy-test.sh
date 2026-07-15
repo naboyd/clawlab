@@ -27,10 +27,31 @@ RUN_AGENT=1; [ "${1:-}" = "--no-agent" ] && RUN_AGENT=0
 
 # ---- discover credentials (never printed) ----
 GW_TOKEN=""
-if [ -f "$HOME/.defenseclaw/shims/.token" ]; then . "$HOME/.defenseclaw/shims/.token"; GW_TOKEN="${DEFENSECLAW_GATEWAY_TOKEN:-}"; fi
+load_gw_token() {
+  local f key val
+  for f in \
+    "$HOME/.defenseclaw/shims/.token" \
+    "$HOME/.defenseclaw/.env" \
+    "$HOME/.openclaw/gateway.systemd.env"; do
+    [ -f "$f" ] || continue
+    for key in DEFENSECLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_TOKEN; do
+      val="$(grep -E "^${key}=" "$f" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'")" || true
+      if [ -n "$val" ]; then
+        GW_TOKEN="$val"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+load_gw_token || true
 if [ -z "$GW_TOKEN" ]; then
   pid=$(pgrep -f 'defenseclaw-gateway$' | head -1)
-  [ -n "$pid" ] && GW_TOKEN=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^OPENCLAW_GATEWAY_TOKEN=//p')
+  [ -n "$pid" ] && GW_TOKEN=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^OPENCLAW_GATEWAY_TOKEN=//p' | head -1)
+fi
+if [ -z "$GW_TOKEN" ]; then
+  pid=$(pgrep -f 'defenseclaw-gateway$' | head -1)
+  [ -n "$pid" ] && GW_TOKEN=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^DEFENSECLAW_GATEWAY_TOKEN=//p' | head -1)
 fi
 MCP_AUTH=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization'])" 2>/dev/null)
 MCP_URL=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['url'])" 2>/dev/null)

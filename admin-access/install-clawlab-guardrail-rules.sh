@@ -48,12 +48,20 @@ reload_gateway() {
 }
 
 verify_useradd_block() {
-  local token="" action=""
-  if [ -f "${DC_HOME}/shims/.token" ]; then
-    # shellcheck disable=SC1090
-    . "${DC_HOME}/shims/.token"
-  fi
-  token="${DEFENSECLAW_GATEWAY_TOKEN:-}"
+  local token="" action="" f key val
+  for f in \
+    "${DC_HOME}/shims/.token" \
+    "${DC_HOME}/.env" \
+    "$HOME/.openclaw/gateway.systemd.env"; do
+    [ -f "$f" ] || continue
+    for key in DEFENSECLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_TOKEN; do
+      val="$(grep -E "^${key}=" "$f" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'")" || true
+      if [ -n "$val" ]; then
+        token="$val"
+        break 2
+      fi
+    done
+  done
   [ -n "$token" ] || return 0
   action="$(curl -s -m8 -X POST "http://127.0.0.1:18970/api/v1/inspect/tool" \
     -H "Authorization: Bearer ${token}" \
