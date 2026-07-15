@@ -29,6 +29,7 @@ from flask import Flask, jsonify, redirect, render_template_string, request, url
 import secrets_store
 import inventory
 import discovery_import
+import credential_test
 
 try:
     from network_discovery import run_discovery
@@ -240,6 +241,29 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
       <input type="password" name="enable_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
   </div>
   <button type="submit">Apply to network hosts</button>
+</form>
+{% endif %}
+
+{% if hosts %}
+<h2>Test credentials</h2>
+<p class="hint">Pick a host and test SSH login. Leave passwords blank to use stored secrets, or enter credentials to try before saving.</p>
+<form class="card" method="post" action="{{ url_for('test_credentials') }}">
+  <div class="row">
+    <div><label>Host</label>
+      <select name="host" required>
+        {% for name, h in hosts.items() %}
+        {% set plat = (h.get('platform','linux') or 'linux')|lower %}
+        <option value="{{ name }}" {% if test_host_sel == name %}selected{% endif %}>
+          {{ name }} — {{ h.get('hostname','') }} ({{ plat }})
+        </option>
+        {% endfor %}
+      </select></div>
+    <div><label>Login password <span class="hint">(optional)</span></label>
+      <input type="password" name="test_login" autocomplete="new-password" placeholder="blank = stored secret"></div>
+    <div><label>Enable password <span class="hint">(network only)</span></label>
+      <input type="password" name="test_enable" autocomplete="new-password" placeholder="blank = stored secret"></div>
+  </div>
+  <button type="submit">Test credentials</button>
 </form>
 {% endif %}
 
@@ -614,6 +638,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         with_enable=set(secrets_store.hosts_with_secret("enable")),
         network_host_count=len(network_names),
         missing_login_count=sum(1 for n in network_names if n not in with_login),
+        test_host_sel=(request.args.get("test_host") or "").strip(),
         config_path=str(CONFIG_PATH),
         msg=msg if msg is not None else request.args.get("msg"),
         err=err or request.args.get("err") == "1",
@@ -727,6 +752,39 @@ def bulk_network_credentials():
             "index",
             tab="hosts",
             msg=f"Applied credentials to {len(targets)} host(s) ({scope}).",
+        ),
+    )
+
+
+@app.route("/test-credentials", methods=["POST"])
+def test_credentials():
+    name = (request.form.get("host") or "").strip()
+    if not name:
+        return redirect(url_for("index", tab="hosts", msg="Select a host to test.", err="1"))
+
+    cfg = load_config()
+    host = cfg.get("hosts", {}).get(name)
+    if not host:
+        return redirect(url_for("index", tab="hosts", msg=f"Unknown host: {name}", err="1"))
+
+    test_login = (request.form.get("test_login") or "").strip() or None
+    test_enable = (request.form.get("test_enable") or "").strip() or None
+    cred_source = "entered credentials" if (test_login or test_enable) else "stored secrets"
+
+    result = credential_test.test_host(
+        name,
+        host,
+        login_pw=test_login,
+        enable_pw=test_enable,
+        cred_source=cred_source,
+    )
+    return redirect(
+        url_for(
+            "index",
+            tab="hosts",
+            test_host=name,
+            msg=result.message,
+            err="1" if not result.ok else None,
         ),
     )
 
