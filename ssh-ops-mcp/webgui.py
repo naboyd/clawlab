@@ -223,6 +223,26 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   <a href="{{ url_for('mcp_token') }}" class="btn sec">Manage MCP access token</a>
 </div>
 
+{% if network_host_count %}
+<h2>Bulk network credentials</h2>
+<p class="hint">Apply one login/enable password to all {{ network_host_count }} network host(s).
+{% if missing_login_count %}{{ missing_login_count }} currently missing a login secret.{% else %}All have login secrets set.{% endif %}</p>
+<form class="card" method="post" action="{{ url_for('bulk_network_credentials') }}"
+      onsubmit="return confirm('Apply credentials to selected network hosts?')">
+  <label><input type="checkbox" name="only_missing" value="1" checked style="width:auto">
+    Only hosts missing a login secret</label>
+  <div class="row">
+    <div><label>Login password</label>
+      <input type="password" name="login_password" required autocomplete="new-password" placeholder="password">
+      <input type="password" name="login_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
+    <div><label>Enable password <span class="hint">(optional; blank = use login password at enable)</span></label>
+      <input type="password" name="enable_password" autocomplete="new-password" placeholder="password">
+      <input type="password" name="enable_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
+  </div>
+  <button type="submit">Apply to network hosts</button>
+</form>
+{% endif %}
+
 <h2>Configured hosts</h2>
 <table>
 <tr><th>Name</th><th>Platform</th><th>Host</th><th>User</th><th>Port</th>
@@ -552,6 +572,15 @@ def _parse_staging_form(count: int) -> list[dict]:
     return devices
 
 
+def _is_network_host(host: dict) -> bool:
+    plat = (host.get("platform") or "linux").strip().lower()
+    return plat not in ("linux", "unix", "")
+
+
+def _network_host_names(cfg: dict) -> list[str]:
+    return [name for name, h in cfg.get("hosts", {}).items() if _is_network_host(h)]
+
+
 def _tags_for_form(host: dict) -> list[str]:
     """Tags shown in the editor (auto_update managed by its checkbox)."""
     return [t for t in inventory.normalize_tags(host) if t.lower() != "auto_update"]
@@ -571,6 +600,8 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
             msg = job_status.get("message")
         discovery_import.clear_job(CONFIG_PATH)
         job_status = {"status": "idle", "message": ""}
+    with_login = set(secrets_store.hosts_with_secret("login"))
+    network_names = _network_host_names(cfg)
     ctx = dict(
         common_style=COMMON_STYLE,
         tab=active,
@@ -579,8 +610,10 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         discovery_import=discovery_import,
         tags_for_display=tags_for_display,
         with_secret=set(secrets_store.hosts_with_secret("sudo")),
-        with_login=set(secrets_store.hosts_with_secret("login")),
+        with_login=with_login,
         with_enable=set(secrets_store.hosts_with_secret("enable")),
+        network_host_count=len(network_names),
+        missing_login_count=sum(1 for n in network_names if n not in with_login),
         config_path=str(CONFIG_PATH),
         msg=msg if msg is not None else request.args.get("msg"),
         err=err or request.args.get("err") == "1",
@@ -650,6 +683,52 @@ def reload_mcp():
     except OSError as exc:
         note = f"Could not refresh config: {exc}"
     return redirect(url_for("index", tab="hosts", msg=note))
+
+
+@app.route("/bulk-network-credentials", methods=["POST"])
+def bulk_network_credentials():
+    """Apply login/enable passwords to all (or missing-only) network hosts."""
+    f = request.form
+    login_pw = f.get("login_password") or ""
+    enable_pw = f.get("enable_password") or ""
+    only_missing = f.get("only_missing") == "1"
+
+    if not login_pw:
+        return redirect(url_for("index", tab="hosts", msg="Login password is required."))
+    if login_pw != (f.get("login_password_confirm") or ""):
+        return redirect(url_for("index", tab="hosts", msg="Login password entries did not match."))
+    if enable_pw and enable_pw != (f.get("enable_password_confirm") or ""):
+        return redirect(url_for("index", tab="hosts", msg="Enable password entries did not match."))
+
+    cfg = load_config()
+    with_login = set(secrets_store.hosts_with_secret("login"))
+    targets = [
+        name for name in _network_host_names(cfg)
+        if not only_missing or name not in with_login
+    ]
+    if not targets:
+        return redirect(
+            url_for("index", tab="hosts", msg="No network hosts matched (all already have login secrets)."),
+        )
+
+    for name in targets:
+        secrets_store.set_secret(name, "login", login_pw)
+        if enable_pw:
+            secrets_store.set_secret(name, "enable", enable_pw)
+
+    try:
+        os.utime(os.path.expanduser(str(CONFIG_PATH)), None)
+    except OSError:
+        pass
+
+    scope = "missing login secret" if only_missing else "all network hosts"
+    return redirect(
+        url_for(
+            "index",
+            tab="hosts",
+            msg=f"Applied credentials to {len(targets)} host(s) ({scope}).",
+        ),
+    )
 
 
 @app.route("/save", methods=["POST"])
