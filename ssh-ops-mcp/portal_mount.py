@@ -34,5 +34,4 @@ def apply_mount(app):
     except ImportError:
         app.wsgi_app = _ScriptNameMiddleware(app.wsgi_app, prefix)
 
-    app.config["APPLICATION_ROOT"] = prefix
     return app

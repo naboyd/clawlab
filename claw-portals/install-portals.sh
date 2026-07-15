@@ -306,6 +306,8 @@ write_unified_portal_nginx() {
         "$NGINX_ENABLED/clawlab-defenseclaw.conf" 2>/dev/null || true
 
   {
+    echo "map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }"
+    echo
     echo "server {"
     nginx_tls_listen "$PORT_PORTAL"
     echo "    server_name ${DOMAIN} icecream ${LAN_IP};"
@@ -521,7 +523,8 @@ Logs:
   journalctl --user -u claw-auth -f
   journalctl --user -u defenseclaw-webgui -f
 
-OpenClaw trusted-proxy (recommended with claw-auth):
-  Merge admin-access/openclaw.trusted-proxy.json5 into ~/.openclaw/openclaw.json
-  Set allowedOrigins to "$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}".
+OpenClaw Control UI (subpath /openclaw/):
+  python3 $REPO/claw-portals/apply-openclaw-portal.py
+  systemctl --user restart openclaw-gateway
+  For trusted-proxy auth (recommended with claw-auth): python3 $REPO/admin-access/apply-trusted-proxy.py
 EOF

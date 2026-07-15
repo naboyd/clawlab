@@ -25,14 +25,14 @@ from flask import Flask, redirect, render_template_string, request, url_for
 
 import policy_store as ps
 
-# Optional centralized auth (claw-auth)
+# Optional centralized auth (claw-auth via nginx proxy headers)
 _AUTH_DIR = Path(__file__).resolve().parent.parent / "claw-auth"
 if _AUTH_DIR.is_dir():
     import sys
 
     sys.path.insert(0, str(_AUTH_DIR))
 try:
-    import middleware as claw_auth
+    import proxy_middleware as claw_auth
 except ImportError:
     claw_auth = None
 
@@ -43,7 +43,7 @@ except ImportError:
 
 app = Flask(__name__)
 if claw_auth:
-    claw_auth.install_auth(app)
+    claw_auth.install_auth(app, service="DefenseClaw policy editor")
 if portal_mount:
     portal_mount.apply_mount(app)
 
@@ -182,7 +182,24 @@ OVERVIEW = """
 @app.route("/")
 def overview():
     msg, msg_class = msg_from_query()
-    cfg = ps.load_config()
+    try:
+        cfg = ps.load_config()
+    except ps.PolicyError as exc:
+        return render_page(
+            '<div class="card"><p class="banner err">{{ msg }}</p></div>',
+            "overview",
+            msg=str(exc),
+            msg_class="err",
+            claw_mode="—",
+            guardrail_mode="—",
+            rule_pack="—",
+            detection="—",
+            fail_mode="—",
+            policy_dir="—",
+            named_policies="",
+            firewall_path="—",
+            audit_status="—",
+        )
     guardrail = cfg.get("guardrail") or {}
     audit_exists = (ps.DEFENSECLAW_HOME / "audit.db").exists()
     return render_page(

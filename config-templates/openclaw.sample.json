@@ -17,6 +17,7 @@
   },
   "bind": "loopback",
   "controlUi": {
+   "basePath": "/openclaw",
    "allowedOrigins": [
     "https://icecream.naboydciscolab.com:8443",
     "https://192.168.128.93:8443",

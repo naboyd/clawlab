@@ -25,10 +25,13 @@ auth["trustedProxy"] = {
 }
 # password preserved as-is
 gw.setdefault("controlUi", {})["allowedOrigins"] = [
+    f"https://{os.environ.get('DOMAIN', 'icecream.naboydciscolab.com')}:8443",
     "https://192.168.128.93:8443",
     "https://icecream:8443",
 ]
+gw["controlUi"]["basePath"] = "/openclaw"
 
 json.dump(c, open(p, "w"), indent=2)
 print("trusted-proxy enabled; password preserved; backup:", p + ".pre-trustedproxy.bak")
 print("mode =", auth["mode"], "| allowLoopback =", auth["trustedProxy"]["allowLoopback"])
+print("controlUi.basePath =", gw["controlUi"]["basePath"])

@@ -17,7 +17,9 @@
       password: "OPENCLAW_GATEWAY_PASSWORD",
     },
     controlUi: {
+      basePath: "/openclaw",
       allowedOrigins: [
+        "https://icecream.naboydciscolab.com:8443",
         "https://192.168.128.93:8443",
         "https://icecream:8443",
       ],

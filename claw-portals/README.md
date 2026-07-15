@@ -88,6 +88,13 @@ Legacy per-port configs (`8443`/`8444`/`8445`) are removed when the unified conf
 
 ## OpenClaw subpath note
 
-The OpenClaw Control UI is proxied at `/openclaw/`. If assets or WebSockets fail to load,
-open the **OpenClaw** tab’s URL in a new window (`/openclaw/`) or check gateway
-`controlUi.allowedOrigins` matches the portal port.
+The OpenClaw Control UI is proxied at `/openclaw/`. The gateway must have
+`gateway.controlUi.basePath` set to `/openclaw` (no trailing slash):
+
+```bash
+python3 claw-portals/apply-openclaw-portal.py
+systemctl --user restart openclaw-gateway
+```
+
+If assets or WebSockets still fail, open `/openclaw/` in a new window and confirm
+`controlUi.allowedOrigins` includes your portal origin (e.g. `https://icecream:8443`).
