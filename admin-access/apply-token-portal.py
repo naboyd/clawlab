@@ -91,11 +91,11 @@ def main() -> int:
     shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-token-portal.bak")
 
     gw["bind"] = "loopback"
-    gw["trustedProxies"] = ["127.0.0.1", "::1"]
-    auth["mode"] = "token"
-    auth["token"] = TOKEN_REF
+    gw.pop("trustedProxies", None)
     auth.pop("trustedProxy", None)
     auth.pop("password", None)
+    auth["mode"] = "token"
+    auth["token"] = TOKEN_REF
 
     ui = gw.setdefault("controlUi", {})
     domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
@@ -110,9 +110,12 @@ def main() -> int:
 
     CONFIG_PATH.write_text(json.dumps(c, indent=2) + "\n")
     print("token auth enabled; backup:", str(CONFIG_PATH) + ".pre-token-portal.bak")
-    print("mode =", auth["mode"], "| token =", TOKEN_REF)
+    print("mode =", auth.get("mode"), "| token =", auth.get("token"))
+    print("trustedProxy removed:", "trustedProxy" not in auth)
     print("controlUi.basePath =", ui["basePath"])
+    print("allowedOrigins:", ", ".join(ui["allowedOrigins"]))
     print("Open Control UI from the portal hub button (passes #token= fragment).")
+    print("Re-run install-portals.sh to refresh nginx (no auth_request on /openclaw/).")
     print("Restart: systemctl --user restart openclaw-gateway claw-auth")
     return 0
 

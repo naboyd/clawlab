@@ -358,11 +358,12 @@ write_unified_portal_nginx() {
     echo "    }"
     echo
     echo "    # OpenClaw Control UI (:18789) — preserve /openclaw/ path (gateway basePath)"
+    echo "    # No claw-auth auth_request here: gateway token auth handles WS; nginx"
+    echo "    # auth_request on upgrade often yields 1006 (abnormal close) in browsers."
     echo "    location = /openclaw {"
     echo "        return 301 /openclaw/;"
     echo "    }"
     echo "    location /openclaw/ {"
-    if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
     echo "        proxy_pass http://127.0.0.1:18789;"
     nginx_proxy_common
     echo "        proxy_read_timeout  3600s;"
