@@ -89,7 +89,8 @@ Legacy per-port configs (`8443`/`8444`/`8445`) are removed when the unified conf
 ## OpenClaw subpath note
 
 The OpenClaw Control UI is proxied at `/openclaw/`. The gateway must have
-`gateway.controlUi.basePath` set to `/openclaw` (no trailing slash):
+`gateway.controlUi.basePath` set to `/openclaw` (no trailing slash). nginx
+forwards the full `/openclaw/...` path to the gateway (do not strip the prefix).
 
 ```bash
 python3 claw-portals/apply-openclaw-portal.py

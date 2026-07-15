@@ -235,6 +235,9 @@ install_ssh_ops_quadlet() {
 
 nginx_auth_claw_block() {
   cat <<'NGINX'
+    location = /_claw_auth {
+        return 302 /_claw_auth/login;
+    }
     location = /_claw_auth/verify {
         internal;
         proxy_pass http://127.0.0.1:8780/verify;
@@ -354,10 +357,13 @@ write_unified_portal_nginx() {
     nginx_proxy_common
     echo "    }"
     echo
-    echo "    # OpenClaw Control UI (:18789)"
+    echo "    # OpenClaw Control UI (:18789) — preserve /openclaw/ path (gateway basePath)"
+    echo "    location = /openclaw {"
+    echo "        return 301 /openclaw/;"
+    echo "    }"
     echo "    location /openclaw/ {"
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
-    echo "        proxy_pass http://127.0.0.1:18789/;"
+    echo "        proxy_pass http://127.0.0.1:18789;"
     nginx_proxy_common
     echo "        proxy_read_timeout  3600s;"
     echo "        proxy_send_timeout  3600s;"
