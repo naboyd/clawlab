@@ -45,7 +45,8 @@ Single bookmark URL instead of three ports:
 | DefenseClaw policies | `/defenseclaw/` | `127.0.0.1:8770` |
 
 - **Default URL:** `https://<host>:8443/` (HTTP lab: `:8083`)
-- Tabbed hub in claw-auth serves iframes; one login covers all managers
+- Tabbed hub in claw-auth serves MCP Admin and DefenseClaw in iframes; OpenClaw
+  opens in a new window (gateway blocks iframe embedding)
 - `install-portals.sh` — interactive or `--non-interactive` installer for TLS
   (HTTP / HTTPS+Let's Encrypt / existing cert), auth mode, nginx, and systemd units
 - Path-based nginx config (`clawlab-portal.conf`) replaces legacy per-port sites

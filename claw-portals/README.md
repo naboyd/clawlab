@@ -10,7 +10,9 @@ One URL, one port, tabbed hub for all clawlab browser admin surfaces.
 
 **Default portal URL:** `https://<host>:8443/` (HTTP lab mode: `:8083`)
 
-Sign in once at the hub; tabs load each manager in an iframe on the same origin.
+Sign in once at the hub. MCP Admin and DefenseClaw load in tabs; **OpenClaw opens
+in a new window** (the gateway blocks iframe embedding via `X-Frame-Options` /
+`frame-ancestors 'none'`).
 
 ## Quick start
 
@@ -91,6 +93,10 @@ Legacy per-port configs (`8443`/`8444`/`8445`) are removed when the unified conf
 The OpenClaw Control UI is proxied at `/openclaw/`. The gateway must have
 `gateway.controlUi.basePath` set to `/openclaw` (no trailing slash). nginx
 forwards the full `/openclaw/...` path to the gateway (do not strip the prefix).
+
+**Iframe:** OpenClaw cannot be embedded in the portal hub iframe — the gateway
+sets `X-Frame-Options: DENY` and `frame-ancestors 'none'`. The hub tab opens
+`/openclaw/` in a new window instead.
 
 ```bash
 python3 claw-portals/apply-openclaw-portal.py

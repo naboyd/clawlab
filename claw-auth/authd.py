@@ -205,9 +205,17 @@ HUB_PAGE = """
   .tab{padding:.45rem .95rem;border:1px solid #2a2f3d;border-radius:8px;background:#1f2430;
        color:#c9cdd3;cursor:pointer;font-size:.88rem}
   .tab.active{background:#2c5cff;border-color:#2c5cff;color:#fff}
-  .frame-wrap{flex:1;min-height:0;background:#fafafa}
-  iframe{width:100%;height:100%;border:0;display:none;background:#fff}
+  .frame-wrap{flex:1;min-height:0;background:#fafafa;display:flex;flex-direction:column}
+  iframe{width:100%;height:100%;border:0;display:none;background:#fff;flex:1}
   iframe.active{display:block}
+  .hub-panel{display:none;flex:1;align-items:center;justify-content:center;background:#141720;padding:1.5rem}
+  .hub-panel.active{display:flex}
+  .external-card{max-width:440px;padding:1.5rem 1.75rem;background:#1f2430;border:1px solid #2a2f3d;
+                  border-radius:12px;text-align:center}
+  .external-card h2{margin:0 0 .6rem;font-size:1.1rem}
+  .open-btn{display:inline-block;margin-top:1rem;padding:.65rem 1.25rem;background:#2c5cff;color:#fff;
+            border-radius:8px;text-decoration:none;font-size:.9rem}
+  .open-btn:hover{background:#3d6dff}
 </style></head><body>
 <header>
   <h1>clawlab</h1>
@@ -218,21 +226,43 @@ HUB_PAGE = """
 <nav class="tabs">
   {% for tab in tabs %}
   <button type="button" class="tab{% if loop.first %} active{% endif %}"
-          data-target="frame-{{ tab.id }}" onclick="showTab('{{ tab.id }}')">{{ tab.label }}</button>
+          data-tab="{{ tab.id }}" onclick="showTab('{{ tab.id }}')">{{ tab.label }}</button>
   {% endfor %}
 </nav>
 <div class="frame-wrap">
   {% for tab in tabs %}
+  {% if tab.external %}
+  <div id="panel-{{ tab.id }}" class="hub-panel{% if loop.first %} active{% endif %}">
+    <div class="external-card">
+      <h2>{{ tab.label }}</h2>
+      <p class="hint">OpenClaw blocks iframe embedding (gateway clickjacking protection).
+      Open it in a new window — your portal login session applies.</p>
+      <a class="open-btn" href="{{ tab.external }}" target="_blank" rel="noopener noreferrer">
+        Open {{ tab.label }} ↗</a>
+    </div>
+  </div>
+  {% else %}
   <iframe id="frame-{{ tab.id }}" class="{% if loop.first %}active{% endif %}"
-          src="{{ tab.src }}" title="{{ tab.label }}"></iframe>
+          {% if loop.first %}src="{{ tab.src }}"{% else %}data-src="{{ tab.src }}"{% endif %}
+          title="{{ tab.label }}"></iframe>
+  {% endif %}
   {% endfor %}
 </div>
 <script>
 function showTab(id){
-  document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
-  document.querySelectorAll('iframe').forEach(function(f){ f.classList.remove('active'); });
-  document.querySelector('[data-target="frame-'+id+'"]').classList.add('active');
-  document.getElementById('frame-'+id).classList.add('active');
+  document.querySelectorAll('.tab').forEach(function(b){
+    b.classList.toggle('active', b.dataset.tab === id);
+  });
+  document.querySelectorAll('.hub-panel').forEach(function(p){
+    p.classList.toggle('active', p.id === 'panel-' + id);
+  });
+  document.querySelectorAll('iframe').forEach(function(f){
+    var on = f.id === 'frame-' + id;
+    f.classList.toggle('active', on);
+    if (on && f.dataset.src && !f.getAttribute('src')) {
+      f.src = f.dataset.src;
+    }
+  });
 }
 </script>
 </body></html>
@@ -303,7 +333,7 @@ def _portal_tabs() -> list[dict]:
         {
             "id": "openclaw",
             "label": "OpenClaw",
-            "src": os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/"),
+            "external": os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/"),
         },
         {
             "id": "ssh-ops",
