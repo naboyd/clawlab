@@ -186,6 +186,17 @@ def parse_upload_yaml(content: str) -> list[dict[str, Any]]:
     return [d for d in devices if isinstance(d, dict)]
 
 
+def find_host_key_by_ip(hosts: dict[str, Any], ip: str) -> str | None:
+    """Return inventory key if hostname/IP already registered."""
+    target = str(ip).strip()
+    if not target:
+        return None
+    for key, entry in hosts.items():
+        if str(entry.get("hostname") or "").strip() == target:
+            return key
+    return None
+
+
 def merge_selected_into_hosts(
     cfg: dict[str, Any],
     devices: list[dict[str, Any]],
@@ -217,8 +228,12 @@ def merge_selected_into_hosts(
 
         ip = str(device["ip"]).strip()
         hostname = str(device.get("hostname") or ip).strip()
-        key = host_key_for_device(device, hosts)
-        if key in hosts:
+        existing = find_host_key_by_ip(hosts, ip)
+        if existing:
+            key = existing
+        else:
+            key = host_key_for_device(device, hosts)
+        if key in hosts and existing is None:
             skipped += 1
             messages.append(f"Skipped {hostname}: already in inventory as {key}")
             continue
@@ -228,7 +243,10 @@ def merge_selected_into_hosts(
         secrets_store.set_secret(key, "login", login_password)
         if enable_password:
             secrets_store.set_secret(key, "enable", enable_password)
-        added += 1
-        messages.append(f"Added {key} ({ip}, {hostname})")
+        if existing:
+            messages.append(f"Updated {key} ({ip}) — credentials refreshed")
+        else:
+            added += 1
+            messages.append(f"Added {key} ({ip}, {hostname})")
 
     return added, skipped, messages

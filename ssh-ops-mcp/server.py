@@ -401,25 +401,51 @@ def _run_network(name: str, command: str) -> dict[str, Any]:
         return {"host": name, "command": command, "exit_code": None,
                 "stdout": "", "stderr": str(exc)}
 
+    key_path = h.get("key_path")
+    if not login_pw and not key_path:
+        return {
+            "host": name,
+            "command": command,
+            "exit_code": None,
+            "stdout": "",
+            "stderr": (
+                f"No login credentials for '{name}'. Set an encrypted login password "
+                "in MCP Admin (Hosts tab → edit host), or configure key_path. "
+                "Discovery import only stores secrets for selected devices at import time."
+            ),
+        }
+
     params: dict[str, Any] = {
         "device_type": _netmiko_type(_platform(h)),
         "host": h["hostname"],
         "port": int(h.get("port", 22)),
         "username": h["username"],
-        "password": login_pw or "",
-        "secret": enable_pw or "",
         "conn_timeout": CONNECT_TIMEOUT,
         "fast_cli": False,
+        "use_keys": False,
+        "allow_agent": False,
     }
-    if h.get("key_path"):  # some devices use key auth
+
+    if login_pw:
+        # Password auth — do not fall through to container ~/.ssh keys (common misconfig).
+        params["password"] = login_pw
+        params["secret"] = enable_pw or login_pw
+    elif key_path:
         params["use_keys"] = True
-        params["key_file"] = _expand(h["key_path"])
+        params["key_file"] = _expand(key_path)
+        if enable_pw:
+            params["secret"] = enable_pw
 
     conn = None
     try:
         conn = ConnectHandler(**params)
-        if enable_pw:
-            conn.enable()
+        if params.get("secret"):
+            try:
+                if not conn.check_enable_mode():
+                    conn.enable()
+            except Exception:
+                if not conn.check_enable_mode():
+                    raise
         out = conn.send_command(command, read_timeout=COMMAND_TIMEOUT)
         return {
             "host": name,
@@ -479,13 +505,16 @@ def list_hosts() -> list[dict[str, Any]]:
     and other tag-driven flows.
     """
     result = []
+    login_set = set(secrets_store.hosts_with_secret("login"))
+    enable_set = set(secrets_store.hosts_with_secret("enable"))
     for name, h in _current_hosts().items():
         tags = inventory.normalize_tags(h)
+        is_net = _is_network(h)
         result.append(
             {
                 "name": name,
                 "platform": _platform(h),
-                "kind": "network" if _is_network(h) else "linux",
+                "kind": "network" if is_net else "linux",
                 "hostname": h.get("hostname"),
                 "username": h.get("username"),
                 "port": int(h.get("port", 22)),
@@ -494,6 +523,13 @@ def list_hosts() -> list[dict[str, Any]]:
                 "allow_write": bool(h.get("allow_write", False)),
                 "auto_update": bool(h.get("auto_update", False))
                 or inventory.has_tag(h, "auto_update"),
+                "has_login_secret": name in login_set,
+                "has_enable_secret": name in enable_set,
+                "auth_ready": (
+                    (name in login_set or bool(h.get("key_path")))
+                    if is_net
+                    else True
+                ),
             }
         )
     return result
