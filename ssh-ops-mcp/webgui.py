@@ -34,10 +34,12 @@ import credential_test
 try:
     import change_store
     import change_engine
+    import change_actor
     import network_apply
 except ImportError:
     change_store = None  # type: ignore[assignment]
     change_engine = None  # type: ignore[assignment]
+    change_actor = None  # type: ignore[assignment]
     network_apply = None  # type: ignore[assignment]
 
 _network_apply_ready = False
@@ -524,13 +526,14 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 <div class="banner err">Change modules not available in this container image.</div>
 {% else %}
 <table>
-<tr><th>ID</th><th>Status</th><th>Risk</th><th>Host</th><th>Intent</th><th>Created</th><th>Actions</th></tr>
+<tr><th>ID</th><th>Status</th><th>Risk</th><th>Host</th><th>Proposed by</th><th>Intent</th><th>Created</th><th>Actions</th></tr>
 {% for c in changes %}
 <tr>
   <td><code>{{ c.id }}</code></td>
   <td>{{ c.status }}</td>
   <td>{{ c.risk }}</td>
   <td>{% if c.targets %}{{ c.targets[0].name }}{% else %}—{% endif %}</td>
+  <td>{{ c.created_by or '—' }}{% if c.approved_by %}<br><span class="hint">approved: {{ c.approved_by }}</span>{% endif %}</td>
   <td>{{ c.intent or c.change_type }}</td>
   <td>{{ c.created_at or '—' }}</td>
   <td class="actions">
@@ -562,13 +565,13 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   </td>
 </tr>
 {% if c.targets %}
-<tr><td colspan="7" style="background:#fafafa">
+<tr><td colspan="8" style="background:#fafafa">
   <b>Apply:</b> <code>{{ c.targets[0].apply|join('; ') }}</code><br>
   <b>Rollback:</b> <code>{{ c.targets[0].rollback|join('; ') }}</code>
 </td></tr>
 {% endif %}
 {% else %}
-<tr><td colspan="7" class="hint">No changes yet.</td></tr>
+<tr><td colspan="8" class="hint">No changes yet.</td></tr>
 {% endfor %}
 </table>
 
@@ -721,6 +724,10 @@ def _ensure_network_apply() -> None:
 
 
 def _gui_user() -> str:
+    if claw_auth:
+        u = claw_auth.current_user()
+        if u and u.get("username"):
+            return str(u["username"])
     return (os.environ.get("SSH_OPS_GUI_USER") or "gui-operator").strip() or "gui-operator"
 
 

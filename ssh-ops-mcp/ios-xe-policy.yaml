@@ -102,33 +102,33 @@ allow_groups:
     defenseclaw_alert: true
     patterns:
       - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et|Port-channel|Po)\S+'
-      - '(?i)^\s+shutdown\s*$'
-      - '(?i)^\s+no\s+shutdown\s*$'
-      - '(?i)^\s+description\s+'
-      - '(?i)^\s+switchport\s+mode\s+access\s*$'
-      - '(?i)^\s+switchport\s+access\s+vlan\s+\d+'
+      - '(?i)^\s*shutdown\s*$'
+      - '(?i)^\s*no\s+shutdown\s*$'
+      - '(?i)^\s*description\s+'
+      - '(?i)^\s*switchport\s+mode\s+access\s*$'
+      - '(?i)^\s*switchport\s+access\s+vlan\s+\d+'
   vlan:
     description: "Create VLAN and assign name"
     risk: medium
     defenseclaw_alert: true
     patterns:
       - '(?i)^vlan\s+\d+'
-      - '(?i)^\s+name\s+'
+      - '(?i)^\s*name\s+'
   vlan_svi:
-    description: "L3 SVI on an existing VLAN (interface VlanN + ip address)"
+    description: "L3 SVI only (interface VlanN + ip address) — VLAN must already exist"
     risk: medium
     defenseclaw_alert: true
     patterns:
       - '(?i)^interface\s+Vlan\d+'
-      - '(?i)^\s+ip\s+address\s+\d+\.\d+\.\d+\.\d+\s+'
-      - '(?i)^\s+no\s+shutdown\s*$'
+      - '(?i)^\s*ip\s+address\s+\d+\.\d+\.\d+\.\d+(?:\s+\d+\.\d+\.\d+\.\d+|\s+\d+)?\s*$'
+      - '(?i)^\s*no\s+shutdown\s*$'
   vlan_l3:
-    description: "Create VLAN plus SVI (L3 switch / gateway)"
+    description: "Create VLAN plus SVI (L3 switch / gateway) — use for C9300 SVI deploys"
     risk: medium
     defenseclaw_alert: true
     patterns:
       - '(?i)^vlan\s+\d+'
-      - '(?i)^\s+name\s+'
+      - '(?i)^\s*name\s+'
       - '(?i)^interface\s+Vlan\d+'
-      - '(?i)^\s+ip\s+address\s+\d+\.\d+\.\d+\.\d+\s+'
-      - '(?i)^\s+no\s+shutdown\s*$'
+      - '(?i)^\s*ip\s+address\s+\d+\.\d+\.\d+\.\d+(?:\s+\d+\.\d+\.\d+\.\d+|\s+\d+)?\s*$'
+      - '(?i)^\s*no\s+shutdown\s*$'

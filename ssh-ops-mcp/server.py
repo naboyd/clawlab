@@ -40,6 +40,7 @@ from mcp.server.fastmcp import FastMCP
 import inventory
 import secrets_store
 import change_engine
+import change_actor
 import network_apply
 
 # --------------------------------------------------------------------------- #
@@ -869,6 +870,7 @@ def propose_change(
     change_type: str,
     spec: dict[str, Any],
     intent: str = "",
+    requested_by: str = "",
 ) -> dict[str, Any]:
     """Propose a gated network configuration change (no device writes).
 
@@ -886,14 +888,17 @@ def propose_change(
         change_type: e.g. ``ios_local_user``, ``ios_interface_state``, ``ios_config_lines``.
         spec: Structured change parameters (see change_type docs).
         intent: Optional human-readable description.
+        requested_by: Optional portal/chat username (also read from X-Auth-User
+            on HTTP MCP when OpenClaw/nginx forwards it).
     """
-    _audit(host, "propose_change", f"{change_type} {spec.get('username', '')}")
+    actor = change_actor.resolve_actor(requested_by)
+    _audit(host, "propose_change", f"{change_type} by={actor}")
     return change_engine.propose_change(
         host=host,
         change_type=change_type,
         spec=spec,
         intent=intent,
-        created_by="agent",
+        created_by=actor,
         get_host=_get_host,
         platform_fn=_platform,
     )
@@ -947,10 +952,16 @@ if __name__ == "__main__":
 
         async def _bearer(request, call_next):
             if not _auth_on:
+                change_actor.set_request_actor(
+                    change_actor.actor_from_headers(dict(request.headers))
+                )
                 return await call_next(request)
             hdr = request.headers.get("authorization", "")
             tok = hdr[7:].strip() if hdr[:7].lower() == "bearer " else ""
             if tok and tok in secrets_store.get_mcp_tokens():
+                change_actor.set_request_actor(
+                    change_actor.actor_from_headers(dict(request.headers))
+                )
                 return await call_next(request)
             return JSONResponse(
                 {"error": "unauthorized"},

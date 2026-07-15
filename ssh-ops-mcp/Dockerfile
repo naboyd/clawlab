@@ -22,7 +22,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py secrets_store.py webgui.py inventory.py network_discovery.py discovery_import.py credential_test.py claw_auth_middleware.py portal_mount.py change_store.py change_policy.py ios_change.py ios_xe_policy.py network_apply.py change_engine.py change_notify.py entrypoint.sh ./
+COPY server.py secrets_store.py webgui.py inventory.py network_discovery.py discovery_import.py credential_test.py claw_auth_middleware.py portal_mount.py change_store.py change_policy.py ios_change.py ios_xe_policy.py network_apply.py change_engine.py change_notify.py change_actor.py entrypoint.sh ./
 COPY ios-xe-policy.yaml /app/ios-xe-policy.yaml
 RUN chmod +x entrypoint.sh \
     && mkdir -p /data
