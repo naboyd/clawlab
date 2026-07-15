@@ -6,19 +6,19 @@ category: command
 rules:
   # ---- Linux / Unix ----
   - id: CMD-USERADD
-    pattern: '(?i)(?:^|[^a-z0-9_-])(?:useradd|adduser)\b'
+    pattern: '(?i)\b(?:useradd|adduser)\b'
     title: "Create local Linux user account"
     severity: HIGH
     confidence: 0.92
     tags: [identity, local-user, crud]
   - id: CMD-USERDEL
-    pattern: '(?i)(?:^|[^a-z0-9_-])(?:userdel|deluser)\b'
+    pattern: '(?i)\b(?:userdel|deluser)\b'
     title: "Delete local Linux user account"
     severity: HIGH
     confidence: 0.92
     tags: [identity, local-user, crud]
   - id: CMD-USERMOD
-    pattern: '(?i)(?:^|[^a-z0-9_-])usermod\b'
+    pattern: '(?i)\busermod\b'
     title: "Modify local Linux user account"
     severity: HIGH
     confidence: 0.90

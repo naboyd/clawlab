@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install Clawlab guardrail rule extensions into the active DefenseClaw strict pack.
-# Blocks/alerts on local user account CRUD (Linux, Cisco, Junos, Arista, macOS).
+# Merges into commands.yaml + local-patterns.yaml (separate category files are
+# overwritten alphabetically by commands.yaml and never take effect).
 #
 # Usage:
 #   bash admin-access/install-clawlab-guardrail-rules.sh
@@ -10,6 +11,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="${REPO}/config-templates/guardrail-rules"
 DC_HOME="${DEFENSECLAW_HOME:-$HOME/.defenseclaw}"
+PY="${CLAW_PYTHON:-python3}"
 
 PACK_DIR="${RULE_PACK_DIR:-}"
 if [ -z "$PACK_DIR" ] && [ -f "${DC_HOME}/config.yaml" ]; then
@@ -21,10 +23,9 @@ PACK_DIR="${PACK_DIR:-$DC_HOME/policies/guardrail/strict}"
 RULES_DIR="${PACK_DIR}/rules"
 mkdir -p "$RULES_DIR"
 
-for f in clawlab-local-user-crud.yaml clawlab-local-user-intent.yaml; do
-  install -m 0644 "${SRC}/${f}" "${RULES_DIR}/${f}"
-  echo "Installed ${RULES_DIR}/${f}"
-done
+"$PY" "${REPO}/admin-access/merge-clawlab-guardrail-rules.py" \
+  --rules-dir "$RULES_DIR" \
+  --src-dir "$SRC"
 
 reload_gateway() {
   if systemctl --user restart openclaw-gateway.service 2>/dev/null; then
@@ -46,4 +47,5 @@ reload_gateway || true
 
 echo "Done. Verify with:"
 echo "  defenseclaw guardrail status"
-echo "  ./tests/policy-test.sh --no-agent   # optional harness"
+echo "  grep -E 'CMD-USERADD|create a local user' ${RULES_DIR}/commands.yaml ${RULES_DIR}/local-patterns.yaml"
+echo "  ./tests/policy-test.sh --no-agent"
