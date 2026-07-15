@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+import change_approval
+
 CHANGES_DIR = Path(
     os.environ.get("SSH_OPS_CHANGES_DIR", "/data/changes" if Path("/data").is_dir() else "./changes")
 ).expanduser()
@@ -114,8 +116,7 @@ def set_status(change_id: str, status: str, **extra: Any) -> dict[str, Any]:
 
 def approve(change_id: str, user: str, note: str = "") -> dict[str, Any]:
     change = load(change_id)
-    if change.get("status") != "proposed":
-        raise ValueError(f"Change {change_id} is not proposed (status={change.get('status')})")
+    change_approval.assert_can_approve(change, user)
     approvals = list(change.get("approvals") or [])
     approvals.append({
         "user": user,

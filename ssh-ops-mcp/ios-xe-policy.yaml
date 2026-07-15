@@ -13,6 +13,18 @@ version: 1
 platform: ios-xe
 mode: default_deny
 
+approval_policy:
+  require_proposer_identity: true
+  forbid_self_approval: true
+  forbidden_proposers:
+    - agent
+    - mcp
+    - system
+    - unknown
+    - gui-operator
+  default:
+    forbid_self_approval: true
+
 always_block:
   - id: IOS-BLK-USERNAME
     group: identity

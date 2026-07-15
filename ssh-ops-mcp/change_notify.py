@@ -134,3 +134,38 @@ def notify_change_applied(change: dict[str, Any], *, actor: str) -> dict[str, An
         log.info("change_notify %s -> %s %s", cid, wh["name"], info)
 
     return {"notified": True, "results": results}
+
+
+def notify_self_approval_blocked(
+    change: dict[str, Any],
+    *,
+    approver: str,
+    detail: str,
+) -> dict[str, Any]:
+    """Alert when four-eyes blocks a self-approval attempt (non-fatal on failure)."""
+    if os.environ.get("SSH_OPS_NOTIFY_CHANGES", "1").lower() in ("0", "false", "no", "off"):
+        return {"skipped": True, "reason": "SSH_OPS_NOTIFY_CHANGES disabled"}
+
+    webhooks = _load_webhooks()
+    if not webhooks:
+        return {"skipped": True, "reason": "No Webex webhook with events including 'change'"}
+
+    cid = change.get("id", "—")
+    md = "\n".join([
+        f"🚫 **Self-approval blocked (four-eyes)** on **{HOSTID}**",
+        f"- **Change:** `{cid}`",
+        f"- **Proposed by:** `{change.get('created_by') or '—'}`",
+        f"- **Blocked approver:** `{approver}`",
+        f"- **Host:** `{(change.get('targets') or [{}])[0].get('name', '—') if change.get('targets') else '—'}`",
+        f"- **Risk:** {change.get('risk', '—')}",
+        f"- **Intent:** {change.get('intent') or '—'}",
+        f"- **Detail:** {detail}",
+    ])
+
+    results = []
+    for wh in webhooks:
+        ok, info = _post_webex(wh, md)
+        results.append({"webhook": wh["name"], "ok": ok, "detail": info})
+        log.info("change_notify self_approval_blocked %s -> %s %s", cid, wh["name"], info)
+
+    return {"notified": True, "results": results}

@@ -35,11 +35,13 @@ try:
     import change_store
     import change_engine
     import change_actor
+    import change_approval
     import network_apply
 except ImportError:
     change_store = None  # type: ignore[assignment]
     change_engine = None  # type: ignore[assignment]
     change_actor = None  # type: ignore[assignment]
+    change_approval = None  # type: ignore[assignment]
     network_apply = None  # type: ignore[assignment]
 
 _network_apply_ready = False
@@ -520,8 +522,8 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 
 <div id="tab-changes" class="tab-panel {% if tab=='changes' %}active{% endif %}">
 <h2>Pending network changes</h2>
-<p class="hint">Agents may <code>propose_change</code> only. Approve here before
-<code>apply_change</code> runs on the device (backup → config → verify → write memory).</p>
+<p class="hint">Agents may <code>propose_change</code> only. A <b>different</b> claw-auth user
+must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
 {% if not changes_enabled %}
 <div class="banner err">Change modules not available in this container image.</div>
 {% else %}
@@ -538,11 +540,15 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   <td>{{ c.created_at or '—' }}</td>
   <td class="actions">
   {% if c.status == 'proposed' %}
+  {% if c.can_approve %}
   <form method="post" action="{{ url_for('change_approve') }}" style="display:inline">
     <input type="hidden" name="change_id" value="{{ c.id }}">
     <input type="hidden" name="tab" value="changes">
     <button type="submit">Approve</button>
   </form>
+  {% else %}
+  <span class="hint" title="Four-eyes: proposer cannot approve">needs other approver</span>
+  {% endif %}
   <form method="post" action="{{ url_for('change_reject') }}" style="display:inline">
     <input type="hidden" name="change_id" value="{{ c.id }}">
     <input type="hidden" name="tab" value="changes">
@@ -731,7 +737,7 @@ def _gui_user() -> str:
     return (os.environ.get("SSH_OPS_GUI_USER") or "gui-operator").strip() or "gui-operator"
 
 
-def _changes_for_gui(raw_changes: list[dict]) -> list[dict]:
+def _changes_for_gui(raw_changes: list[dict], *, viewer: str | None = None) -> list[dict]:
     """Copy changes for display with secrets redacted."""
     import ios_change as _ios
 
@@ -740,6 +746,10 @@ def _changes_for_gui(raw_changes: list[dict]) -> list[dict]:
         cc = dict(change)
         if isinstance(cc.get("spec"), dict):
             cc["spec"] = _ios.public_spec(cc["spec"])
+        if change_approval and viewer:
+            cc["can_approve"] = change_approval.user_may_approve(change, viewer)
+        else:
+            cc["can_approve"] = change.get("status") == "proposed"
         targets = []
         for t in cc.get("targets") or []:
             if not isinstance(t, dict):
@@ -834,7 +844,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
             change_store.ensure_dir()
             all_changes = change_store.list_changes()
             pending_changes = [c for c in all_changes if c.get("status") == "proposed"]
-            all_changes = _changes_for_gui(all_changes)
+            all_changes = _changes_for_gui(all_changes, viewer=_gui_user())
         except Exception:
             all_changes = []
             pending_changes = []
@@ -1356,16 +1366,18 @@ def discovery_clear():
 
 @app.route("/changes/approve", methods=["POST"])
 def change_approve():
-    if change_store is None:
-        return _changes_redirect("Change store unavailable.", err=True)
+    if change_engine is None:
+        return _changes_redirect("Change engine unavailable.", err=True)
     cid = (request.form.get("change_id") or "").strip()
     if not cid:
         return _changes_redirect("Missing change id.", err=True)
-    try:
-        change_store.approve(cid, _gui_user())
-    except (FileNotFoundError, ValueError) as exc:
-        return _changes_redirect(str(exc), err=True)
-    return _changes_redirect(f"Approved {cid}. Use Apply now or let the agent call apply_change.")
+    user = _gui_user()
+    result = change_engine.approve_change(cid, approver=user)
+    if result.get("error"):
+        return _changes_redirect(result["error"], err=True)
+    return _changes_redirect(
+        f"Approved {cid} by {user}. Another user proposed it (four-eyes satisfied)."
+    )
 
 
 @app.route("/changes/reject", methods=["POST"])

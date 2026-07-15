@@ -888,8 +888,8 @@ def propose_change(
         change_type: e.g. ``ios_local_user``, ``ios_interface_state``, ``ios_config_lines``.
         spec: Structured change parameters (see change_type docs).
         intent: Optional human-readable description.
-        requested_by: Optional portal/chat username (also read from X-Auth-User
-            on HTTP MCP when OpenClaw/nginx forwards it).
+        requested_by: Optional portal/chat username (required for four-eyes unless
+            HTTP MCP forwards X-Auth-User / X-OpenClaw-User).
     """
     actor = change_actor.resolve_actor(requested_by)
     _audit(host, "propose_change", f"{change_type} by={actor}")

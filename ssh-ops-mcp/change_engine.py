@@ -10,6 +10,7 @@ from typing import Any
 import change_policy
 import change_store
 import change_notify
+import change_approval
 import ios_change
 import network_apply
 
@@ -70,6 +71,16 @@ def propose_change(
     if errors:
         return {"error": "Proposal rejected", "risk": risk, "errors": errors, "warnings": warnings}
 
+    try:
+        change_approval.validate_proposer(created_by)
+    except change_approval.ApprovalDenied as exc:
+        return {
+            "error": str(exc),
+            "code": exc.code,
+            "risk": risk,
+            "warnings": warnings,
+        }
+
     if change_type == "ios_local_user":
         target = ios_change.build_ios_local_user_target(host, platform, spec)
     elif change_type == "ios_interface_state":
@@ -111,8 +122,36 @@ def propose_change(
                 "verify": target.get("verify"),
             }
         ],
-        "message": "Change proposed. A human must approve it in MCP Admin before apply_change.",
+        "message": "Change proposed. A different user must approve it in MCP Admin (four-eyes).",
     }
+
+
+def approve_change(change_id: str, *, approver: str, note: str = "") -> dict[str, Any]:
+    """Approve a proposed change; notifies on blocked self-approval."""
+    try:
+        change = change_store.load(change_id)
+    except FileNotFoundError:
+        return {"error": f"Change not found: {change_id}"}
+
+    try:
+        change_approval.assert_can_approve(change, approver)
+    except change_approval.ApprovalDenied as exc:
+        if exc.code == "self_approval":
+            try:
+                change_notify.notify_self_approval_blocked(
+                    change,
+                    approver=approver,
+                    detail=str(exc),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return {"error": str(exc), "code": exc.code}
+
+    try:
+        updated = change_store.approve(change_id, approver, note=note)
+    except change_approval.ApprovalDenied as exc:
+        return {"error": str(exc), "code": exc.code}
+    return {"change_id": change_id, "status": "approved", "approved_by": updated.get("approved_by")}
 
 
 def get_change(change_id: str, *, redact: bool = True) -> dict[str, Any]:
