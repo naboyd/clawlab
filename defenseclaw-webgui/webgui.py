@@ -109,16 +109,17 @@ SHELL = """
 
 def render_page(template: str, tab: str, **ctx):
     body = render_template_string(template, **ctx)
+    shell_ctx = {
+        **ctx,
+        "style": STYLE,
+        "nav": render_template_string(NAV, tab=tab),
+        "config_path": str(ps.CONFIG_PATH),
+        "home_path": str(ps.DEFENSECLAW_HOME),
+        "tab": tab,
+    }
     return render_template_string(
         SHELL.replace("{% block body %}{% endblock %}", body),
-        style=STYLE,
-        nav=render_template_string(NAV, tab=tab),
-        config_path=str(ps.CONFIG_PATH),
-        home_path=str(ps.DEFENSECLAW_HOME),
-        msg=ctx.get("msg"),
-        msg_class=ctx.get("msg_class", ""),
-        tab=tab,
-        **ctx,
+        **shell_ctx,
     )
 
 
