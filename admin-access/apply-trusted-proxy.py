@@ -92,7 +92,7 @@ def main() -> int:
     shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-trustedproxy.bak")
 
     gw["bind"] = "loopback"
-    gw["trustedProxies"] = ["127.0.0.1"]
+    gw["trustedProxies"] = ["127.0.0.1", "::1"]
     auth["mode"] = "trusted-proxy"
     auth["password"] = PASSWORD_REF
     auth.pop("token", None)

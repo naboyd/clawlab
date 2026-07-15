@@ -247,9 +247,9 @@ nginx_auth_claw_block() {
     }
     location /_claw_auth/ {
         proxy_pass http://127.0.0.1:8780/;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
     }
     error_page 401 = @claw_auth_login;
@@ -295,11 +295,11 @@ nginx_proxy_common() {
         proxy_http_version 1.1;
         proxy_set_header Upgrade    $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
-        proxy_set_header Host       $host;
+        proxy_set_header Host       $http_host;
         proxy_set_header X-Real-IP  $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Host $http_host;
 NGINX
 }
 
@@ -402,11 +402,11 @@ write_nginx_site() {
     echo "        proxy_http_version 1.1;"
     echo "        proxy_set_header Upgrade    \$http_upgrade;"
     echo "        proxy_set_header Connection \$connection_upgrade;"
-    echo "        proxy_set_header Host       \$host;"
+    echo "        proxy_set_header Host       \$http_host;"
     echo "        proxy_set_header X-Real-IP  \$remote_addr;"
     echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
     echo "        proxy_set_header X-Forwarded-Proto \$scheme;"
-    echo "        proxy_set_header X-Forwarded-Host \$host;"
+    echo "        proxy_set_header X-Forwarded-Host \$http_host;"
     if [[ -n "$extra_proxy" ]]; then
       echo "$extra_proxy"
     fi
