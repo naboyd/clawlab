@@ -14,6 +14,7 @@ ENV_PATH = OC_HOME / ".env"
 SYSTEMD_ENV_PATH = OC_HOME / "gateway.systemd.env"
 PASSWORD_ENV = "OPENCLAW_GATEWAY_PASSWORD"
 PASSWORD_REF = PASSWORD_ENV  # openclaw.json references env var by name
+TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -51,6 +52,21 @@ def _upsert_env_var(path: Path, key: str, value: str) -> None:
         pass
 
 
+def _remove_env_var(path: Path, key: str) -> bool:
+    if not path.is_file():
+        return False
+    kept: list[str] = []
+    removed = False
+    for line in path.read_text().splitlines():
+        if line.startswith(f"{key}="):
+            removed = True
+            continue
+        kept.append(line)
+    if removed:
+        path.write_text("\n".join(kept).rstrip() + ("\n" if kept else ""))
+    return removed
+
+
 def _ensure_gateway_password() -> None:
     env = _read_env_file(ENV_PATH)
     env.update(_read_env_file(SYSTEMD_ENV_PATH))
@@ -79,6 +95,7 @@ def main() -> int:
     gw["trustedProxies"] = ["127.0.0.1"]
     auth["mode"] = "trusted-proxy"
     auth["password"] = PASSWORD_REF
+    auth.pop("token", None)
     auth["trustedProxy"] = {
         "userHeader": "x-forwarded-user",
         "requiredHeaders": ["x-forwarded-proto", "x-forwarded-host"],
@@ -96,9 +113,14 @@ def main() -> int:
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))
     ui["basePath"] = "/openclaw"
 
+    removed_token = _remove_env_var(ENV_PATH, TOKEN_ENV)
+    removed_token |= _remove_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV)
+
     CONFIG_PATH.write_text(json.dumps(c, indent=2) + "\n")
     print("trusted-proxy enabled; backup:", str(CONFIG_PATH) + ".pre-trustedproxy.bak")
     print("mode =", auth["mode"], "| password =", PASSWORD_REF)
+    if removed_token:
+        print(f"removed {TOKEN_ENV} from env files (mutually exclusive with trusted-proxy)")
     print("controlUi.basePath =", ui["basePath"])
     print("Restart: systemctl --user restart openclaw-gateway")
     return 0
