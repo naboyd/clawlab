@@ -12,6 +12,7 @@ import change_store
 import change_notify
 import change_approval
 import ios_change
+import ios_xe_policy
 import network_apply
 
 _BACKUPS_DIR = Path(
@@ -91,6 +92,8 @@ def propose_change(
         return {"error": f"Unsupported change_type: {change_type}"}
 
     cid = change_store.next_id()
+    policy_group = target.get("policy_group") or spec.get("_policy_group")
+    group_access = ios_xe_policy.get_group_access(policy_group) if policy_group else "approve"
     change = {
         "id": cid,
         "intent": intent or target.get("summary", ""),
@@ -103,16 +106,36 @@ def propose_change(
         "updated_at": _now(),
         "approvals": [],
         "warnings": warnings,
-        "policy_group": target.get("policy_group") or spec.get("_policy_group"),
+        "policy_group": policy_group,
+        "group_access": group_access,
         "targets": [target],
     }
     change_store.save(change)
+
+    status = "proposed"
+    message = "Change proposed. A different user must approve it in MCP Admin (four-eyes)."
+    if group_access == "allow":
+        try:
+            change_store.approve(
+                cid,
+                "policy:auto-allow",
+                note="Auto-approved: group policy is always allow",
+            )
+            status = "approved"
+            message = (
+                "Change auto-approved (group policy: always allow). "
+                "Apply when ready in MCP Admin or via apply_change."
+            )
+        except change_approval.ApprovalDenied:
+            pass
+
     return {
         "change_id": cid,
-        "status": "proposed",
+        "status": status,
         "risk": risk,
         "warnings": warnings,
         "intent": change["intent"],
+        "group_access": group_access,
         "targets": [
             {
                 "name": target["name"],
@@ -122,7 +145,7 @@ def propose_change(
                 "verify": target.get("verify"),
             }
         ],
-        "message": "Change proposed. A different user must approve it in MCP Admin (four-eyes).",
+        "message": message,
     }
 
 

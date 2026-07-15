@@ -64,7 +64,30 @@ def build_rules(policy: dict) -> list[dict]:
         })
 
     for gname, grp in (policy.get("allow_groups") or {}).items():
-        if not isinstance(grp, dict) or not grp.get("defenseclaw_alert"):
+        if not isinstance(grp, dict):
+            continue
+        access = str(grp.get("access") or "approve").strip().lower()
+        access = access.replace(" ", "_").replace("-", "_")
+        if access in ("always_deny", "denied", "block", "blocked"):
+            access = "deny"
+        elif access in ("always_allow", "allowed", "auto_approve"):
+            access = "allow"
+        elif access in ("approval_required", "require_approval"):
+            access = "approve"
+
+        if access == "deny":
+            safe = re.sub(r"[^A-Za-z0-9]+", "-", str(gname)).strip("-").upper()
+            for i, pat in enumerate(grp.get("patterns") or []):
+                out.append({
+                    "id": f"IOS-DENY-{safe}-{i + 1:02d}",
+                    "pattern": str(pat),
+                    "title": f"IOS-XE config ({gname}): group denied",
+                    "severity": "CRITICAL",
+                    "confidence": 0.92,
+                    "tags": ["ios-xe", gname, "deny", "config"],
+                })
+            continue
+        if not grp.get("defenseclaw_alert"):
             continue
         for i, pat in enumerate(grp.get("patterns") or []):
             safe = re.sub(r"[^A-Za-z0-9]+", "-", str(gname)).strip("-").upper()

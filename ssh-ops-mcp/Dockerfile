@@ -10,7 +10,7 @@ ENV SSH_OPS_CONFIG=/data/hosts.yaml \
     SSH_OPS_KEYFILE=/data/master.key \
     SSH_OPS_GUI_HOST=0.0.0.0 \
     SSH_OPS_GUI_PORT=8765 \
-    SSH_OPS_IOS_XE_POLICY=/app/ios-xe-policy.yaml
+    SSH_OPS_IOS_XE_POLICY=/data/ios-xe-policy.yaml
 
 WORKDIR /app
 

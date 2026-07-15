@@ -36,12 +36,14 @@ try:
     import change_engine
     import change_actor
     import change_approval
+    import ios_xe_policy
     import network_apply
 except ImportError:
     change_store = None  # type: ignore[assignment]
     change_engine = None  # type: ignore[assignment]
     change_actor = None  # type: ignore[assignment]
     change_approval = None  # type: ignore[assignment]
+    ios_xe_policy = None  # type: ignore[assignment]
     network_apply = None  # type: ignore[assignment]
 
 _network_apply_ready = False
@@ -227,6 +229,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   <a href="{{ url_for('index', tab='hosts') }}" class="{% if tab=='hosts' %}active{% endif %}">Hosts</a>
   <a href="{{ url_for('index', tab='discovery') }}" class="{% if tab=='discovery' %}active{% endif %}">Discovery{% if staging_count %}<span class="badge">{{ staging_count }}</span>{% endif %}</a>
   <a href="{{ url_for('index', tab='changes') }}" class="{% if tab=='changes' %}active{% endif %}">Changes{% if pending_change_count %}<span class="badge">{{ pending_change_count }}</span>{% endif %}</a>
+  <a href="{{ url_for('index', tab='policy') }}" class="{% if tab=='policy' %}active{% endif %}">Policy</a>
 </nav>
 
 <div id="tab-hosts" class="tab-panel {% if tab=='hosts' %}active{% endif %}">
@@ -608,9 +611,9 @@ must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
 </form>
 
 <h2>Propose IOS config lines</h2>
-<p class="hint">Lines must match an <code>allow_groups</code> entry in
-<code>ios-xe-policy.yaml</code> and must not hit <code>always_block</code>.
-Groups: <code>interface_l2</code>, <code>vlan</code>, <code>vlan_svi</code>, <code>vlan_l3</code>.</p>
+<p class="hint">Lines must match an <code>allow_groups</code> entry and must not hit
+<code>always_block</code>. For a new VLAN <b>and</b> SVI IP on an L3 switch (e.g. C9300),
+use group <code>vlan_l3</code> — not <code>vlan</code> or <code>vlan_svi</code> alone.</p>
 <form method="post" action="{{ url_for('change_propose_lines') }}" class="card">
   <input type="hidden" name="tab" value="changes">
   <div class="row">
@@ -624,18 +627,56 @@ Groups: <code>interface_l2</code>, <code>vlan</code>, <code>vlan_svi</code>, <co
     </div>
     <div><label>Allow group</label>
       <select name="group" required>
-        <option value="interface_l2">interface_l2</option>
-        <option value="vlan">vlan</option>
-        <option value="vlan_svi">vlan_svi</option>
-        <option value="vlan_l3">vlan_l3</option>
+        {% for g in policy_groups %}
+        <option value="{{ g.name }}" {% if g.access=='deny' %}disabled{% endif %}
+                {% if g.name=='vlan_l3' %}selected{% endif %}>
+          {{ g.name }}{% if g.access=='deny' %} (denied){% elif g.access=='allow' %} (auto-approve){% endif %}
+        </option>
+        {% endfor %}
       </select>
     </div>
   </div>
   <label>Config lines (one per line)</label>
-  <textarea name="lines" rows="6" style="width:100%;font-family:monospace;font-size:.85rem" required placeholder="interface GigabitEthernet1/0/24&#10; shutdown"></textarea>
-  <label>Intent (optional)</label><input type="text" name="intent" placeholder="e.g. Shut port during maintenance">
+  <textarea name="lines" rows="7" style="width:100%;font-family:monospace;font-size:.85rem" required placeholder="vlan 51&#10; name MGMT&#10;interface Vlan51&#10; ip address 192.168.51.4 255.255.255.0&#10; no shutdown"></textarea>
+  <label>Intent (optional)</label><input type="text" name="intent" placeholder="e.g. VLAN 51 SVI on core switch">
   <button type="submit">Propose config lines</button>
 </form>
+{% endif %}
+</div>
+
+<div id="tab-policy" class="tab-panel {% if tab=='policy' %}active{% endif %}">
+<h2>IOS-XE config groups</h2>
+<p class="hint">Per-group enforcement for config-line proposals (<code>ios_config_lines</code>).
+<b>Always deny</b> blocks proposals and adds DefenseClaw CRITICAL rules for the group's patterns.
+<b>Approval required</b> is the normal four-eyes flow.
+<b>Always allow</b> auto-approves on propose; you still run Apply.</p>
+{% if not policy_groups %}
+<div class="banner err">Policy module not available.</div>
+{% else %}
+<form method="post" action="{{ url_for('policy_save_groups') }}" class="card">
+  <input type="hidden" name="tab" value="policy">
+  <table>
+  <tr><th>Group</th><th>Description</th><th>Patterns</th><th>Access</th></tr>
+  {% for g in policy_groups %}
+  <tr>
+    <td><code>{{ g.name }}</code></td>
+    <td>{{ g.description or '—' }}</td>
+    <td>{{ g.pattern_count }}</td>
+    <td>
+      <select name="access_{{ g.name }}">
+        <option value="deny" {% if g.access=='deny' %}selected{% endif %}>Always deny</option>
+        <option value="approve" {% if g.access=='approve' %}selected{% endif %}>Approval required</option>
+        <option value="allow" {% if g.access=='allow' %}selected{% endif %}>Always allow</option>
+      </select>
+    </td>
+  </tr>
+  {% endfor %}
+  </table>
+  <button type="submit">Save group policy</button>
+</form>
+<p class="hint">Policy file: <code>{{ policy_path }}</code>.
+After changing deny modes, re-run <code>install-clawlab-guardrail-rules.sh</code> on the
+DefenseClaw gateway host so chat inspect rules stay in sync.</p>
 {% endif %}
 </div>
 </body></html>
@@ -693,11 +734,15 @@ working until you click <i>Revoke previous</i>, so you won't lock yourself out.<
 
 def _active_tab() -> str:
     tab = (request.args.get("tab") or request.form.get("tab") or "hosts").strip().lower()
-    return tab if tab in ("hosts", "discovery", "changes") else "hosts"
+    return tab if tab in ("hosts", "discovery", "changes", "policy") else "hosts"
 
 
 def _changes_redirect(msg: str, *, err: bool = False):
     return redirect(url_for("index", tab="changes", msg=msg, err="1" if err else None))
+
+
+def _policy_redirect(msg: str, *, err: bool = False):
+    return redirect(url_for("index", tab="policy", msg=msg, err="1" if err else None))
 
 
 def _get_host_entry(name: str) -> dict:
@@ -848,6 +893,15 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         except Exception:
             all_changes = []
             pending_changes = []
+    policy_groups: list = []
+    policy_path_str = ""
+    if ios_xe_policy is not None:
+        try:
+            ios_xe_policy.ensure_policy_file()
+            policy_groups = ios_xe_policy.list_groups_for_gui()
+            policy_path_str = ios_xe_policy.policy_path()
+        except Exception:
+            policy_groups = []
     ctx = dict(
         common_style=COMMON_STYLE,
         tab=active,
@@ -878,6 +932,8 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         netmiko_ok=run_discovery is not None,
         auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
         in ("1", "true", "yes", "on"),
+        policy_groups=policy_groups,
+        policy_path=policy_path_str,
     )
     ctx.update(extra)
     return render_template_string(PAGE, **ctx)
@@ -1449,9 +1505,30 @@ def change_propose_lines():
     if result.get("error"):
         detail = result.get("errors") or result["error"]
         return _changes_redirect(f"Proposal failed: {detail}", err=True)
+    if result.get("status") == "approved":
+        return _changes_redirect(
+            f"Proposed {result.get('change_id')} ({group}) — auto-approved; apply when ready."
+        )
     return _changes_redirect(
         f"Proposed {result.get('change_id')} ({group}) — approve before apply."
     )
+
+
+@app.route("/policy/groups", methods=["POST"])
+def policy_save_groups():
+    if ios_xe_policy is None:
+        return _policy_redirect("Policy module unavailable.", err=True)
+    updates: dict[str, str] = {}
+    for key, val in request.form.items():
+        if key.startswith("access_"):
+            updates[key[7:]] = val
+    if not updates:
+        return _policy_redirect("No group updates submitted.", err=True)
+    try:
+        ios_xe_policy.update_groups_access(updates)
+    except (ValueError, OSError) as exc:
+        return _policy_redirect(str(exc), err=True)
+    return _policy_redirect("Policy group access updated.")
 
 
 @app.route("/changes/propose", methods=["POST"])
