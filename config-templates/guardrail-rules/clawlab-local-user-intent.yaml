@@ -1,10 +1,12 @@
 # Clawlab extension — detect user *requests* to CRUD local accounts (prompt layer).
-# Complements clawlab-local-user-crud.yaml command rules.
+# Merged into local-patterns.yaml; CRITICAL command rules provide hard chat blocks.
 version: 1
 
 injection:
   - "create a local user"
   - "add a local user"
+  - "add a user"
+  - "create a user account"
   - "delete a local user"
   - "remove a local user"
   - "modify a local user"
@@ -19,6 +21,7 @@ injection_regexes:
   - '(?i)\b(?:delete|remove|deprovision|disable|drop)\s+(?:a\s+)?(?:local\s+)?(?:user(?:\s+account)?|userid|login)\b'
   - '(?i)\b(?:modify|update|change|reset|rename)\s+(?:a\s+)?(?:local\s+)?(?:user(?:\s+account)?|userid|login)\b'
   - '(?i)\b(?:run|execute|issue)\s+(?:the\s+)?(?:command\s+)?(?:useradd|userdel|usermod|adduser|deluser)\b'
+  - '(?i)\b(?:local\s+)?user\s+\S+\s+password\s+\S+'
   - '(?i)\busername\s+\S+\s+(?:secret|password|privilege)\b'
   - '(?i)\bno\s+username\s+\S+'
   - '(?i)\bset\s+system\s+login\s+user\b'

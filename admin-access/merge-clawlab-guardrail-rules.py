@@ -43,20 +43,22 @@ def merge_command_rules(commands_path: Path, src_path: Path) -> int:
     if not data:
         data = {"version": 1, "category": "command", "rules": []}
     rules = [r for r in data.get("rules", []) if isinstance(r, dict)]
-    existing = _rule_ids(rules)
+    index = {str(r["id"]): i for i, r in enumerate(rules) if r.get("id")}
     added = 0
+    updated = 0
     for rule in src_rules:
         rid = str(rule["id"])
-        if rid in existing:
-            continue
-        rules.append(rule)
-        existing.add(rid)
-        added += 1
+        if rid in index:
+            rules[index[rid]] = rule
+            updated += 1
+        else:
+            rules.append(rule)
+            added += 1
     data["version"] = data.get("version") or 1
     data["category"] = "command"
     data["rules"] = rules
     _dump(commands_path, data)
-    return added
+    return added + updated
 
 
 def _merge_unique_str_lists(target: list, extra: list) -> tuple[list, int]:
@@ -110,10 +112,10 @@ def main() -> int:
     crud_src = src_dir / "clawlab-local-user-crud.yaml"
     intent_src = src_dir / "clawlab-local-user-intent.yaml"
 
-    cmd_added = merge_command_rules(commands, crud_src)
+    cmd_changed = merge_command_rules(commands, crud_src)
     inj_added, rx_added = merge_local_patterns(patterns, intent_src)
 
-    print(f"Merged into {commands}: +{cmd_added} command rule(s)")
+    print(f"Merged into {commands}: {cmd_changed} command rule(s) added/updated")
     print(f"Merged into {patterns}: +{inj_added} injection phrase(s), +{rx_added} regex(es)")
 
     # Remove legacy standalone files that lose to commands.yaml on load.

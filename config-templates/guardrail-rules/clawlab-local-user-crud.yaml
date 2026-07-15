@@ -1,42 +1,68 @@
 # Clawlab extension — block local user account CRUD across platforms.
-# Install into ~/.defenseclaw/policies/guardrail/strict/rules/
-# via admin-access/install-clawlab-guardrail-rules.sh
+# CRITICAL severity: hard-blocks prompts (DefenseClaw demotes HIGH chat to alert).
+# Install via admin-access/install-clawlab-guardrail-rules.sh (merges into commands.yaml).
 version: 1
 category: command
 rules:
+  # ---- Operator asks (natural language in chat) ----
+  - id: CMD-LOCAL-USER-ASK-CREATE
+    pattern: '(?i)\b(?:add|create|new|provision|register)\s+(?:a\s+)?(?:local\s+)?user(?:\s+account)?\b'
+    title: "Request to create a local user account"
+    severity: CRITICAL
+    confidence: 0.95
+    tags: [identity, local-user, crud, prompt]
+  - id: CMD-LOCAL-USER-ASK-DELETE
+    pattern: '(?i)\b(?:delete|remove|deprovision|disable|drop)\s+(?:a\s+)?(?:local\s+)?user(?:\s+account)?\b'
+    title: "Request to delete a local user account"
+    severity: CRITICAL
+    confidence: 0.95
+    tags: [identity, local-user, crud, prompt]
+  - id: CMD-LOCAL-USER-ASK-UPDATE
+    pattern: '(?i)\b(?:modify|update|change|reset|rename)\s+(?:a\s+)?(?:local\s+)?user(?:\s+account)?\b'
+    title: "Request to modify a local user account"
+    severity: CRITICAL
+    confidence: 0.93
+    tags: [identity, local-user, crud, prompt]
+  - id: CMD-LOCAL-USER-NAME-PASSWORD-ASK
+    pattern: '(?i)\b(?:local\s+)?user\s+\S+\s+password\s+\S+'
+    title: "Request to set local user password (operator phrasing)"
+    severity: CRITICAL
+    confidence: 0.92
+    tags: [identity, local-user, crud, prompt, cisco]
+
   # ---- Linux / Unix ----
   - id: CMD-USERADD
     pattern: '(?i)\b(?:useradd|adduser)\b'
     title: "Create local Linux user account"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.92
     tags: [identity, local-user, crud]
   - id: CMD-USERDEL
     pattern: '(?i)\b(?:userdel|deluser)\b'
     title: "Delete local Linux user account"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.92
     tags: [identity, local-user, crud]
   - id: CMD-USERMOD
     pattern: '(?i)\busermod\b'
     title: "Modify local Linux user account"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.90
     tags: [identity, local-user, crud]
   - id: CMD-CHPASSWD
-    pattern: '(?i)(?:^|[^a-z0-9_-])chpasswd\b'
+    pattern: '(?i)\bchpasswd\b'
     title: "Bulk local password change (chpasswd)"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.88
     tags: [identity, local-user, crud]
   - id: CMD-PASSWD-USER
-    pattern: '(?i)(?:^|[^a-z0-9_-])passwd\s+(?:-[a-zA-Z]+\s+)*\S+'
+    pattern: '(?i)\bpasswd\s+(?:-[a-zA-Z]+\s+)*\S+'
     title: "Change local user password (passwd user)"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.85
     tags: [identity, local-user, crud]
   - id: CMD-VIPW-VIGR
-    pattern: '(?i)(?:^|[^a-z0-9_-])(?:vipw|vigr)\b'
+    pattern: '(?i)\b(?:vipw|vigr)\b'
     title: "Edit system passwd/group databases"
     severity: CRITICAL
     confidence: 0.90
@@ -46,13 +72,13 @@ rules:
   - id: CMD-DSCL-USER-CRUD
     pattern: '(?i)\bdscl\b[^|;\n]*\s+-(?:create|delete|change|merge)\b[^|;\n]*\b(?:/Users/|Users/|user)'
     title: "macOS dscl local user CRUD"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.90
     tags: [identity, local-user, crud, darwin]
   - id: CMD-SYSADMINCTL-ADD
     pattern: '(?i)\bsysadminctl\b[^|;\n]*\s+-addUser\b'
     title: "macOS sysadminctl add user"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.90
     tags: [identity, local-user, crud, darwin]
 
@@ -60,13 +86,13 @@ rules:
   - id: CMD-CISCO-USERNAME-SET
     pattern: '(?i)\busername\s+\S+\s+(?:secret|password|privilege)\b'
     title: "Cisco local username create/update"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.90
     tags: [identity, local-user, crud, cisco]
   - id: CMD-CISCO-USERNAME-DEL
     pattern: '(?i)\bno\s+username\s+\S+'
     title: "Cisco local username delete"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.92
     tags: [identity, local-user, crud, cisco]
 
@@ -74,13 +100,13 @@ rules:
   - id: CMD-JUNOS-LOGIN-USER
     pattern: '(?i)\bset\s+system\s+login\s+user\b'
     title: "Junos local login user create/update"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.90
     tags: [identity, local-user, crud, junos]
   - id: CMD-JUNOS-LOGIN-USER-DEL
     pattern: '(?i)\bdelete\s+system\s+login\s+user\b'
     title: "Junos local login user delete"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.92
     tags: [identity, local-user, crud, junos]
 
@@ -88,6 +114,6 @@ rules:
   - id: CMD-ARISTA-USERNAME
     pattern: '(?i)\busername\s+\S+\s+(?:secret|role|privilege)\b'
     title: "Arista EOS local username create/update"
-    severity: HIGH
+    severity: CRITICAL
     confidence: 0.88
     tags: [identity, local-user, crud, arista]

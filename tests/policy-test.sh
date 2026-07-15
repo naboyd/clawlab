@@ -123,6 +123,7 @@ chk "OUT: usermod (Linux update)"           block "$(inspect_tool bash 'usermod 
 chk "OUT: Cisco username create"            block "$(inspect_tool bash 'username netadmin secret Cisco123!')"
 chk "OUT: Cisco no username delete"         block "$(inspect_tool bash 'no username netadmin')"
 chk "OUT: Junos login user create"          block "$(inspect_tool bash 'set system login user harness class super-user')"
+chk "OUT: prompt ask create local user"     block "$(inspect_tool bash 'can you add a local user openclaw password openclaw to host c3560cx-bsmt')"
 
 hdr "2) ssh-ops MCP read-only allowlist"
 chk "in-policy: run_command uptime"        allow "$(mcp_verdict 'uptime')"
