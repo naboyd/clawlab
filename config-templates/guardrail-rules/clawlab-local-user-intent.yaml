@@ -1,0 +1,25 @@
+# Clawlab extension — detect user *requests* to CRUD local accounts (prompt layer).
+# Complements clawlab-local-user-crud.yaml command rules.
+version: 1
+
+injection:
+  - "create a local user"
+  - "add a local user"
+  - "delete a local user"
+  - "remove a local user"
+  - "modify a local user"
+  - "update a local user"
+  - "change a local user password"
+  - "create local userid"
+  - "add local userid"
+  - "delete local userid"
+
+injection_regexes:
+  - '(?i)\b(?:create|add|new|provision|register)\s+(?:a\s+)?(?:local\s+)?(?:user(?:\s+account)?|userid|login)\b'
+  - '(?i)\b(?:delete|remove|deprovision|disable|drop)\s+(?:a\s+)?(?:local\s+)?(?:user(?:\s+account)?|userid|login)\b'
+  - '(?i)\b(?:modify|update|change|reset|rename)\s+(?:a\s+)?(?:local\s+)?(?:user(?:\s+account)?|userid|login)\b'
+  - '(?i)\b(?:run|execute|issue)\s+(?:the\s+)?(?:command\s+)?(?:useradd|userdel|usermod|adduser|deluser)\b'
+  - '(?i)\busername\s+\S+\s+(?:secret|password|privilege)\b'
+  - '(?i)\bno\s+username\s+\S+'
+  - '(?i)\bset\s+system\s+login\s+user\b'
+  - '(?i)\bdelete\s+system\s+login\s+user\b'

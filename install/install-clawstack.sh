@@ -247,6 +247,12 @@ defenseclaw setup guardrail --connector openclaw --mode action \
   --rule-pack strict --detection-strategy regex_judge >/dev/null 2>&1 \
   || warn "guardrail setup returned non-zero (check 'defenseclaw guardrail status')"
 
+CLAWLAB_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -f "$CLAWLAB_REPO/admin-access/install-clawlab-guardrail-rules.sh" ]; then
+  bash "$CLAWLAB_REPO/admin-access/install-clawlab-guardrail-rules.sh" \
+    || warn "clawlab guardrail rules install failed"
+fi
+
 if yesno "Configure a Cisco Webex webhook for alerts?" y; then
   WEBEX_TOKEN="$(ask_secret '  Webex bot token')"
   WEBEX_ROOM="$(ask '  Webex room id')"

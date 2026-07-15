@@ -226,15 +226,17 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 
 {% if network_host_count %}
 <h2>Bulk network credentials</h2>
-<p class="hint">Apply one login/enable password to all {{ network_host_count }} network host(s).
+<p class="hint">Apply username and/or login/enable passwords to all {{ network_host_count }} network host(s).
 {% if missing_login_count %}{{ missing_login_count }} currently missing a login secret.{% else %}All have login secrets set.{% endif %}</p>
 <form class="card" method="post" action="{{ url_for('bulk_network_credentials') }}"
-      onsubmit="return confirm('Apply credentials to selected network hosts?')">
+      onsubmit="return confirm('Apply username/credentials to selected network hosts?')">
   <label><input type="checkbox" name="only_missing" value="1" checked style="width:auto">
-    Only hosts missing a login secret</label>
+    Only hosts missing a login secret <span class="hint">(password fields only; username applies to all)</span></label>
   <div class="row">
-    <div><label>Login password</label>
-      <input type="password" name="login_password" required autocomplete="new-password" placeholder="password">
+    <div><label>Username <span class="hint">(optional; updates all network hosts)</span></label>
+      <input type="text" name="bulk_username" autocomplete="username" placeholder="e.g. netadmin"></div>
+    <div><label>Login password <span class="hint">(optional if only changing username)</span></label>
+      <input type="password" name="login_password" autocomplete="new-password" placeholder="password">
       <input type="password" name="login_password_confirm" autocomplete="new-password" placeholder="confirm" style="margin-top:.3rem"></div>
     <div><label>Enable password <span class="hint">(optional; blank = use login password at enable)</span></label>
       <input type="password" name="enable_password" autocomplete="new-password" placeholder="password">
@@ -712,46 +714,79 @@ def reload_mcp():
 
 @app.route("/bulk-network-credentials", methods=["POST"])
 def bulk_network_credentials():
-    """Apply login/enable passwords to all (or missing-only) network hosts."""
+    """Apply username and/or login/enable passwords to network hosts."""
     f = request.form
+    bulk_username = (f.get("bulk_username") or "").strip()
     login_pw = f.get("login_password") or ""
     enable_pw = f.get("enable_password") or ""
     only_missing = f.get("only_missing") == "1"
 
-    if not login_pw:
-        return redirect(url_for("index", tab="hosts", msg="Login password is required."))
-    if login_pw != (f.get("login_password_confirm") or ""):
+    if not bulk_username and not login_pw and not enable_pw:
+        return redirect(
+            url_for("index", tab="hosts", msg="Provide a username and/or login password."),
+        )
+    if login_pw and login_pw != (f.get("login_password_confirm") or ""):
         return redirect(url_for("index", tab="hosts", msg="Login password entries did not match."))
     if enable_pw and enable_pw != (f.get("enable_password_confirm") or ""):
         return redirect(url_for("index", tab="hosts", msg="Enable password entries did not match."))
-
-    cfg = load_config()
-    with_login = set(secrets_store.hosts_with_secret("login"))
-    targets = [
-        name for name in _network_host_names(cfg)
-        if not only_missing or name not in with_login
-    ]
-    if not targets:
+    if enable_pw and not login_pw:
         return redirect(
-            url_for("index", tab="hosts", msg="No network hosts matched (all already have login secrets)."),
+            url_for("index", tab="hosts", msg="Login password is required when setting enable password."),
         )
 
-    for name in targets:
+    cfg = load_config()
+    network_names = _network_host_names(cfg)
+    if not network_names:
+        return redirect(url_for("index", tab="hosts", msg="No network hosts in inventory."))
+
+    with_login = set(secrets_store.hosts_with_secret("login"))
+    pw_targets = []
+    if login_pw:
+        pw_targets = [
+            name for name in network_names
+            if not only_missing or name not in with_login
+        ]
+        if not pw_targets:
+            return redirect(
+                url_for(
+                    "index",
+                    tab="hosts",
+                    msg="No network hosts matched (all already have login secrets).",
+                ),
+            )
+
+    user_targets = list(network_names) if bulk_username else []
+    changed = False
+    for name in user_targets:
+        host = cfg.setdefault("hosts", {}).setdefault(name, {})
+        if host.get("username") != bulk_username:
+            host["username"] = bulk_username
+            changed = True
+
+    for name in pw_targets:
         secrets_store.set_secret(name, "login", login_pw)
         if enable_pw:
             secrets_store.set_secret(name, "enable", enable_pw)
+
+    if changed:
+        save_config(cfg)
 
     try:
         os.utime(os.path.expanduser(str(CONFIG_PATH)), None)
     except OSError:
         pass
 
-    scope = "missing login secret" if only_missing else "all network hosts"
+    parts = []
+    if bulk_username:
+        parts.append(f"username '{bulk_username}' on {len(user_targets)} host(s)")
+    if login_pw:
+        scope = "missing login secret" if only_missing else "all network hosts"
+        parts.append(f"passwords on {len(pw_targets)} host(s) ({scope})")
     return redirect(
         url_for(
             "index",
             tab="hosts",
-            msg=f"Applied credentials to {len(targets)} host(s) ({scope}).",
+            msg=f"Applied {'; '.join(parts)}.",
         ),
     )
 

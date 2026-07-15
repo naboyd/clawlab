@@ -1,0 +1,93 @@
+# Clawlab extension — block local user account CRUD across platforms.
+# Install into ~/.defenseclaw/policies/guardrail/strict/rules/
+# via admin-access/install-clawlab-guardrail-rules.sh
+version: 1
+category: command
+rules:
+  # ---- Linux / Unix ----
+  - id: CMD-USERADD
+    pattern: '(?i)(?:^|[^a-z0-9_-])(?:useradd|adduser)\b'
+    title: "Create local Linux user account"
+    severity: HIGH
+    confidence: 0.92
+    tags: [identity, local-user, crud]
+  - id: CMD-USERDEL
+    pattern: '(?i)(?:^|[^a-z0-9_-])(?:userdel|deluser)\b'
+    title: "Delete local Linux user account"
+    severity: HIGH
+    confidence: 0.92
+    tags: [identity, local-user, crud]
+  - id: CMD-USERMOD
+    pattern: '(?i)(?:^|[^a-z0-9_-])usermod\b'
+    title: "Modify local Linux user account"
+    severity: HIGH
+    confidence: 0.90
+    tags: [identity, local-user, crud]
+  - id: CMD-CHPASSWD
+    pattern: '(?i)(?:^|[^a-z0-9_-])chpasswd\b'
+    title: "Bulk local password change (chpasswd)"
+    severity: HIGH
+    confidence: 0.88
+    tags: [identity, local-user, crud]
+  - id: CMD-PASSWD-USER
+    pattern: '(?i)(?:^|[^a-z0-9_-])passwd\s+(?:-[a-zA-Z]+\s+)*\S+'
+    title: "Change local user password (passwd user)"
+    severity: HIGH
+    confidence: 0.85
+    tags: [identity, local-user, crud]
+  - id: CMD-VIPW-VIGR
+    pattern: '(?i)(?:^|[^a-z0-9_-])(?:vipw|vigr)\b'
+    title: "Edit system passwd/group databases"
+    severity: CRITICAL
+    confidence: 0.90
+    tags: [identity, local-user, crud]
+
+  # ---- macOS ----
+  - id: CMD-DSCL-USER-CRUD
+    pattern: '(?i)\bdscl\b[^|;\n]*\s+-(?:create|delete|change|merge)\b[^|;\n]*\b(?:/Users/|Users/|user)'
+    title: "macOS dscl local user CRUD"
+    severity: HIGH
+    confidence: 0.90
+    tags: [identity, local-user, crud, darwin]
+  - id: CMD-SYSADMINCTL-ADD
+    pattern: '(?i)\bsysadminctl\b[^|;\n]*\s+-addUser\b'
+    title: "macOS sysadminctl add user"
+    severity: HIGH
+    confidence: 0.90
+    tags: [identity, local-user, crud, darwin]
+
+  # ---- Cisco IOS / IOS-XE / NX-OS ----
+  - id: CMD-CISCO-USERNAME-SET
+    pattern: '(?i)\busername\s+\S+\s+(?:secret|password|privilege)\b'
+    title: "Cisco local username create/update"
+    severity: HIGH
+    confidence: 0.90
+    tags: [identity, local-user, crud, cisco]
+  - id: CMD-CISCO-USERNAME-DEL
+    pattern: '(?i)\bno\s+username\s+\S+'
+    title: "Cisco local username delete"
+    severity: HIGH
+    confidence: 0.92
+    tags: [identity, local-user, crud, cisco]
+
+  # ---- Juniper Junos ----
+  - id: CMD-JUNOS-LOGIN-USER
+    pattern: '(?i)\bset\s+system\s+login\s+user\b'
+    title: "Junos local login user create/update"
+    severity: HIGH
+    confidence: 0.90
+    tags: [identity, local-user, crud, junos]
+  - id: CMD-JUNOS-LOGIN-USER-DEL
+    pattern: '(?i)\bdelete\s+system\s+login\s+user\b'
+    title: "Junos local login user delete"
+    severity: HIGH
+    confidence: 0.92
+    tags: [identity, local-user, crud, junos]
+
+  # ---- Arista EOS ----
+  - id: CMD-ARISTA-USERNAME
+    pattern: '(?i)\busername\s+\S+\s+(?:secret|role|privilege)\b'
+    title: "Arista EOS local username create/update"
+    severity: HIGH
+    confidence: 0.88
+    tags: [identity, local-user, crud, arista]

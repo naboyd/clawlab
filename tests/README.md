@@ -7,6 +7,8 @@ asserts on the outcome (exit non-zero on any failure).
 Layers covered:
 1. **DefenseClaw C2/exfil rules** via the sidecar inspect-tool API — public curl
    (allow) vs `/etc/shadow` exfil, `nc -e`, and `bash /dev/tcp` reverse shells (block).
+1b. **Clawlab local user CRUD rules** — `useradd`/`userdel`/`usermod`, Cisco
+   `username`/`no username`, Junos `set system login user` (block).
 2. **ssh-ops MCP read-only allowlist** — `uptime`/`df` (allow) vs `rm`/command
    chaining (block).
 3. **DefenseClaw tool-level block list** — `tool block`/`unblock` round-trip.

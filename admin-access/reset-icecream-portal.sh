@@ -45,6 +45,10 @@ python3 "$REPO/admin-access/apply-token-portal.py"
 echo
 
 echo "==> restart user services"
+if [ -x "$REPO/admin-access/install-clawlab-guardrail-rules.sh" ]; then
+  bash "$REPO/admin-access/install-clawlab-guardrail-rules.sh" || true
+fi
+
 systemctl --user restart openclaw-gateway claw-auth defenseclaw-webgui
 sleep 2
 systemctl --user is-active openclaw-gateway.service && pass "openclaw-gateway active" || fail "openclaw-gateway not active"
