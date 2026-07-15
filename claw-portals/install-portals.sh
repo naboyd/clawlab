@@ -306,7 +306,10 @@ NGINX
 write_unified_portal_nginx() {
   local out="$NGINX_AVAILABLE/clawlab-portal.conf"
   rm -f "$NGINX_ENABLED/clawlab-ssh-ops.conf" "$NGINX_ENABLED/clawlab-openclaw.conf" \
-        "$NGINX_ENABLED/clawlab-defenseclaw.conf" 2>/dev/null || true
+        "$NGINX_ENABLED/clawlab-defenseclaw.conf" \
+        "$NGINX_ENABLED/openclaw-control.conf" "$NGINX_ENABLED/ssh-ops-admin.conf" \
+        "$NGINX_ENABLED/openclaw-admin.conf" "$NGINX_ENABLED/defenseclaw-admin.conf" \
+        2>/dev/null || true
 
   {
     echo "map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }"
@@ -360,8 +363,14 @@ write_unified_portal_nginx() {
     echo "    # OpenClaw Control UI (:18789) — preserve /openclaw/ path (gateway basePath)"
     echo "    # No claw-auth auth_request here: gateway token auth handles WS; nginx"
     echo "    # auth_request on upgrade often yields 1006 (abnormal close) in browsers."
+    echo "    # Do NOT 301 /openclaw -> /openclaw/: browsers cannot complete WSS through redirects."
     echo "    location = /openclaw {"
-    echo "        return 301 /openclaw/;"
+    echo "        proxy_pass http://127.0.0.1:18789;"
+    nginx_proxy_common
+    echo "        proxy_buffering    off;"
+    echo "        proxy_cache          off;"
+    echo "        proxy_read_timeout  3600s;"
+    echo "        proxy_send_timeout  3600s;"
     echo "    }"
     echo "    location /openclaw/ {"
     echo "        proxy_pass http://127.0.0.1:18789;"

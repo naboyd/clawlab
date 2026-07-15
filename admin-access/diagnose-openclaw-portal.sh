@@ -2,6 +2,7 @@
 # Diagnose OpenClaw Control UI behind claw-auth + nginx (/openclaw/).
 set -euo pipefail
 
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OC_JSON="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
 PORT="${PORT_PORTAL:-8443}"
 DOMAIN="${DOMAIN:-icecream.naboydciscolab.com}"
@@ -66,6 +67,12 @@ journalctl --user -u openclaw-gateway --since "10 min ago" --no-pager 2>/dev/nul
   | grep -iE 'unauthorized|trusted_proxy|origin|pair|1008|ws |startup|failed' \
   | tail -20 || true
 
+echo
+echo "--- gateway token ---"
+if command -v python3 >/dev/null 2>&1 && [[ -x "$REPO/admin-access/print-gateway-url.sh" ]]; then
+  bash "$REPO/admin-access/print-gateway-url.sh" 2>/dev/null | head -3 || true
+else
+  echo "(run: bash admin-access/print-gateway-url.sh)"
 echo
 echo "Browser origin must exactly match an allowedOrigins entry, e.g.:"
 echo "  https://${DOMAIN}:${PORT}"

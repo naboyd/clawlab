@@ -14,12 +14,12 @@ curl -sk -o /dev/null -w "GET ${BASE} -> %{http_code}\n" "$BASE"
 
 echo
 echo "--- WebSocket upgrade via nginx (expect 101) ---"
-headers="$(curl -sk -D - -o /dev/null -N \
+headers="$(curl -sk --max-time 3 -D - -o /dev/null \
   -H "Connection: Upgrade" \
   -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  "$BASE" 2>/dev/null | head -1)"
+  "$BASE" 2>/dev/null | head -1)" || true
 echo "$headers"
 case "$headers" in
   *"101"*) echo "OK: nginx forwarded WebSocket upgrade" ;;
@@ -28,13 +28,17 @@ esac
 
 echo
 echo "--- loopback upgrade (expect 101) ---"
-headers="$(curl -s -D - -o /dev/null -N \
+headers="$(curl -s --max-time 3 -D - -o /dev/null \
   -H "Connection: Upgrade" \
   -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" \
   -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-  "http://127.0.0.1:18789/openclaw/" 2>/dev/null | head -1)"
+  "http://127.0.0.1:18789/openclaw/" 2>/dev/null | head -1)" || true
 echo "$headers"
+case "$headers" in
+  *"101"*) echo "OK: loopback forwarded WebSocket upgrade" ;;
+  *) echo "FAIL: expected HTTP/1.1 101 on loopback" ;;
+esac
 
 echo
 echo "While browser shows WSS error, run:"

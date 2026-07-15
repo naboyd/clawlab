@@ -346,21 +346,35 @@ def _read_gateway_token() -> str:
     return ""
 
 
-def _openclaw_hub_url() -> str:
-    """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target)."""
+def _openclaw_hub_url(host_header: str = "") -> str:
+    """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target).
+
+    gatewayUrl must use the same host:port the browser used to load the portal
+    (e.g. 192.168.128.93:8443 vs icecream.naboydciscolab.com:8443). A mismatch
+    often prevents WSS from reaching the gateway (no Mozilla lines in logs).
+    """
     page_path = os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/").strip()
     if not page_path.startswith("/"):
         page_path = "/" + page_path
 
-    portal_url = os.environ.get("CLAW_PORTAL_OPENCLAW_URL", "").strip()
-    if portal_url:
-        parsed = urlparse(portal_url)
-        host = parsed.hostname or "icecream.naboydciscolab.com"
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        path = (parsed.path or "/openclaw").rstrip("/") or "/openclaw"
-        wss = f"wss://{host}:{port}{path}"
+    host_header = (host_header or "").strip()
+    if host_header:
+        host = host_header.split(",")[0].strip()
+        if ":" in host:
+            hostname, port = host.rsplit(":", 1)
+        else:
+            hostname, port = host, "443"
+        wss = f"wss://{hostname}:{port}/openclaw/"
     else:
-        wss = "wss://icecream.naboydciscolab.com:8443/openclaw"
+        portal_url = os.environ.get("CLAW_PORTAL_OPENCLAW_URL", "").strip()
+        if portal_url:
+            parsed = urlparse(portal_url)
+            host = parsed.hostname or "icecream.naboydciscolab.com"
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            path = (parsed.path or "/openclaw/").rstrip("/") + "/"
+            wss = f"wss://{host}:{port}{path}"
+        else:
+            wss = "wss://icecream.naboydciscolab.com:8443/openclaw/"
 
     query = f"gatewayUrl={quote(wss, safe='')}"
     token = _read_gateway_token()
@@ -370,12 +384,12 @@ def _openclaw_hub_url() -> str:
     return url
 
 
-def _portal_tabs() -> list[dict]:
+def _portal_tabs(host_header: str = "") -> list[dict]:
     return [
         {
             "id": "openclaw",
             "label": "OpenClaw",
-            "external": _openclaw_hub_url(),
+            "external": _openclaw_hub_url(host_header),
         },
         {
             "id": "ssh-ops",
@@ -500,11 +514,12 @@ def hub():
     sess = _session_user()
     if not sess:
         return _login_redirect(request.full_path)
+    portal_host = request.headers.get("X-Forwarded-Host") or request.host
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
         user=sess,
-        tabs=_portal_tabs(),
+        tabs=_portal_tabs(portal_host),
         links=_portal_links(),
     )
 

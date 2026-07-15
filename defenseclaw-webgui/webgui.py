@@ -362,15 +362,22 @@ RULE_FILE = """
 @app.route("/rule-pack")
 def rule_pack():
     pack_dir = ps.rule_pack_dir()
-    files = [ps.relative_to_home(p) for p in ps.list_rule_pack_files(pack_dir)]
+    files = [
+        str(p.relative_to(pack_dir.resolve()))
+        for p in ps.list_rule_pack_files(pack_dir)
+    ]
     return render_page(RULE_PACK, "rule_pack", pack_dir=str(pack_dir), files=files)
 
 
 @app.route("/rule-pack/edit/<path:relpath>", methods=["GET", "POST"])
 def edit_rule_file(relpath: str):
-    pack_dir = ps.rule_pack_dir()
+    pack_dir = ps.rule_pack_dir().resolve()
+    # Legacy links used paths relative to DEFENSECLAW_HOME; normalize to pack_dir.
+    pack_prefix = str(pack_dir.relative_to(ps.DEFENSECLAW_HOME.resolve())).replace("\\", "/")
+    if relpath.startswith(pack_prefix + "/"):
+        relpath = relpath[len(pack_prefix) + 1 :]
     target = (pack_dir / relpath).resolve()
-    if not str(target).startswith(str(pack_dir.resolve())):
+    if not str(target).startswith(str(pack_dir)):
         return redirect(url_for("rule_pack", msg="Invalid path.", kind="err"))
 
     if request.method == "POST":

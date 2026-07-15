@@ -15,7 +15,9 @@ CONFIG_PATH = OC_HOME / "openclaw.json"
 ENV_PATH = OC_HOME / ".env"
 SYSTEMD_ENV_PATH = OC_HOME / "gateway.systemd.env"
 TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
-TOKEN_REF = TOKEN_ENV
+# SecretRef shorthand — plain "OPENCLAW_GATEWAY_TOKEN" is treated as a literal token
+# string by the CLI, while the gateway daemon resolves the homonymous env var.
+TOKEN_SECRET_REF = f"${{{TOKEN_ENV}}}"
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -53,7 +55,21 @@ def _upsert_env_var(path: Path, key: str, value: str) -> None:
         pass
 
 
+def _sync_env_token_files() -> None:
+    """Keep ~/.openclaw/.env and gateway.systemd.env on the same token value."""
+    env = _read_env_file(ENV_PATH)
+    systemd = _read_env_file(SYSTEMD_ENV_PATH)
+    token = systemd.get(TOKEN_ENV) or env.get(TOKEN_ENV)
+    if not token or token == "REPLACE_WITH_A_LONG_RANDOM_STRING":
+        return
+    if env.get(TOKEN_ENV) and env.get(TOKEN_ENV) != token:
+        print(f"Syncing {ENV_PATH} token to match {SYSTEMD_ENV_PATH.name}")
+    _upsert_env_var(ENV_PATH, TOKEN_ENV, token)
+    _upsert_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV, token)
+
+
 def _ensure_gateway_token() -> None:
+    _sync_env_token_files()
     env = _read_env_file(ENV_PATH)
     env.update(_read_env_file(SYSTEMD_ENV_PATH))
     if TOKEN_ENV in env and env[TOKEN_ENV] and env[TOKEN_ENV] != "REPLACE_WITH_A_LONG_RANDOM_STRING":
@@ -65,7 +81,9 @@ def _ensure_gateway_token() -> None:
             continue
         old = json.loads(bak.read_text())
         tok = old.get("gateway", {}).get("auth", {}).get("token")
-        if tok and tok not in (TOKEN_REF, TOKEN_ENV) and not str(tok).startswith("OPENCLAW_"):
+        if tok and tok not in (TOKEN_SECRET_REF, TOKEN_ENV) and not str(tok).startswith(
+            ("OPENCLAW_", "${")
+        ):
             _upsert_env_var(ENV_PATH, TOKEN_ENV, str(tok))
             _upsert_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV, str(tok))
             print(f"Restored {TOKEN_ENV} from {bak.name}")
@@ -91,11 +109,15 @@ def main() -> int:
     shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-token-portal.bak")
 
     gw["bind"] = "loopback"
-    gw.pop("trustedProxies", None)
+    gw["trustedProxies"] = ["127.0.0.1", "::1"]
     auth.pop("trustedProxy", None)
     auth.pop("password", None)
     auth["mode"] = "token"
-    auth["token"] = TOKEN_REF
+    auth["token"] = TOKEN_SECRET_REF
+    # Local loopback CLI uses gateway.auth.token / OPENCLAW_GATEWAY_TOKEN env.
+    # gateway.remote.token in local mode confuses the CLI into sending the env
+    # var *name* as the token instead of resolving the env value.
+    gw.setdefault("remote", {}).pop("token", None)
 
     ui = gw.setdefault("controlUi", {})
     domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
@@ -104,9 +126,13 @@ def main() -> int:
         f"https://{domain}:{port}",
         f"https://192.168.128.93:{port}",
         f"https://icecream:{port}",
+        "http://127.0.0.1:18789",
+        "http://localhost:18789",
     }
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))
     ui["basePath"] = "/openclaw"
+    # SSH tunnel / plain HTTP needs token-only auth (no WebCrypto device identity).
+    ui["allowInsecureAuth"] = True
 
     CONFIG_PATH.write_text(json.dumps(c, indent=2) + "\n")
     print("token auth enabled; backup:", str(CONFIG_PATH) + ".pre-token-portal.bak")
