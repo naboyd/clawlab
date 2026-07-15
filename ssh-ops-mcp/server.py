@@ -39,6 +39,8 @@ from mcp.server.fastmcp import FastMCP
 
 import inventory
 import secrets_store
+import change_engine
+import network_apply
 
 # --------------------------------------------------------------------------- #
 # Configuration loading
@@ -845,6 +847,88 @@ def download_file(host: str, remote_path: str, local_name: str) -> dict[str, Any
     finally:
         if client:
             client.close()
+
+
+# --------------------------------------------------------------------------- #
+# Approval-gated network changes (propose → human approve → apply)
+# --------------------------------------------------------------------------- #
+
+network_apply.configure(
+    get_host=_get_host,
+    platform_fn=_platform,
+    netmiko_type_fn=_netmiko_type,
+    expand_fn=_expand,
+    connect_timeout=CONNECT_TIMEOUT,
+    command_timeout=COMMAND_TIMEOUT,
+)
+
+
+@mcp.tool()
+def propose_change(
+    host: str,
+    change_type: str,
+    spec: dict[str, Any],
+    intent: str = "",
+) -> dict[str, Any]:
+    """Propose a gated network configuration change (no device writes).
+
+    Creates a change record in ``proposed`` status. A human must approve it in
+    MCP Admin before ``apply_change`` will run. Supported change_type values:
+
+    * ``ios_local_user`` — spec: username, password/secret, privilege, action
+      (create|delete)
+    * ``ios_config_lines`` — spec: lines (list), optional group, optional rollback/verify
+
+    Arbitrary config outside allow_groups in ios-xe-policy.yaml is rejected.
+
+    Args:
+        host: Network host name from list_hosts().
+        change_type: e.g. ``ios_local_user``, ``ios_interface_state``, ``ios_config_lines``.
+        spec: Structured change parameters (see change_type docs).
+        intent: Optional human-readable description.
+    """
+    _audit(host, "propose_change", f"{change_type} {spec.get('username', '')}")
+    return change_engine.propose_change(
+        host=host,
+        change_type=change_type,
+        spec=spec,
+        intent=intent,
+        created_by="agent",
+        get_host=_get_host,
+        platform_fn=_platform,
+    )
+
+
+@mcp.tool()
+def get_change(change_id: str) -> dict[str, Any]:
+    """Return a change record by id (secrets redacted)."""
+    _audit("—", "get_change", change_id)
+    return change_engine.get_change(change_id, redact=True)
+
+
+@mcp.tool()
+def list_changes(status: str | None = None) -> list[dict[str, Any]]:
+    """List change records, optionally filtered by status (proposed, approved, ...)."""
+    _audit("—", "list_changes", status or "all")
+    return change_engine.list_changes(status=status, redact=True)
+
+
+@mcp.tool()
+def apply_change(change_id: str) -> dict[str, Any]:
+    """Apply an approved network change (backup → push → verify → write memory).
+
+    Refuses unless the change status is ``approved``. Approval is only possible
+    via the MCP Admin GUI — the agent cannot self-approve.
+    """
+    _audit("—", "apply_change", change_id)
+    return change_engine.apply_change(change_id, actor="mcp")
+
+
+@mcp.tool()
+def rollback_change(change_id: str) -> dict[str, Any]:
+    """Roll back a previously applied change using its stored rollback plan."""
+    _audit("—", "rollback_change", change_id)
+    return change_engine.rollback_change(change_id, actor="mcp")
 
 
 if __name__ == "__main__":

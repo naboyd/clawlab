@@ -1,0 +1,116 @@
+# IOS-XE configuration policy — single source of truth for:
+#   • DefenseClaw inspect (always_block → CRITICAL hard-block)
+#   • ssh-ops MCP propose_change / ios_config_lines (allow_groups + always_block)
+#
+# Severity model (DefenseClaw):
+#   CRITICAL — always_block entries: never reach the device (hard-block chat/tools)
+#   HIGH     — optional advisory rules (alert, not block) for risky-but-permitted ops
+#   MCP      — allowed lines still require human approval before apply_change
+#
+# Webex: add event type "change" to webhook events to get alerts when approved
+# config is applied (see change_notify.py).
+version: 1
+platform: ios-xe
+mode: default_deny
+
+always_block:
+  - id: IOS-BLK-USERNAME
+    group: identity
+    pattern: '(?i)^username\s+\S+'
+    title: "Cisco local username create/update"
+    severity: CRITICAL
+  - id: IOS-BLK-NO-USERNAME
+    group: identity
+    pattern: '(?i)^no\s+username\s+\S+'
+    title: "Cisco local username delete"
+    severity: CRITICAL
+  - id: IOS-BLK-AAA
+    group: identity
+    pattern: '(?i)^aaa\s+'
+    title: "AAA configuration change"
+    severity: CRITICAL
+  - id: IOS-BLK-TACACS
+    group: identity
+    pattern: '(?i)^tacacs'
+    title: "TACACS configuration"
+    severity: CRITICAL
+  - id: IOS-BLK-RADIUS
+    group: identity
+    pattern: '(?i)^radius'
+    title: "RADIUS configuration"
+    severity: CRITICAL
+  - id: IOS-BLK-ENABLE-SECRET
+    group: management
+    pattern: '(?i)^enable\s+secret\b'
+    title: "Enable secret change"
+    severity: CRITICAL
+  - id: IOS-BLK-LINE-VTY
+    group: management
+    pattern: '(?i)^line\s+vty\b'
+    title: "VTY line configuration"
+    severity: CRITICAL
+  - id: IOS-BLK-CRYPTO-KEY
+    group: management
+    pattern: '(?i)^crypto\s+key\b'
+    title: "Crypto key generation"
+    severity: CRITICAL
+  - id: IOS-BLK-RELOAD
+    group: destructive
+    pattern: '(?i)^reload\b'
+    title: "Device reload"
+    severity: CRITICAL
+  - id: IOS-BLK-WRITE-ERASE
+    group: destructive
+    pattern: '(?i)^write\s+erase\b'
+    title: "Erase startup config"
+    severity: CRITICAL
+  - id: IOS-BLK-ERASE
+    group: destructive
+    pattern: '(?i)^erase\s+'
+    title: "Erase flash/filesystem"
+    severity: CRITICAL
+  - id: IOS-BLK-FORMAT
+    group: destructive
+    pattern: '(?i)^format\s+'
+    title: "Format filesystem"
+    severity: CRITICAL
+  - id: IOS-BLK-COPY-RUN
+    group: destructive
+    pattern: '(?i)^copy\s+running-config\b'
+    title: "Copy running-config (exfil risk)"
+    severity: CRITICAL
+  - id: IOS-BLK-ROUTER-BGP
+    group: routing
+    pattern: '(?i)^router\s+bgp\b'
+    title: "BGP routing process"
+    severity: CRITICAL
+  - id: IOS-BLK-ROUTER-OSPF
+    group: routing
+    pattern: '(?i)^router\s+ospf\b'
+    title: "OSPF routing process"
+    severity: CRITICAL
+  - id: IOS-BLK-IP-ROUTE-DEFAULT
+    group: routing
+    pattern: '(?i)^ip\s+route\s+0\.0\.0\.0\b'
+    title: "Default route injection"
+    severity: CRITICAL
+
+allow_groups:
+  interface_l2:
+    description: "Access port admin state, description, access VLAN"
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et|Port-channel|Po)\S+'
+      - '(?i)^\s+shutdown\s*$'
+      - '(?i)^\s+no\s+shutdown\s*$'
+      - '(?i)^\s+description\s+'
+      - '(?i)^\s+switchport\s+mode\s+access\s*$'
+      - '(?i)^\s+switchport\s+access\s+vlan\s+\d+'
+  vlan:
+    description: "Create VLAN and assign name"
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+      - '(?i)^vlan\s+\d+'
+      - '(?i)^\s+name\s+'

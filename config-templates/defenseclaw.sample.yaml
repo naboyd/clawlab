@@ -241,5 +241,9 @@ webhooks:
   - block
   - drift
   - guardrail
+  - change
   timeout_seconds: 10
   enabled: true
+# Webhook event "change": informational alert when ssh-ops applies an approved
+# IOS config change (see ssh-ops-mcp/change_notify.py). Does not use DefenseClaw
+# audit.db — posts directly to Webex after successful apply_change.

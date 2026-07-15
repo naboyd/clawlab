@@ -32,6 +32,17 @@ import discovery_import
 import credential_test
 
 try:
+    import change_store
+    import change_engine
+    import network_apply
+except ImportError:
+    change_store = None  # type: ignore[assignment]
+    change_engine = None  # type: ignore[assignment]
+    network_apply = None  # type: ignore[assignment]
+
+_network_apply_ready = False
+
+try:
     from network_discovery import run_discovery
 except ImportError:
     run_discovery = None  # type: ignore[misc, assignment]
@@ -211,6 +222,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 <nav class="tabs">
   <a href="{{ url_for('index', tab='hosts') }}" class="{% if tab=='hosts' %}active{% endif %}">Hosts</a>
   <a href="{{ url_for('index', tab='discovery') }}" class="{% if tab=='discovery' %}active{% endif %}">Discovery{% if staging_count %}<span class="badge">{{ staging_count }}</span>{% endif %}</a>
+  <a href="{{ url_for('index', tab='changes') }}" class="{% if tab=='changes' %}active{% endif %}">Changes{% if pending_change_count %}<span class="badge">{{ pending_change_count }}</span>{% endif %}</a>
 </nav>
 
 <div id="tab-hosts" class="tab-panel {% if tab=='hosts' %}active{% endif %}">
@@ -503,6 +515,118 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 </form>
 {% endif %}
 </div>
+
+<div id="tab-changes" class="tab-panel {% if tab=='changes' %}active{% endif %}">
+<h2>Pending network changes</h2>
+<p class="hint">Agents may <code>propose_change</code> only. Approve here before
+<code>apply_change</code> runs on the device (backup → config → verify → write memory).</p>
+{% if not changes_enabled %}
+<div class="banner err">Change modules not available in this container image.</div>
+{% else %}
+<table>
+<tr><th>ID</th><th>Status</th><th>Risk</th><th>Host</th><th>Intent</th><th>Created</th><th>Actions</th></tr>
+{% for c in changes %}
+<tr>
+  <td><code>{{ c.id }}</code></td>
+  <td>{{ c.status }}</td>
+  <td>{{ c.risk }}</td>
+  <td>{% if c.targets %}{{ c.targets[0].name }}{% else %}—{% endif %}</td>
+  <td>{{ c.intent or c.change_type }}</td>
+  <td>{{ c.created_at or '—' }}</td>
+  <td class="actions">
+  {% if c.status == 'proposed' %}
+  <form method="post" action="{{ url_for('change_approve') }}" style="display:inline">
+    <input type="hidden" name="change_id" value="{{ c.id }}">
+    <input type="hidden" name="tab" value="changes">
+    <button type="submit">Approve</button>
+  </form>
+  <form method="post" action="{{ url_for('change_reject') }}" style="display:inline">
+    <input type="hidden" name="change_id" value="{{ c.id }}">
+    <input type="hidden" name="tab" value="changes">
+    <button type="submit" class="del">Reject</button>
+  </form>
+  {% elif c.status == 'approved' %}
+  <form method="post" action="{{ url_for('change_apply') }}" style="display:inline">
+    <input type="hidden" name="change_id" value="{{ c.id }}">
+    <input type="hidden" name="tab" value="changes">
+    <button type="submit">Apply now</button>
+  </form>
+  {% elif c.status == 'applied' %}
+  <form method="post" action="{{ url_for('change_rollback') }}" style="display:inline"
+        onsubmit="return confirm('Roll back {{ c.id }}?');">
+    <input type="hidden" name="change_id" value="{{ c.id }}">
+    <input type="hidden" name="tab" value="changes">
+    <button type="submit" class="sec">Rollback</button>
+  </form>
+  {% else %}—{% endif %}
+  </td>
+</tr>
+{% if c.targets %}
+<tr><td colspan="7" style="background:#fafafa">
+  <b>Apply:</b> <code>{{ c.targets[0].apply|join('; ') }}</code><br>
+  <b>Rollback:</b> <code>{{ c.targets[0].rollback|join('; ') }}</code>
+</td></tr>
+{% endif %}
+{% else %}
+<tr><td colspan="7" class="hint">No changes yet.</td></tr>
+{% endfor %}
+</table>
+
+<h2>Propose IOS local user</h2>
+<form method="post" action="{{ url_for('change_propose') }}" class="card">
+  <input type="hidden" name="tab" value="changes">
+  <div class="row">
+    <div><label>Host</label>
+      <select name="host" required>
+        <option value="">— select —</option>
+        {% for n in network_host_names %}
+        <option value="{{ n }}">{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>Username</label><input type="text" name="username" required maxlength="32"></div>
+    <div><label>Privilege</label><input type="number" name="privilege" value="15" min="1" max="15"></div>
+  </div>
+  <div class="row">
+    <div><label>Password / secret</label><input type="password" name="password" required autocomplete="new-password"></div>
+    <div><label>Confirm password</label><input type="password" name="password_confirm" required autocomplete="new-password"></div>
+    <div><label>Action</label>
+      <select name="action"><option value="create">create</option><option value="delete">delete</option></select>
+    </div>
+  </div>
+  <label>Intent (optional)</label><input type="text" name="intent" placeholder="e.g. Add break-glass local account">
+  <button type="submit">Propose change</button>
+</form>
+
+<h2>Propose IOS config lines</h2>
+<p class="hint">Lines must match an <code>allow_groups</code> entry in
+<code>ios-xe-policy.yaml</code> and must not hit <code>always_block</code>.
+Groups: <code>interface_l2</code>, <code>vlan</code>.</p>
+<form method="post" action="{{ url_for('change_propose_lines') }}" class="card">
+  <input type="hidden" name="tab" value="changes">
+  <div class="row">
+    <div><label>Host</label>
+      <select name="host" required>
+        <option value="">— select —</option>
+        {% for n in network_host_names %}
+        <option value="{{ n }}">{{ n }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label>Allow group</label>
+      <select name="group" required>
+        <option value="interface_l2">interface_l2</option>
+        <option value="vlan">vlan</option>
+      </select>
+    </div>
+  </div>
+  <label>Config lines (one per line)</label>
+  <textarea name="lines" rows="6" style="width:100%;font-family:monospace;font-size:.85rem" required placeholder="interface GigabitEthernet1/0/24&#10; shutdown"></textarea>
+  <label>Intent (optional)</label><input type="text" name="intent" placeholder="e.g. Shut port during maintenance">
+  <button type="submit">Propose config lines</button>
+</form>
+{% endif %}
+</div>
 </body></html>
 """
 
@@ -558,7 +682,72 @@ working until you click <i>Revoke previous</i>, so you won't lock yourself out.<
 
 def _active_tab() -> str:
     tab = (request.args.get("tab") or request.form.get("tab") or "hosts").strip().lower()
-    return tab if tab in ("hosts", "discovery") else "hosts"
+    return tab if tab in ("hosts", "discovery", "changes") else "hosts"
+
+
+def _changes_redirect(msg: str, *, err: bool = False):
+    return redirect(url_for("index", tab="changes", msg=msg, err="1" if err else None))
+
+
+def _get_host_entry(name: str) -> dict:
+    cfg = load_config()
+    hosts = cfg.get("hosts", {})
+    if name not in hosts:
+        raise ValueError(f"Unknown host '{name}'. Known: {', '.join(sorted(hosts))}")
+    return hosts[name]
+
+
+def _host_platform(h: dict) -> str:
+    return str(h.get("platform", "linux") or "linux").strip().lower()
+
+
+def _ensure_network_apply() -> None:
+    global _network_apply_ready
+    if _network_apply_ready or network_apply is None:
+        return
+    import server as srv
+
+    network_apply.configure(
+        get_host=srv._get_host,
+        platform_fn=srv._platform,
+        netmiko_type_fn=srv._netmiko_type,
+        expand_fn=srv._expand,
+        connect_timeout=int(srv.CONNECT_TIMEOUT),
+        command_timeout=int(srv.COMMAND_TIMEOUT),
+    )
+    _network_apply_ready = True
+
+
+def _gui_user() -> str:
+    return (os.environ.get("SSH_OPS_GUI_USER") or "gui-operator").strip() or "gui-operator"
+
+
+def _changes_for_gui(raw_changes: list[dict]) -> list[dict]:
+    """Copy changes for display with secrets redacted."""
+    import ios_change as _ios
+
+    out: list[dict] = []
+    for change in raw_changes:
+        cc = dict(change)
+        if isinstance(cc.get("spec"), dict):
+            cc["spec"] = _ios.public_spec(cc["spec"])
+        targets = []
+        for t in cc.get("targets") or []:
+            if not isinstance(t, dict):
+                continue
+            tt = dict(t)
+            redacted_apply = []
+            for line in tt.get("apply") or []:
+                if " secret " in str(line):
+                    head, _tail = str(line).split(" secret ", 1)
+                    redacted_apply.append(f"{head} secret ***")
+                else:
+                    redacted_apply.append(str(line))
+            tt["apply"] = redacted_apply
+            targets.append(tt)
+        cc["targets"] = targets
+        out.append(cc)
+    return out
 
 
 def _discovery_redirect(msg: str, *, err: bool = False):
@@ -628,6 +817,18 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         job_status = {"status": "idle", "message": ""}
     with_login = set(secrets_store.hosts_with_secret("login"))
     network_names = _network_host_names(cfg)
+    changes_enabled = change_store is not None and change_engine is not None
+    pending_changes: list = []
+    all_changes: list = []
+    if changes_enabled:
+        try:
+            change_store.ensure_dir()
+            all_changes = change_store.list_changes()
+            pending_changes = [c for c in all_changes if c.get("status") == "proposed"]
+            all_changes = _changes_for_gui(all_changes)
+        except Exception:
+            all_changes = []
+            pending_changes = []
     ctx = dict(
         common_style=COMMON_STYLE,
         tab=active,
@@ -639,6 +840,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         with_login=with_login,
         with_enable=set(secrets_store.hosts_with_secret("enable")),
         network_host_count=len(network_names),
+        network_host_names=network_names,
         missing_login_count=sum(1 for n in network_names if n not in with_login),
         test_host_sel=(request.args.get("test_host") or "").strip(),
         config_path=str(CONFIG_PATH),
@@ -649,6 +851,9 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         edit_tags=_tags_for_form(edit_host),
         devices=devices,
         staging_count=len(devices),
+        pending_change_count=len(pending_changes),
+        changes_enabled=changes_enabled,
+        changes=all_changes,
         job_status=job_status,
         defaults=_discovery_defaults(),
         netmiko_ok=run_discovery is not None,
@@ -1138,6 +1343,137 @@ def discovery_import_route():
 def discovery_clear():
     discovery_import.clear_staging(CONFIG_PATH)
     return _discovery_redirect("Staging cleared.")
+
+
+@app.route("/changes/approve", methods=["POST"])
+def change_approve():
+    if change_store is None:
+        return _changes_redirect("Change store unavailable.", err=True)
+    cid = (request.form.get("change_id") or "").strip()
+    if not cid:
+        return _changes_redirect("Missing change id.", err=True)
+    try:
+        change_store.approve(cid, _gui_user())
+    except (FileNotFoundError, ValueError) as exc:
+        return _changes_redirect(str(exc), err=True)
+    return _changes_redirect(f"Approved {cid}. Use Apply now or let the agent call apply_change.")
+
+
+@app.route("/changes/reject", methods=["POST"])
+def change_reject():
+    if change_store is None:
+        return _changes_redirect("Change store unavailable.", err=True)
+    cid = (request.form.get("change_id") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    if not cid:
+        return _changes_redirect("Missing change id.", err=True)
+    try:
+        change_store.reject(cid, _gui_user(), note=note)
+    except (FileNotFoundError, ValueError) as exc:
+        return _changes_redirect(str(exc), err=True)
+    return _changes_redirect(f"Rejected {cid}.")
+
+
+@app.route("/changes/apply", methods=["POST"])
+def change_apply():
+    if change_engine is None:
+        return _changes_redirect("Change engine unavailable.", err=True)
+    cid = (request.form.get("change_id") or "").strip()
+    if not cid:
+        return _changes_redirect("Missing change id.", err=True)
+    _ensure_network_apply()
+    result = change_engine.apply_change(cid, actor=_gui_user())
+    if result.get("error"):
+        return _changes_redirect(f"{cid}: {result['error']}", err=True)
+    return _changes_redirect(f"{cid} applied successfully.")
+
+
+@app.route("/changes/rollback", methods=["POST"])
+def change_rollback():
+    if change_engine is None:
+        return _changes_redirect("Change engine unavailable.", err=True)
+    cid = (request.form.get("change_id") or "").strip()
+    if not cid:
+        return _changes_redirect("Missing change id.", err=True)
+    _ensure_network_apply()
+    result = change_engine.rollback_change(cid, actor=_gui_user())
+    if result.get("error"):
+        return _changes_redirect(f"{cid}: {result['error']}", err=True)
+    return _changes_redirect(f"{cid} rollback finished (status={result.get('status')}).")
+
+
+@app.route("/changes/propose-lines", methods=["POST"])
+def change_propose_lines():
+    if change_engine is None:
+        return _changes_redirect("Change engine unavailable.", err=True)
+    f = request.form
+    host = (f.get("host") or "").strip()
+    group = (f.get("group") or "").strip()
+    intent = (f.get("intent") or "").strip()
+    raw_lines = f.get("lines") or ""
+    lines = [ln.rstrip() for ln in raw_lines.splitlines() if ln.strip()]
+    if not host:
+        return _changes_redirect("Host is required.", err=True)
+    if not lines:
+        return _changes_redirect("At least one config line is required.", err=True)
+    result = change_engine.propose_change(
+        host=host,
+        change_type="ios_config_lines",
+        spec={"lines": lines, "group": group},
+        intent=intent,
+        created_by=_gui_user(),
+        get_host=_get_host_entry,
+        platform_fn=_host_platform,
+    )
+    if result.get("error"):
+        detail = result.get("errors") or result["error"]
+        return _changes_redirect(f"Proposal failed: {detail}", err=True)
+    return _changes_redirect(
+        f"Proposed {result.get('change_id')} ({group}) — approve before apply."
+    )
+
+
+@app.route("/changes/propose", methods=["POST"])
+def change_propose():
+    if change_engine is None:
+        return _changes_redirect("Change engine unavailable.", err=True)
+    f = request.form
+    host = (f.get("host") or "").strip()
+    username = (f.get("username") or "").strip()
+    password = f.get("password") or ""
+    password_confirm = f.get("password_confirm") or ""
+    action = (f.get("action") or "create").strip().lower()
+    intent = (f.get("intent") or "").strip()
+    if not host:
+        return _changes_redirect("Host is required.", err=True)
+    if action == "create" and password != password_confirm:
+        return _changes_redirect("Password entries did not match.", err=True)
+    try:
+        privilege = int(f.get("privilege") or 15)
+    except ValueError:
+        return _changes_redirect("Privilege must be a number.", err=True)
+    spec = {
+        "username": username,
+        "action": action,
+        "privilege": privilege,
+    }
+    if action == "create":
+        spec["password"] = password
+    result = change_engine.propose_change(
+        host=host,
+        change_type="ios_local_user",
+        spec=spec,
+        intent=intent,
+        created_by=_gui_user(),
+        get_host=_get_host_entry,
+        platform_fn=_host_platform,
+    )
+    if result.get("error"):
+        detail = result.get("errors") or result["error"]
+        return _changes_redirect(f"Proposal failed: {detail}", err=True)
+    return _changes_redirect(
+        f"Proposed {result.get('change_id')} — approve it before apply."
+    )
 
 
 @app.route("/delete", methods=["POST"])

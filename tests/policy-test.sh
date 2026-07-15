@@ -125,6 +125,11 @@ chk "OUT: Cisco no username delete"         block "$(inspect_tool bash 'no usern
 chk "OUT: Junos login user create"          block "$(inspect_tool bash 'set system login user harness class super-user')"
 chk "OUT: prompt ask create local user"     block "$(inspect_tool bash 'can you add a local user openclaw password openclaw to host c3560cx-bsmt')"
 
+hdr "1c) IOS-XE policy blocks (inspect-tool API)"
+chk "OUT: Cisco reload"                     block "$(inspect_tool bash 'reload')"
+chk "OUT: Cisco username in config"         block "$(inspect_tool bash 'username netadmin secret x')"
+chk "IN: interface shutdown line"           allow "$(inspect_tool bash 'interface GigabitEthernet1/0/1 shutdown')"
+
 hdr "2) ssh-ops MCP read-only allowlist"
 chk "in-policy: run_command uptime"        allow "$(mcp_verdict 'uptime')"
 chk "in-policy: run_command df -h /"       allow "$(mcp_verdict 'df -h /')"
