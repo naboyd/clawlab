@@ -61,6 +61,7 @@ fi
 
 echo
 echo "--- recent gateway WS/auth log lines ---"
+echo "(gateway-client + Go-http-client = internal backend; browser shows Mozilla/Chrome/Safari)"
 journalctl --user -u openclaw-gateway --since "10 min ago" --no-pager 2>/dev/null \
   | grep -iE 'unauthorized|trusted_proxy|origin|pair|1008|ws |startup|failed' \
   | tail -20 || true

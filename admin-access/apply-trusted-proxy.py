@@ -98,7 +98,9 @@ def main() -> int:
     auth.pop("token", None)
     auth["trustedProxy"] = {
         "userHeader": "x-forwarded-user",
-        "requiredHeaders": ["x-forwarded-proto", "x-forwarded-host"],
+        # Do not set requiredHeaders: loopback gateway-client backends connect
+        # directly without proxy headers; requiredHeaders makes OpenClaw reject
+        # them before password fallback (trusted_proxy_missing_header_*).
         "allowUsers": [],
         "allowLoopback": True,
     }

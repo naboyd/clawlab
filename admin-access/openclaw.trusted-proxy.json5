@@ -10,7 +10,7 @@
       mode: "trusted-proxy",
       trustedProxy: {
         userHeader: "x-forwarded-user",
-        requiredHeaders: ["x-forwarded-proto", "x-forwarded-host"],
+        // omit requiredHeaders — see apply-trusted-proxy.py
         allowUsers: [],
         allowLoopback: true,
       },

@@ -234,8 +234,7 @@ g=d.setdefault("gateway",{})
 g["bind"]="loopback"; g["host"]="127.0.0.1"; g["port"]=18789
 g["trustedProxies"]=["127.0.0.1"]
 g["auth"]={"mode":"trusted-proxy","password":"OPENCLAW_GATEWAY_PASSWORD",
-           "trustedProxy":{"userHeader":"x-forwarded-user","allowUsers":[],"allowLoopback":True,
-                           "requiredHeaders":["x-forwarded-proto","x-forwarded-host"]}}
+           "trustedProxy":{"userHeader":"x-forwarded-user","allowUsers":[],"allowLoopback":True}}
 g.setdefault("controlUi",{})["allowedOrigins"]=[f"https://{fqdn}:8444",f"https://{lan}:8444"]
 json.dump(d,open(p,"w"),indent=1); print("  gateway loopback + trusted-proxy; Control UI origin",fqdn)
 PY
