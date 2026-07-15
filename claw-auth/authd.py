@@ -347,11 +347,27 @@ def _read_gateway_token() -> str:
 
 
 def _openclaw_hub_url() -> str:
-    base = os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/")
+    """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target)."""
+    page_path = os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/").strip()
+    if not page_path.startswith("/"):
+        page_path = "/" + page_path
+
+    portal_url = os.environ.get("CLAW_PORTAL_OPENCLAW_URL", "").strip()
+    if portal_url:
+        parsed = urlparse(portal_url)
+        host = parsed.hostname or "icecream.naboydciscolab.com"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = (parsed.path or "/openclaw").rstrip("/") or "/openclaw"
+        wss = f"wss://{host}:{port}{path}"
+    else:
+        wss = "wss://icecream.naboydciscolab.com:8443/openclaw"
+
+    query = f"gatewayUrl={quote(wss, safe='')}"
     token = _read_gateway_token()
+    url = f"{page_path}?{query}"
     if token:
-        return f"{base}#token={quote(token, safe='')}"
-    return base
+        url += f"#token={quote(token, safe='')}"
+    return url
 
 
 def _portal_tabs() -> list[dict]:

@@ -366,6 +366,8 @@ write_unified_portal_nginx() {
     echo "    location /openclaw/ {"
     echo "        proxy_pass http://127.0.0.1:18789;"
     nginx_proxy_common
+    echo "        proxy_buffering    off;"
+    echo "        proxy_cache          off;"
     echo "        proxy_read_timeout  3600s;"
     echo "        proxy_send_timeout  3600s;"
     echo "    }"
