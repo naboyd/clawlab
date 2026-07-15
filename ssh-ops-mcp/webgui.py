@@ -589,7 +589,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         edit_tags=_tags_for_form(edit_host),
         devices=devices,
         staging_count=len(devices),
-        job_status=discovery_import.load_job(CONFIG_PATH),
+        job_status=job_status,
         defaults=_discovery_defaults(),
         netmiko_ok=run_discovery is not None,
         auth_required=os.environ.get("CLAW_AUTH_REQUIRED", "0").lower()
@@ -915,7 +915,7 @@ def discovery_staging_remove(idx: int):
     return _discovery_redirect("Device not found in staging.", err=True)
 
 
-@app.route("/discovery/import", methods=["POST"])
+@app.route("/discovery/import", methods=["POST"], endpoint="discovery_import")
 def discovery_import_route():
     devices = discovery_import.load_staging(CONFIG_PATH)
     if not devices:
