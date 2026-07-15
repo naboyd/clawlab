@@ -176,7 +176,7 @@ LOGIN_PAGE = """
 <style>{{ style }}</style></head><body>
 <div class="card">
   <h1 style="margin-top:0">clawlab admin login</h1>
-  <p class="hint">Shared login for ssh-ops, OpenClaw Control UI, and DefenseClaw policy editor.</p>
+  <p class="hint">One login for the clawlab portal hub (OpenClaw, MCP Admin, DefenseClaw).</p>
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
   <form method="post" action="">
     <input type="hidden" name="next" value="{{ next_url }}">
@@ -191,20 +191,50 @@ LOGIN_PAGE = """
 """
 
 HUB_PAGE = """
-<!doctype html><html><head><meta charset="utf-8"><title>clawlab portals</title>
-<style>{{ style }}</style></head><body>
-<div class="card">
-  <h1 style="margin-top:0">clawlab admin portals</h1>
-  <p>Signed in as <b>{{ user.username }}</b> · <a href="{{ ext_url('/logout') }}">sign out</a></p>
-  <ul>
-    {% for link in links %}
-    <li><a href="{{ link.url }}">{{ link.label }}</a> <span class="hint">{{ link.hint }}</span></li>
-    {% endfor %}
-  </ul>
-  {% if user.role == 'admin' %}
-  <p><a href="{{ ext_url('/admin/users') }}">Manage users</a></p>
-  {% endif %}
+<!doctype html><html><head><meta charset="utf-8"><title>clawlab</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       background:#0f1117;color:#e8eaed;height:100vh;display:flex;flex-direction:column}
+  header{display:flex;align-items:center;justify-content:space-between;padding:.65rem 1rem;
+          background:#1a1d27;border-bottom:1px solid #2a2f3d}
+  header h1{font-size:1.05rem;margin:0;font-weight:600}
+  .meta{font-size:.82rem;color:#9aa0a6}
+  .meta a{color:#8ab4ff;text-decoration:none;margin-left:.75rem}
+  .tabs{display:flex;gap:.35rem;padding:.5rem 1rem;background:#141720;border-bottom:1px solid #2a2f3d}
+  .tab{padding:.45rem .95rem;border:1px solid #2a2f3d;border-radius:8px;background:#1f2430;
+       color:#c9cdd3;cursor:pointer;font-size:.88rem}
+  .tab.active{background:#2c5cff;border-color:#2c5cff;color:#fff}
+  .frame-wrap{flex:1;min-height:0;background:#fafafa}
+  iframe{width:100%;height:100%;border:0;display:none;background:#fff}
+  iframe.active{display:block}
+</style></head><body>
+<header>
+  <h1>clawlab</h1>
+  <div class="meta">Signed in as <b>{{ user.username }}</b>
+    <a href="{{ ext_url('/admin/users') }}">Users</a>
+    <a href="{{ ext_url('/logout') }}">Sign out</a></div>
+</header>
+<nav class="tabs">
+  {% for tab in tabs %}
+  <button type="button" class="tab{% if loop.first %} active{% endif %}"
+          data-target="frame-{{ tab.id }}" onclick="showTab('{{ tab.id }}')">{{ tab.label }}</button>
+  {% endfor %}
+</nav>
+<div class="frame-wrap">
+  {% for tab in tabs %}
+  <iframe id="frame-{{ tab.id }}" class="{% if loop.first %}active{% endif %}"
+          src="{{ tab.src }}" title="{{ tab.label }}"></iframe>
+  {% endfor %}
 </div>
+<script>
+function showTab(id){
+  document.querySelectorAll('.tab').forEach(function(b){ b.classList.remove('active'); });
+  document.querySelectorAll('iframe').forEach(function(f){ f.classList.remove('active'); });
+  document.querySelector('[data-target="frame-'+id+'"]').classList.add('active');
+  document.getElementById('frame-'+id).classList.add('active');
+}
+</script>
 </body></html>
 """
 
@@ -266,6 +296,26 @@ def _clear_session_cookie(resp):
         max_age=0,
         path="/",
     )
+
+
+def _portal_tabs() -> list[dict]:
+    return [
+        {
+            "id": "openclaw",
+            "label": "OpenClaw",
+            "src": os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/"),
+        },
+        {
+            "id": "ssh-ops",
+            "label": "MCP Admin",
+            "src": os.environ.get("CLAW_PORTAL_SSH_OPS_PATH", "/ssh-ops/"),
+        },
+        {
+            "id": "defenseclaw",
+            "label": "DefenseClaw Policies",
+            "src": os.environ.get("CLAW_PORTAL_DEFENSECLAW_PATH", "/defenseclaw/"),
+        },
+    ]
 
 
 def _portal_links() -> list[dict]:
@@ -382,6 +432,7 @@ def hub():
         HUB_PAGE,
         style=STYLE,
         user=sess,
+        tabs=_portal_tabs(),
         links=_portal_links(),
     )
 

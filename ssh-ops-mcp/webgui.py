@@ -31,6 +31,11 @@ try:
 except ImportError:
     claw_auth = None
 
+try:
+    import portal_mount
+except ImportError:
+    portal_mount = None
+
 CONFIG_PATH = Path(
     os.environ.get("SSH_OPS_CONFIG", Path(__file__).parent / "hosts.yaml")
 ).expanduser()
@@ -45,6 +50,8 @@ DEFAULT_SETTINGS = {
 app = Flask(__name__)
 if claw_auth:
     claw_auth.install_auth(app)
+if portal_mount:
+    portal_mount.apply_mount(app)
 
 
 # --------------------------------------------------------------------------- #

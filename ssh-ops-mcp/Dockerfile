@@ -21,7 +21,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py secrets_store.py webgui.py claw_auth_middleware.py entrypoint.sh ./
+COPY server.py secrets_store.py webgui.py claw_auth_middleware.py portal_mount.py entrypoint.sh ./
 RUN chmod +x entrypoint.sh \
     && mkdir -p /data
 

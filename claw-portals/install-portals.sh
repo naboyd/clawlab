@@ -107,14 +107,13 @@ choose_auth() {
 
 set_default_ports() {
   if [[ "$TLS_MODE" == "http" ]]; then
-    PORT_SSH_OPS="${PORT_SSH_OPS:-8083}"
-    PORT_OPENCLAW="${PORT_OPENCLAW:-8084}"
-    PORT_DEFENSECLAW="${PORT_DEFENSECLAW:-8085}"
+    PORT_PORTAL="${PORT_PORTAL:-8083}"
   else
-    PORT_SSH_OPS="${PORT_SSH_OPS:-8443}"
-    PORT_OPENCLAW="${PORT_OPENCLAW:-8444}"
-    PORT_DEFENSECLAW="${PORT_DEFENSECLAW:-8445}"
+    PORT_PORTAL="${PORT_PORTAL:-8443}"
   fi
+  PORT_SSH_OPS="$PORT_PORTAL"
+  PORT_OPENCLAW="$PORT_PORTAL"
+  PORT_DEFENSECLAW="$PORT_PORTAL"
 }
 
 scheme_for_mode() {
@@ -130,19 +129,24 @@ AUTH_MODE=$AUTH_MODE
 LAN_IP=$LAN_IP
 DOMAIN=$DOMAIN
 LE_EMAIL=$LE_EMAIL
-PORT_SSH_OPS=$PORT_SSH_OPS
-PORT_OPENCLAW=$PORT_OPENCLAW
-PORT_DEFENSECLAW=$PORT_DEFENSECLAW
+PORT_SSH_OPS=$PORT_PORTAL
+PORT_OPENCLAW=$PORT_PORTAL
+PORT_DEFENSECLAW=$PORT_PORTAL
+PORT_PORTAL=$PORT_PORTAL
 LE_CERT=$LE_CERT
 LE_KEY=$LE_KEY
 CLAW_AUTH_REQUIRED=$([[ "$AUTH_MODE" == "claw-auth" ]] && echo 1 || echo 0)
 CLAW_AUTH_SECURE=$([[ "$TLS_MODE" == "http" ]] && echo 0 || echo auto)
 CLAW_AUTH_PREFIX=/_claw_auth
 SCHEME=$(scheme_for_mode)
-CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/
-CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/
-CLAW_PORTAL_DEFENSECLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/
-CLAW_PORTAL_SSH_OPS_PORT=${PORT_SSH_OPS}
+CLAW_PORTAL_HUB_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/
+CLAW_PORTAL_SSH_OPS_PATH=/ssh-ops/
+CLAW_PORTAL_OPENCLAW_PATH=/openclaw/
+CLAW_PORTAL_DEFENSECLAW_PATH=/defenseclaw/
+CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/ssh-ops/
+CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/openclaw/
+CLAW_PORTAL_DEFENSECLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/defenseclaw/
+CLAW_PORTAL_SSH_OPS_PORT=${PORT_PORTAL}
 CLAWLAB_VENV=${CLAWLAB_VENV:-$HOME/.clawlab/venv}
 CLAW_PYTHON=${CLAW_PYTHON:-$CLAWLAB_VENV/bin/python}
 EOF
@@ -210,7 +214,7 @@ install_backend_services() {
 }
 
 install_ssh_ops_quadlet() {
-  echo "==> Updating ssh-ops Podman quadlet (claw-auth via nginx :${PORT_SSH_OPS})"
+  echo "==> Updating ssh-ops Podman quadlet (unified portal :${PORT_PORTAL}/ssh-ops/)"
   local qdir="$HOME/.config/containers/systemd"
   install -d -m 0755 "$qdir"
   install -m 0644 "$REPO/quadlets/ssh-ops-gui.container" "$qdir/ssh-ops-gui.container"
@@ -274,6 +278,95 @@ NGINX
   fi
 }
 
+nginx_claw_auth_request() {
+  cat <<'NGINX'
+        auth_request /_claw_auth/verify;
+        auth_request_set $claw_user $upstream_http_x_auth_user;
+        proxy_set_header X-Auth-User $claw_user;
+        proxy_set_header X-Forwarded-User $claw_user;
+NGINX
+}
+
+nginx_proxy_common() {
+  cat <<'NGINX'
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host       $host;
+        proxy_set_header X-Real-IP  $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+NGINX
+}
+
+write_unified_portal_nginx() {
+  local out="$NGINX_AVAILABLE/clawlab-portal.conf"
+  rm -f "$NGINX_ENABLED/clawlab-ssh-ops.conf" "$NGINX_ENABLED/clawlab-openclaw.conf" \
+        "$NGINX_ENABLED/clawlab-defenseclaw.conf" 2>/dev/null || true
+
+  {
+    echo "server {"
+    nginx_tls_listen "$PORT_PORTAL"
+    echo "    server_name ${DOMAIN} icecream ${LAN_IP};"
+    echo
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then
+      nginx_auth_claw_block
+    else
+      nginx_auth_pam_block "clawlab portal (Linux login)"
+    fi
+    echo
+    echo "    client_max_body_size 50m;"
+    echo
+    echo "    # Portal hub (tabbed UI)"
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then
+      echo "    location = / {"
+      nginx_claw_auth_request
+      echo "        proxy_pass http://127.0.0.1:8780/;"
+      nginx_proxy_common
+      echo "    }"
+      echo
+      echo "    location /admin/ {"
+      nginx_claw_auth_request
+      echo "        proxy_pass http://127.0.0.1:8780/admin/;"
+      nginx_proxy_common
+      echo "    }"
+    else
+      echo "    location = / {"
+      echo "        root ${REPO}/claw-portals;"
+      echo "        try_files /portal-hub-static.html =404;"
+      echo "    }"
+    fi
+    echo
+    echo "    # MCP / ssh-ops admin GUI (Podman :8765)"
+    echo "    location /ssh-ops/ {"
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
+    echo "        proxy_pass http://127.0.0.1:8765/;"
+    nginx_proxy_common
+    echo "    }"
+    echo
+    echo "    # DefenseClaw policy editor (:8770)"
+    echo "    location /defenseclaw/ {"
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
+    echo "        proxy_pass http://127.0.0.1:8770/;"
+    nginx_proxy_common
+    echo "    }"
+    echo
+    echo "    # OpenClaw Control UI (:18789)"
+    echo "    location /openclaw/ {"
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
+    echo "        proxy_pass http://127.0.0.1:18789/;"
+    nginx_proxy_common
+    echo "        proxy_read_timeout  3600s;"
+    echo "        proxy_send_timeout  3600s;"
+    echo "    }"
+    echo "}"
+  } >"$out"
+
+  ln -sf "$out" "$NGINX_ENABLED/clawlab-portal.conf"
+  echo "Wrote unified portal $out (port ${PORT_PORTAL})"
+}
+
 write_nginx_site() {
   local name="$1" port="$2" backend="$3" pam_prompt="$4" extra_proxy="$5"
   local out="$NGINX_AVAILABLE/clawlab-${name}.conf"
@@ -321,7 +414,7 @@ deploy_nginx() {
   echo "==> Deploying nginx site configs (requires sudo)"
   if [[ "${EUID}" -ne 0 ]]; then
     export CONFIG_FILE REPO TLS_MODE AUTH_MODE LAN_IP DOMAIN LE_CERT LE_KEY
-    export PORT_SSH_OPS PORT_OPENCLAW PORT_DEFENSECLAW
+    export PORT_PORTAL PORT_SSH_OPS PORT_OPENCLAW PORT_DEFENSECLAW
     sudo -E bash "$0" --deploy-nginx-only
     return
   fi
@@ -338,13 +431,7 @@ deploy_nginx() {
   fi
 
   install -d -m 0755 "$NGINX_AVAILABLE" "$NGINX_ENABLED"
-
-  write_nginx_site "ssh-ops" "$PORT_SSH_OPS" "http://127.0.0.1:8765" \
-    "ssh-ops admin" ""
-  write_nginx_site "openclaw" "$PORT_OPENCLAW" "http://127.0.0.1:18789" \
-    "OpenClaw Control" "        proxy_read_timeout  3600s;"
-  write_nginx_site "defenseclaw" "$PORT_DEFENSECLAW" "http://127.0.0.1:8770" \
-    "DefenseClaw policies" ""
+  write_unified_portal_nginx
 
   nginx -t
   systemctl enable --now nginx
@@ -393,9 +480,7 @@ echo
 echo "==> Summary"
 echo "  TLS:        $TLS_MODE"
 echo "  Auth:       $AUTH_MODE"
-echo "  ssh-ops:    $(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/"
-echo "  OpenClaw:   $(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/"
-echo "  DefenseClaw $(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/"
+echo "  Portal hub: $(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/"
 echo
 
 install_python_deps
@@ -415,10 +500,13 @@ cat <<EOF
 
 Done.
 
-Portal URLs:
-  ssh-ops admin:     $(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/
-  OpenClaw Control:  $(scheme_for_mode)://${DOMAIN}:${PORT_OPENCLAW}/
-  DefenseClaw:       $(scheme_for_mode)://${DOMAIN}:${PORT_DEFENSECLAW}/
+Portal hub (bookmark this):
+  $(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/
+
+Tabs:
+  OpenClaw          /openclaw/
+  MCP Admin         /ssh-ops/
+  DefenseClaw       /defenseclaw/
 
 Auth: $AUTH_MODE
 Config saved: $CONFIG_FILE
@@ -433,14 +521,7 @@ Logs:
   journalctl --user -u claw-auth -f
   journalctl --user -u defenseclaw-webgui -f
 
-NOTE: Browsers treat each port as a separate origin — sign in once per portal.
-      All portals share the same user database when using claw-auth.
-
 OpenClaw trusted-proxy (recommended with claw-auth):
   Merge admin-access/openclaw.trusted-proxy.json5 into ~/.openclaw/openclaw.json
-  and update allowedOrigins to use port ${PORT_OPENCLAW}.
-
-ssh-ops admin GUI (Podman):
-  Use $(scheme_for_mode)://${DOMAIN}:${PORT_SSH_OPS}/ — NOT http://127.0.0.1:8765
-  nginx runs claw-auth; the container only accepts proxied requests (X-Auth-User).
+  Set allowedOrigins to "$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}".
 EOF

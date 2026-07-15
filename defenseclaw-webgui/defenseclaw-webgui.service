@@ -10,6 +10,7 @@ Environment=DEFENSECLAW_HOME=%h/.defenseclaw
 Environment=DEFENSECLAW_CONFIG=%h/.defenseclaw/config.yaml
 Environment=DEFENSECLAW_GUI_HOST=127.0.0.1
 Environment=DEFENSECLAW_GUI_PORT=8770
+Environment=PORTAL_MOUNT_PATH=/defenseclaw
 EnvironmentFile=-%h/.claw-portals/config.env
 ExecStart=%h/.clawlab/venv/bin/python %h/clawlab/defenseclaw-webgui/webgui.py
 Restart=on-failure

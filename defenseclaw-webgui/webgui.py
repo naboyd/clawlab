@@ -36,9 +36,16 @@ try:
 except ImportError:
     claw_auth = None
 
+try:
+    import portal_mount
+except ImportError:
+    portal_mount = None
+
 app = Flask(__name__)
 if claw_auth:
     claw_auth.install_auth(app)
+if portal_mount:
+    portal_mount.apply_mount(app)
 
 STYLE = """
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:980px;
