@@ -31,6 +31,7 @@ from flask import (
 import store
 
 SESSION_COOKIE = os.environ.get("CLAW_AUTH_COOKIE", "claw_session")
+TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
 SECURE_COOKIES = os.environ.get("CLAW_AUTH_SECURE", "auto").lower()
 AUTH_PREFIX = os.environ.get("CLAW_AUTH_PREFIX", "").rstrip("/")
 LOG_PATH = Path(
@@ -236,7 +237,8 @@ HUB_PAGE = """
     <div class="external-card">
       <h2>{{ tab.label }}</h2>
       <p class="hint">OpenClaw blocks iframe embedding (gateway clickjacking protection).
-      Open it in a new window — your portal login session applies.</p>
+      Use the button below — it opens with your gateway token (URL fragment, not sent to nginx logs).
+      Do not bookmark plain <code>/openclaw/</code> without the token.</p>
       <a class="open-btn" href="{{ tab.external }}" target="_blank" rel="noopener noreferrer">
         Open {{ tab.label }} ↗</a>
     </div>
@@ -328,12 +330,36 @@ def _clear_session_cookie(resp):
     )
 
 
+def _read_gateway_token() -> str:
+    """Gateway token for Control UI #token= fragment (portal admins only)."""
+    val = os.environ.get(TOKEN_ENV, "").strip()
+    if val:
+        return val
+    oc_home = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")).expanduser()
+    for fname in (".env", "gateway.systemd.env"):
+        path = oc_home / fname
+        if not path.is_file():
+            continue
+        for line in path.read_text().splitlines():
+            if line.startswith(f"{TOKEN_ENV}="):
+                return line.split("=", 1)[1].strip()
+    return ""
+
+
+def _openclaw_hub_url() -> str:
+    base = os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/")
+    token = _read_gateway_token()
+    if token:
+        return f"{base}#token={quote(token, safe='')}"
+    return base
+
+
 def _portal_tabs() -> list[dict]:
     return [
         {
             "id": "openclaw",
             "label": "OpenClaw",
-            "external": os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/"),
+            "external": _openclaw_hub_url(),
         },
         {
             "id": "ssh-ops",

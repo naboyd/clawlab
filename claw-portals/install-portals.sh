@@ -532,5 +532,5 @@ Logs:
 OpenClaw Control UI (subpath /openclaw/):
   python3 $REPO/claw-portals/apply-openclaw-portal.py
   systemctl --user restart openclaw-gateway
-  For trusted-proxy auth (recommended with claw-auth): python3 $REPO/admin-access/apply-trusted-proxy.py
+  For OpenClaw behind this portal (same-host nginx): python3 $REPO/admin-access/apply-token-portal.py
 EOF

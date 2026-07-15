@@ -24,7 +24,7 @@ auth = gw.get("auth", {})
 ui = gw.get("controlUi", {})
 print("gateway.bind:", gw.get("bind"))
 print("gateway.port:", gw.get("port", 18789))
-print("auth.mode:", auth.get("mode"))
+print("auth.mode:", auth.get("mode"), "(token recommended for same-host nginx portal)")
 print("auth.token:", "SET" if auth.get("token") else "none")
 print("auth.password:", auth.get("password", "none"))
 tp = auth.get("trustedProxy") or {}

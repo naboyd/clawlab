@@ -60,9 +60,9 @@ Python packages install into **`~/.clawlab/venv`** (avoids PEP 668 system pip er
 
 1. Bookmark **`CLAW_PORTAL_HUB_URL`** from `~/.claw-portals/config.env`
 2. Create additional users: `python3 ../claw-auth/manage.py create-user NAME`
-3. For OpenClaw Control UI behind the proxy, merge
-   `admin-access/openclaw.trusted-proxy.json5` into `~/.openclaw/openclaw.json`
-   and set `allowedOrigins` to the portal origin (e.g. `https://icecream:8443` — no path).
+3. For OpenClaw Control UI behind the proxy, run
+   `python3 admin-access/apply-token-portal.py` (same-host nginx cannot use
+   trusted-proxy; the hub passes `#token=` to the Control UI).
 4. Rebuild ssh-ops after pull: `podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp && systemctl --user restart ssh-ops-gui`
 5. Run the `defenseclaw-canary` skill to verify policy enforcement.
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# Enable trusted-proxy auth in ~/.openclaw/openclaw.json for claw-auth + nginx.
+# Token auth for OpenClaw behind same-host nginx + claw-auth.
 #
-# WARNING: OpenClaw rejects trusted-proxy for same-host loopback reverse proxies
-# (nginx on icecream -> gateway on 127.0.0.1). For clawlab use apply-token-portal.py.
+# OpenClaw does NOT support trusted-proxy for same-host loopback reverse proxies
+# (nginx -> 127.0.0.1:18789). Use token mode + hub #token= fragment instead.
 import json
 import os
 import secrets
@@ -14,9 +14,8 @@ OC_HOME = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")).expan
 CONFIG_PATH = OC_HOME / "openclaw.json"
 ENV_PATH = OC_HOME / ".env"
 SYSTEMD_ENV_PATH = OC_HOME / "gateway.systemd.env"
-PASSWORD_ENV = "OPENCLAW_GATEWAY_PASSWORD"
-PASSWORD_REF = PASSWORD_ENV  # openclaw.json references env var by name
 TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
+TOKEN_REF = TOKEN_ENV
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
@@ -54,30 +53,28 @@ def _upsert_env_var(path: Path, key: str, value: str) -> None:
         pass
 
 
-def _remove_env_var(path: Path, key: str) -> bool:
-    if not path.is_file():
-        return False
-    kept: list[str] = []
-    removed = False
-    for line in path.read_text().splitlines():
-        if line.startswith(f"{key}="):
-            removed = True
-            continue
-        kept.append(line)
-    if removed:
-        path.write_text("\n".join(kept).rstrip() + ("\n" if kept else ""))
-    return removed
-
-
-def _ensure_gateway_password() -> None:
+def _ensure_gateway_token() -> None:
     env = _read_env_file(ENV_PATH)
     env.update(_read_env_file(SYSTEMD_ENV_PATH))
-    if PASSWORD_ENV in env and env[PASSWORD_ENV] and env[PASSWORD_ENV] != "REPLACE_WITH_A_LONG_RANDOM_STRING":
+    if TOKEN_ENV in env and env[TOKEN_ENV] and env[TOKEN_ENV] != "REPLACE_WITH_A_LONG_RANDOM_STRING":
         return
+
+    for bak_name in (".pre-trustedproxy.bak", ".pre-portal-basepath.bak"):
+        bak = Path(str(CONFIG_PATH) + bak_name)
+        if not bak.is_file():
+            continue
+        old = json.loads(bak.read_text())
+        tok = old.get("gateway", {}).get("auth", {}).get("token")
+        if tok and tok not in (TOKEN_REF, TOKEN_ENV) and not str(tok).startswith("OPENCLAW_"):
+            _upsert_env_var(ENV_PATH, TOKEN_ENV, str(tok))
+            _upsert_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV, str(tok))
+            print(f"Restored {TOKEN_ENV} from {bak.name}")
+            return
+
     secret = secrets.token_urlsafe(32)
-    _upsert_env_var(ENV_PATH, PASSWORD_ENV, secret)
-    _upsert_env_var(SYSTEMD_ENV_PATH, PASSWORD_ENV, secret)
-    print(f"Set {PASSWORD_ENV} in {ENV_PATH} and {SYSTEMD_ENV_PATH}")
+    _upsert_env_var(ENV_PATH, TOKEN_ENV, secret)
+    _upsert_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV, secret)
+    print(f"Set {TOKEN_ENV} in {ENV_PATH} and {SYSTEMD_ENV_PATH}")
 
 
 def main() -> int:
@@ -89,23 +86,17 @@ def main() -> int:
     gw = c.setdefault("gateway", {})
     auth = gw.setdefault("auth", {})
 
-    _ensure_gateway_password()
+    _ensure_gateway_token()
 
-    shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-trustedproxy.bak")
+    shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-token-portal.bak")
 
     gw["bind"] = "loopback"
     gw["trustedProxies"] = ["127.0.0.1", "::1"]
-    auth["mode"] = "trusted-proxy"
-    auth["password"] = PASSWORD_REF
-    auth.pop("token", None)
-    auth["trustedProxy"] = {
-        "userHeader": "x-forwarded-user",
-        # Do not set requiredHeaders: loopback gateway-client backends connect
-        # directly without proxy headers; requiredHeaders makes OpenClaw reject
-        # them before password fallback (trusted_proxy_missing_header_*).
-        "allowUsers": [],
-        "allowLoopback": True,
-    }
+    auth["mode"] = "token"
+    auth["token"] = TOKEN_REF
+    auth.pop("trustedProxy", None)
+    auth.pop("password", None)
+
     ui = gw.setdefault("controlUi", {})
     domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
     port = os.environ.get("PORT_PORTAL", "8443")
@@ -117,16 +108,12 @@ def main() -> int:
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))
     ui["basePath"] = "/openclaw"
 
-    removed_token = _remove_env_var(ENV_PATH, TOKEN_ENV)
-    removed_token |= _remove_env_var(SYSTEMD_ENV_PATH, TOKEN_ENV)
-
     CONFIG_PATH.write_text(json.dumps(c, indent=2) + "\n")
-    print("trusted-proxy enabled; backup:", str(CONFIG_PATH) + ".pre-trustedproxy.bak")
-    print("mode =", auth["mode"], "| password =", PASSWORD_REF)
-    if removed_token:
-        print(f"removed {TOKEN_ENV} from env files (mutually exclusive with trusted-proxy)")
+    print("token auth enabled; backup:", str(CONFIG_PATH) + ".pre-token-portal.bak")
+    print("mode =", auth["mode"], "| token =", TOKEN_REF)
     print("controlUi.basePath =", ui["basePath"])
-    print("Restart: systemctl --user restart openclaw-gateway")
+    print("Open Control UI from the portal hub button (passes #token= fragment).")
+    print("Restart: systemctl --user restart openclaw-gateway claw-auth")
     return 0
 
 
