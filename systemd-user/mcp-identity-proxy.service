@@ -1,0 +1,21 @@
+[Unit]
+Description=ssh-ops MCP identity proxy (claw-auth bind → X-Auth-User)
+After=network-online.target ssh-ops-mcp.service claw-auth.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=CLAW_AUTH_DB=%h/.claw-auth/users.db
+Environment=SSH_OPS_MCP_UPSTREAM=https://127.0.0.1:8766
+Environment=SSH_OPS_MCP_PROXY_HOST=127.0.0.1
+Environment=SSH_OPS_MCP_PROXY_PORT=8767
+Environment=SSH_OPS_MCP_PROXY_VERIFY_TLS=0
+Environment=SSH_OPS_ENV=%h/ssh_ops_mcp/data/.env
+Environment=SSH_OPS_KEYFILE=%h/ssh_ops_mcp/data/master.key
+WorkingDirectory=%h/clawlab/ssh-ops-mcp
+ExecStart=%h/.clawlab/venv/bin/python mcp_identity_proxy.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -226,6 +226,32 @@ OpenClaw agent ──MCP HTTPS :8766──► ssh-ops MCP (Podman)
 
 - **Admin GUI:** Podman `ssh-ops-gui` on `:8765`, portal `/ssh-ops/`
 - **Quadlets:** `quadlets/ssh-ops-gui.container`, `ssh-ops-mcp.container`
+- **Policy file:** `/data/ios-xe-policy.yaml` (writable; seeded from image on first start)
+- **MCP Admin tabs:** Hosts, Discovery, **Changes** (propose/approve/apply), **Policy** (per-group access)
+
+### IOS-XE change governance
+
+Single source of truth: `config-templates/ios-xe-policy.yaml` (35 `allow_groups` aligned
+with the Cisco IOS-XE 17.11 Catalyst 9200 command reference — see
+`docs/ios-xe-command-reference-index.yaml`).
+
+| Layer | Enforces |
+|-------|----------|
+| DefenseClaw prompt/tool inspect | `always_block` → CRITICAL; denied groups → `IOS-DENY-*` CRITICAL |
+| DefenseClaw HIGH advisories | Risky-but-permitted patterns from allowed groups |
+| MCP `run_command` | Read-only allowlist only |
+| MCP `propose_change` | `always_block` + selected `allow_groups` (default deny) |
+| Per-group access (Policy tab) | **deny** / **approve** / **allow** (auto-approve on propose) |
+| Four-eyes approval | Proposer cannot approve own change (`forbid_self_approval`) |
+| `apply_change` | Requires `approved` status; backup → push → verify → write mem |
+
+![Policy enforcement flow](clawlab-policy-enforcement-flow.png)
+
+Merge DefenseClaw rules after policy edits:
+
+```bash
+bash admin-access/install-clawlab-guardrail-rules.sh
+```
 
 ---
 
@@ -336,6 +362,9 @@ bash tests/policy-test.sh --no-agent
 4. **Open OpenClaw ↗** — governed agent chat (new window; token + pairing).
 
 **What enforces policy:** DefenseClaw guardrail (regex + judge), exec shims, tool-call
-inspection, ssh-ops allowlist, OPA admission actions.
+inspection, ssh-ops `ios-xe-policy.yaml` (`always_block` + 35 `allow_groups` with
+deny/approve/allow modes), four-eyes change approval, OPA admission actions.
 
-**What alerts:** Webex bridge on HIGH/CRITICAL audit events.
+**What alerts:** Webex bridge on HIGH/CRITICAL audit events and change apply/self-approval blocks.
+
+**Diagram:** [docs/clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png)

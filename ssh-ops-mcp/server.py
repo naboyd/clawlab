@@ -42,6 +42,7 @@ import secrets_store
 import change_engine
 import change_actor
 import network_apply
+import rbac
 
 # --------------------------------------------------------------------------- #
 # Configuration loading
@@ -538,6 +539,18 @@ def list_hosts() -> list[dict[str, Any]]:
     return result
 
 
+def _current_identity() -> tuple[str | None, str | None]:
+    """Verified username and role for the active MCP HTTP request."""
+    actor = change_actor._request_actor.get()
+    role = change_actor.resolve_role(verify_username=actor)
+    return actor, role
+
+
+def _rbac_error(exc: rbac.RbacDenied | change_actor.IdentityMismatch) -> dict[str, Any]:
+    code = getattr(exc, "code", "denied")
+    return {"error": str(exc), "code": code}
+
+
 @mcp.tool()
 def run_command(host: str, command: str) -> dict[str, Any]:
     """Run a READ-ONLY diagnostic command on `host`.
@@ -556,6 +569,16 @@ def run_command(host: str, command: str) -> dict[str, Any]:
             e.g. "show version" or "show run | include ntp".
     """
     h = _get_host(host)
+    _actor, role = _current_identity()
+    try:
+        rbac.check_run_command(
+            role=role or "anonymous",
+            command=command,
+            platform=_platform(h),
+        )
+    except rbac.RbacDenied as exc:
+        _audit(host, "run_command.RBAC_DENIED", f"role={role} cmd={command}")
+        return {"host": host, "command": command, **_rbac_error(exc)}
     if _is_network(h):
         try:
             validate_network_command(command)
@@ -761,6 +784,12 @@ def run_write_command(host: str, command: str) -> dict[str, Any]:
                 "allow_write: true on this host to enable."}
     if not command or not command.strip():
         return {"host": host, "error": "Empty command."}
+    _actor, role = _current_identity()
+    try:
+        rbac.check_run_write_command(role=role or "anonymous")
+    except rbac.RbacDenied as exc:
+        _audit(host, "run_write_command.RBAC_DENIED", command)
+        return {"host": host, "command": command, **_rbac_error(exc)}
     _audit(host, "run_write_command", command)
     return _run(host, command)
 
@@ -783,6 +812,11 @@ def upload_file(host: str, local_name: str, remote_path: str) -> dict[str, Any]:
     if not _write_allowed(h):
         return {"host": host, "error": f"Writes are disabled for '{host}'. Set "
                 "allow_write: true to enable uploads."}
+    _actor, role = _current_identity()
+    try:
+        rbac.check_upload_file(role=role or "anonymous")
+    except rbac.RbacDenied as exc:
+        return {"host": host, **_rbac_error(exc)}
     try:
         src = _safe_local(local_name)
     except ValueError as exc:
@@ -823,6 +857,12 @@ def download_file(host: str, remote_path: str, local_name: str) -> dict[str, Any
     h = _get_host(host)
     if _is_network(h):
         return {"host": host, "error": "File transfer is Linux-only."}
+    _actor, role = _current_identity()
+    try:
+        rbac.check_download_file(role=role or "anonymous")
+    except rbac.RbacDenied as exc:
+        _audit(host, "download_file.RBAC_DENIED", remote_path)
+        return {"host": host, **_rbac_error(exc)}
     try:
         dst = _safe_local(local_name)
     except ValueError as exc:
@@ -891,7 +931,14 @@ def propose_change(
         requested_by: Optional portal/chat username (required for four-eyes unless
             HTTP MCP forwards X-Auth-User / X-OpenClaw-User).
     """
-    actor = change_actor.resolve_actor(requested_by)
+    _actor, role = _current_identity()
+    try:
+        rbac.check_propose_change(role=role or "anonymous", username=_actor)
+        actor = change_actor.resolve_actor(requested_by)
+    except rbac.RbacDenied as exc:
+        return _rbac_error(exc)
+    except change_actor.IdentityMismatch as exc:
+        return _rbac_error(exc)
     _audit(host, "propose_change", f"{change_type} by={actor}")
     return change_engine.propose_change(
         host=host,
@@ -936,6 +983,29 @@ def rollback_change(change_id: str) -> dict[str, Any]:
     return change_engine.rollback_change(change_id, actor="mcp")
 
 
+def _apply_request_identity(headers: dict[str, str]) -> None:
+    """Bind verified portal/chat identity from proxy headers or MCP bind token."""
+    import mcp_bind
+
+    user = change_actor.actor_from_headers(headers)
+    role = change_actor.role_from_headers(headers)
+    bind_hdr = (
+        headers.get("X-Claw-Mcp-Bind")
+        or headers.get("x-claw-mcp-bind")
+        or ""
+    ).strip()
+    if bind_hdr:
+        bound = mcp_bind.validate_bind_token(bind_hdr)
+        if bound:
+            user = bound["username"]
+            role = bound["role"]
+    if user and not role:
+        from claw_user_lookup import lookup_role
+
+        role = lookup_role(user)
+    change_actor.set_request_identity(user, role)
+
+
 if __name__ == "__main__":
     _t = os.environ.get("SSH_OPS_MCP_TRANSPORT", "stdio").lower().replace("_", "-")
     if _t in ("http", "streamable-http", "sse"):
@@ -951,17 +1021,14 @@ if __name__ == "__main__":
             secrets_store.ensure_mcp_token()
 
         async def _bearer(request, call_next):
+            headers = dict(request.headers)
             if not _auth_on:
-                change_actor.set_request_actor(
-                    change_actor.actor_from_headers(dict(request.headers))
-                )
+                _apply_request_identity(headers)
                 return await call_next(request)
             hdr = request.headers.get("authorization", "")
             tok = hdr[7:].strip() if hdr[:7].lower() == "bearer " else ""
             if tok and tok in secrets_store.get_mcp_tokens():
-                change_actor.set_request_actor(
-                    change_actor.actor_from_headers(dict(request.headers))
-                )
+                _apply_request_identity(headers)
                 return await call_next(request)
             return JSONResponse(
                 {"error": "unauthorized"},

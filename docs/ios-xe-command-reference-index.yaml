@@ -1,0 +1,57 @@
+# Index of Cisco IOS-XE configuration command chapters mapped to clawlab allow_groups.
+# Source: Command Reference, Cisco IOS XE Dublin 17.11.x (Catalyst 9200 Switches)
+# PDF: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf
+# Also aligned with Catalyst 9300/9400/9500 17.17.x command references (same chapter layout).
+version: 1
+source:
+  title: "Command Reference, Cisco IOS XE Dublin 17.11.x (Catalyst 9200 Switches)"
+  url: "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf"
+  catalog: "https://www.cisco.com/c/en/us/support/ios-nx-os-software/ios-xe-17/products-command-reference-list.html"
+  fetched: "2026-07-15"
+chapters:
+  - part: "I"
+    name: "Cisco SD-Access"
+    policy_group: sd_access
+    default_access: deny
+  - part: "II"
+    name: "Cisco TrustSec"
+    policy_group: trustsec
+    default_access: deny
+  - part: "III"
+    name: "Interface and Hardware Components"
+    policy_groups: [interface_l2, interface_trunk, interface_po, storm_control, lldp_cdp, udld, macro_port, loopback]
+  - part: "IV"
+    name: "IP Addressing Services"
+    policy_groups: [vlan_svi, vlan_l3, ipv6_svi, ip_helpers, dhcp_pool, dhcp_snooping, hsrp_vrrp]
+  - part: "V"
+    name: "IP Multicast Routing"
+    policy_group: multicast
+    default_access: deny
+  - part: "VI"
+    name: "Layer 2/3"
+    policy_groups: [interface_l2, interface_trunk, interface_po, spanning_tree_if, spanning_tree_global, voice_vlan]
+  - part: "VII"
+    name: "Network Management"
+    policy_groups: [logging_snmp, netflow, dns_ntp]
+  - part: "VIII"
+    name: "QoS"
+    policy_group: qos_policy
+  - part: "IX"
+    name: "IP Routing"
+    policy_groups: [static_route]
+    always_block: [router_bgp, router_ospf, router_eigrp, route_map, prefix_list, default_route]
+  - part: "X"
+    name: "Security"
+    always_block: [aaa, username, line_vty, ip_ssh, snmp_community]
+    policy_groups: [acl_standard, acl_extended, dot1x_port]
+  - part: "XI"
+    name: "Stack Manager and High Availability"
+    policy_group: stacking
+    default_access: deny
+  - part: "XII"
+    name: "System Management"
+    policy_groups: [hostname_banner, errdisable]
+    always_block: [boot, copy, install, factory_reset, license]
+  - part: "XIII"
+    name: "VLAN"
+    policy_groups: [vlan, vlan_svi, vlan_l3, private_vlan, vtp]

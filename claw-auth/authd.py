@@ -237,7 +237,9 @@ HUB_PAGE = """
     <div class="external-card">
       <h2>{{ tab.label }}</h2>
       <p class="hint">OpenClaw blocks iframe embedding (gateway clickjacking protection).
-      Use the button below — it opens with your gateway token (URL fragment, not sent to nginx logs).
+      Use the button below — it opens with your gateway token and an MCP identity bind
+      (<code>clawBind</code>) for verified RBAC on tool calls.
+      Install <code>clawlab-mcp-identity</code> and the MCP identity proxy for chat enforcement.
       Do not bookmark plain <code>/openclaw/</code> without the token.</p>
       <a class="open-btn" href="{{ tab.external }}" target="_blank" rel="noopener noreferrer">
         Open {{ tab.label }} ↗</a>
@@ -346,7 +348,7 @@ def _read_gateway_token() -> str:
     return ""
 
 
-def _openclaw_hub_url(host_header: str = "") -> str:
+def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
     """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target).
 
     gatewayUrl must use the same host:port the browser used to load the portal
@@ -377,6 +379,8 @@ def _openclaw_hub_url(host_header: str = "") -> str:
             wss = "wss://icecream.naboydciscolab.com:8443/openclaw/"
 
     query = f"gatewayUrl={quote(wss, safe='')}"
+    if mcp_bind:
+        query += f"&clawBind={quote(mcp_bind, safe='')}"
     token = _read_gateway_token()
     url = f"{page_path}?{query}"
     if token:
@@ -384,12 +388,12 @@ def _openclaw_hub_url(host_header: str = "") -> str:
     return url
 
 
-def _portal_tabs(host_header: str = "") -> list[dict]:
+def _portal_tabs(host_header: str = "", *, mcp_bind: str = "") -> list[dict]:
     return [
         {
             "id": "openclaw",
             "label": "OpenClaw",
-            "external": _openclaw_hub_url(host_header),
+            "external": _openclaw_hub_url(host_header, mcp_bind=mcp_bind),
         },
         {
             "id": "ssh-ops",
@@ -509,17 +513,39 @@ def verify():
     return resp
 
 
+@app.route("/mcp/bind")
+def mcp_bind():
+    """Issue a short-lived token for verified MCP identity (OpenClaw chat path)."""
+    sess = _session_user()
+    if not sess:
+        return ("", 401)
+    try:
+        token = store.create_mcp_bind(sess["username"])
+    except ValueError as exc:
+        return (str(exc), 400)
+    return {
+        "token": token,
+        "username": sess["username"],
+        "role": sess["role"],
+    }
+
+
 @app.route("/")
 def hub():
     sess = _session_user()
     if not sess:
         return _login_redirect(request.full_path)
     portal_host = request.headers.get("X-Forwarded-Host") or request.host
+    mcp_bind = ""
+    try:
+        mcp_bind = store.create_mcp_bind(sess["username"])
+    except ValueError:
+        mcp_bind = ""
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
         user=sess,
-        tabs=_portal_tabs(portal_host),
+        tabs=_portal_tabs(portal_host, mcp_bind=mcp_bind),
         links=_portal_links(),
     )
 

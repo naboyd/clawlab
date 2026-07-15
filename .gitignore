@@ -26,6 +26,9 @@ __pycache__/
 *.bak.*
 .DS_Store
 
+# Large vendor PDFs (fetch via admin-access/fetch-ios-xe-command-reference.sh)
+docs/reference/*.pdf
+
 # ---- local certs / lego ----
 acme/lego/
 certificates/

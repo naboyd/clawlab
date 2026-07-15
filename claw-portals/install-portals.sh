@@ -285,7 +285,9 @@ nginx_claw_auth_request() {
   cat <<'NGINX'
         auth_request /_claw_auth/verify;
         auth_request_set $claw_user $upstream_http_x_auth_user;
+        auth_request_set $claw_role $upstream_http_x_auth_role;
         proxy_set_header X-Auth-User $claw_user;
+        proxy_set_header X-Auth-Role $claw_role;
         proxy_set_header X-Forwarded-User $claw_user;
 NGINX
 }
@@ -407,7 +409,9 @@ write_nginx_site() {
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then
       echo "        auth_request /_claw_auth/verify;"
       echo "        auth_request_set \$claw_user \$upstream_http_x_auth_user;"
+      echo "        auth_request_set \$claw_role \$upstream_http_x_auth_role;"
       echo "        proxy_set_header X-Auth-User \$claw_user;"
+      echo "        proxy_set_header X-Auth-Role \$claw_role;"
       echo "        proxy_set_header X-Forwarded-User \$claw_user;"
     fi
     echo "        proxy_pass ${backend};"

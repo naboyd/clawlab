@@ -44,6 +44,14 @@ def init_db() -> None:
                 FOREIGN KEY(username) REFERENCES users(username)
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username);
+            CREATE TABLE IF NOT EXISTS mcp_binds (
+                token TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(username) REFERENCES users(username)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mcp_binds_username ON mcp_binds(username);
             """
         )
         try:
@@ -184,3 +192,51 @@ def user_count() -> int:
     with _connect() as conn:
         row = conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
     return int(row["n"]) if row else 0
+
+
+def get_user_role(username: str) -> str | None:
+    username = username.strip().lower()
+    if not username:
+        return None
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT role, disabled FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    if not row or row["disabled"]:
+        return None
+    return str(row["role"] or "operator").strip().lower()
+
+
+def purge_expired_mcp_binds() -> int:
+    init_db()
+    with _connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM mcp_binds WHERE expires_at <= ?",
+            (_iso(_now()),),
+        )
+        return cur.rowcount
+
+
+def create_mcp_bind(username: str, *, hours: int | None = None) -> str:
+    """Issue a short-lived token for MCP identity binding (OpenClaw chat path)."""
+    username = username.strip().lower()
+    role = get_user_role(username)
+    if not role:
+        raise ValueError(f"unknown or disabled user: {username}")
+    ttl_hours = hours if hours is not None else int(
+        os.environ.get("CLAW_MCP_BIND_HOURS", "8")
+    )
+    token = secrets.token_urlsafe(32)
+    expires = _now() + timedelta(hours=max(1, ttl_hours))
+    purge_expired_mcp_binds()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO mcp_binds (token, username, expires_at, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (token, username, _iso(expires), _iso(_now())),
+        )
+    return token

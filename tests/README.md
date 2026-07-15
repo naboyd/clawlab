@@ -28,3 +28,15 @@ Env: `CLAWLAB_HOST` (default `icecream`), `CLAWLAB_MODEL` (default
 are auto-discovered locally and never printed.
 
 Latest run: **12/12 PASS**.
+
+## Scenario: approved but blocked at execution
+
+`scenario-approved-dc-block.sh` demonstrates a VLAN/SVI change that passes MCP
+proposal policy yet would **fail to execute** if the agent shortcuts via `bash`+SSH
+with `copy running-config` (DefenseClaw `IOS-BLK-COPY`). Walkthrough:
+`docs/scenarios/approved-change-blocked-by-defenseclaw.md`.
+
+```bash
+./scenario-approved-dc-block.sh            # local policy + DC inspect probes
+./scenario-approved-dc-block.sh --mcp-propose   # also call live propose_change
+```

@@ -11,6 +11,9 @@ Environment=SSH_OPS_MCP_PORT=8766
 PublishPort=192.168.128.93:8766:8766
 Volume=%h/ssh_ops_mcp/data:/data:Z
 Volume=%h/.ssh:/root/.ssh:ro,Z
+Volume=%h/.claw-auth/users.db:/claw-auth/users.db:ro,Z
+Environment=CLAW_AUTH_DB=/claw-auth/users.db
+Environment=SSH_OPS_RBAC=1
 
 Volume=%h/mcp/acme/lego/certificates:/certs:ro,Z
 Environment=SSH_OPS_MCP_TLS_CERT=/certs/icecream.naboydciscolab.com.crt

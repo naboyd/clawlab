@@ -1,0 +1,7 @@
+{
+  "id": "clawlab-mcp-identity",
+  "name": "Clawlab MCP identity",
+  "version": "0.1.0",
+  "description": "Inject X-Claw-Mcp-Bind from Control UI URL into outbound MCP requests.",
+  "main": "index.mjs"
+}

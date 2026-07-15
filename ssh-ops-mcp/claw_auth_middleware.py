@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Proxy auth gate for ssh-ops webgui in Podman.
+"""Proxy auth gate for ssh-ops webgui in Podman.
 
 When CLAW_AUTH_REQUIRED=1, only requests that nginx authenticated (via claw-auth
 auth_request) are allowed — identified by X-Auth-User / X-Forwarded-User headers.
@@ -13,6 +12,11 @@ import os
 
 from flask import abort, request
 
+try:
+    from claw_user_lookup import lookup_role
+except ImportError:
+    lookup_role = None  # type: ignore[assignment]
+
 AUTH_ENABLED = os.environ.get("CLAW_AUTH_REQUIRED", "0").lower() in (
     "1",
     "true",
@@ -24,8 +28,19 @@ AUTH_ENABLED = os.environ.get("CLAW_AUTH_REQUIRED", "0").lower() in (
 def current_user() -> dict | None:
     for header in ("X-Auth-User", "X-Forwarded-User"):
         user = (request.headers.get(header) or "").strip()
-        if user:
-            return {"username": user, "role": "admin", "source": "proxy"}
+        if not user:
+            continue
+        role_hdr = (request.headers.get("X-Auth-Role") or "").strip().lower()
+        role = role_hdr
+        if lookup_role is not None:
+            db_role = lookup_role(user)
+            if db_role:
+                role = db_role
+        return {
+            "username": user,
+            "role": role or "operator",
+            "source": "proxy",
+        }
     return None
 
 
