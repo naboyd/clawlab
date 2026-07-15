@@ -236,8 +236,8 @@ def activate_policy(name: str) -> tuple[bool, str]:
 
 def reload_gateway() -> tuple[bool, str]:
     for cmd in (
-        ["systemctl", "--user", "restart", "openclaw-gateway"],
         ["defenseclaw-gateway", "restart"],
+        ["systemctl", "--user", "restart", "openclaw-gateway"],
     ):
         try:
             proc = subprocess.run(

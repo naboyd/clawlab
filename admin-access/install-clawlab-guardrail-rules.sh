@@ -28,24 +28,52 @@ mkdir -p "$RULES_DIR"
   --src-dir "$SRC"
 
 reload_gateway() {
-  if systemctl --user restart openclaw-gateway.service 2>/dev/null; then
-    echo "Reloaded guardrail via openclaw-gateway.service"
-    return 0
-  fi
+  # Rule-pack YAML edits do NOT hot-reload; the inspect API (port 18970) is
+  # served by the defenseclaw-gateway sidecar, not openclaw-gateway.service.
   if command -v defenseclaw-gateway >/dev/null 2>&1; then
     if defenseclaw-gateway restart 2>/dev/null; then
       echo "Reloaded guardrail via defenseclaw-gateway restart"
+      sleep 2
       return 0
     fi
   fi
-  echo "NOTE: restart openclaw-gateway to load new rules:"
-  echo "  systemctl --user restart openclaw-gateway"
+  if systemctl --user restart openclaw-gateway.service 2>/dev/null; then
+    echo "Reloaded openclaw-gateway (if inspect still allows useradd, run: defenseclaw-gateway restart)"
+    sleep 2
+    return 0
+  fi
+  echo "NOTE: restart the DefenseClaw sidecar to load merged rules:"
+  echo "  defenseclaw-gateway restart"
   return 1
 }
 
+verify_useradd_block() {
+  local token="" action=""
+  if [ -f "${DC_HOME}/shims/.token" ]; then
+    # shellcheck disable=SC1090
+    . "${DC_HOME}/shims/.token"
+  fi
+  token="${DEFENSECLAW_GATEWAY_TOKEN:-}"
+  [ -n "$token" ] || return 0
+  action="$(curl -s -m8 -X POST "http://127.0.0.1:18970/api/v1/inspect/tool" \
+    -H "Authorization: Bearer ${token}" \
+    -H 'Content-Type: application/json' \
+    -d '{"tool":"bash","args":{"command":"useradd clawlab-verify"}}' \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('action','err'))" 2>/dev/null || echo err)"
+  if [ "$action" = "block" ]; then
+    echo "Verify: inspect-tool useradd -> block (rules active in memory)"
+  else
+    echo "WARN: inspect-tool useradd -> ${action} (rules on disk but sidecar not reloaded)"
+    echo "      Run: defenseclaw-gateway restart"
+    return 1
+  fi
+}
+
 reload_gateway || true
+verify_useradd_block || true
 
 echo "Done. Verify with:"
+echo "  defenseclaw-gateway restart   # required after manual YAML edits"
 echo "  defenseclaw guardrail status"
 echo "  grep -E 'CMD-USERADD|create a local user' ${RULES_DIR}/commands.yaml ${RULES_DIR}/local-patterns.yaml"
 echo "  ./tests/policy-test.sh --no-agent"
