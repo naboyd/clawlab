@@ -61,3 +61,13 @@ with `copy running-config` (DefenseClaw `IOS-BLK-COPY`). Walkthrough:
 ```
 
 Shared MCP helpers live in `lib-mcp-harness.sh` (sourced by the scripts above).
+
+## IOS-XE policy groups
+
+`test_ios_xe_policy_groups.py` validates the expanded allow_groups taxonomy (60+
+groups, vlan_l3, AAA/routing deny defaults).
+
+```bash
+python3 tests/test_ios_xe_policy_groups.py -v
+python3 admin-access/sync-ios-xe-policy.py   # regenerate from generator
+```

@@ -4,13 +4,13 @@ Official source used to derive `config-templates/ios-xe-policy.yaml` allow_group
 
 | File | Source |
 |------|--------|
-| `ios-xe-17.11-c9200-command-reference.pdf` | [Catalyst 9200 IOS-XE 17.11 Command Reference](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf) |
+| `ios-xe-17.17-c9200-command-reference.pdf` | [Catalyst 9200 IOS-XE 17.17 Command Reference](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-17/command_reference/b_1717_9200_cr.pdf) |
 
-Chapter-to-group mapping: `docs/ios-xe-command-reference-index.yaml`.
+Chapter-to-group mapping: `docs/ios-xe-command-reference-index.yaml` (60 granular groups in 11 categories).
 
-Re-download:
+Re-download and regenerate policy:
 
 ```bash
-curl -fsSL -o docs/reference/ios-xe-17.11-c9200-command-reference.pdf \
-  "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf"
+bash admin-access/fetch-ios-xe-command-reference.sh
+python3 admin-access/sync-ios-xe-policy.py
 ```

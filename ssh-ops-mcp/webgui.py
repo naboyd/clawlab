@@ -627,12 +627,19 @@ use group <code>vlan_l3</code> — not <code>vlan</code> or <code>vlan_svi</code
     </div>
     <div><label>Allow group</label>
       <select name="group" required>
+        {% set ns = namespace(cat='') %}
         {% for g in policy_groups %}
+        {% if g.category != ns.cat %}
+        {% if ns.cat %}</optgroup>{% endif %}
+        <optgroup label="{{ g.category_label }}">
+        {% set ns.cat = g.category %}
+        {% endif %}
         <option value="{{ g.name }}" {% if g.access=='deny' %}disabled{% endif %}
                 {% if g.name=='vlan_l3' %}selected{% endif %}>
           {{ g.name }}{% if g.access=='deny' %} (denied){% elif g.access=='allow' %} (auto-approve){% endif %}
         </option>
         {% endfor %}
+        {% if ns.cat %}</optgroup>{% endif %}
       </select>
     </div>
   </div>
@@ -656,9 +663,10 @@ use group <code>vlan_l3</code> — not <code>vlan</code> or <code>vlan_svi</code
 <form method="post" action="{{ url_for('policy_save_groups') }}" class="card">
   <input type="hidden" name="tab" value="policy">
   <table>
-  <tr><th>Group</th><th>Description</th><th>Patterns</th><th>Access</th></tr>
+  <tr><th>Category</th><th>Group</th><th>Description</th><th>Patterns</th><th>Access</th></tr>
   {% for g in policy_groups %}
   <tr>
+    <td class="hint">{{ g.category_label }}</td>
     <td><code>{{ g.name }}</code></td>
     <td>{{ g.description or '—' }}</td>
     <td>{{ g.pattern_count }}</td>

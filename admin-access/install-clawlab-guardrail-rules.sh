@@ -27,11 +27,11 @@ mkdir -p "$RULES_DIR"
   --rules-dir "$RULES_DIR" \
   --src-dir "$SRC"
 
+"$PY" "${REPO}/admin-access/sync-ios-xe-policy.py"
+
 "$PY" "${REPO}/admin-access/merge-ios-xe-policy.py" \
   --rules-dir "$RULES_DIR" \
   --policy "${REPO}/config-templates/ios-xe-policy.yaml"
-
-cp "${REPO}/config-templates/ios-xe-policy.yaml" "${REPO}/ssh-ops-mcp/ios-xe-policy.yaml" 2>/dev/null || true
 
 reload_gateway() {
   # Rule-pack YAML edits do NOT hot-reload; the inspect API (port 18970) is

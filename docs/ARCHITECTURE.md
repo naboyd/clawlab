@@ -231,7 +231,8 @@ OpenClaw agent ──MCP HTTPS :8766──► ssh-ops MCP (Podman)
 
 ### IOS-XE change governance
 
-Single source of truth: `config-templates/ios-xe-policy.yaml` (35 `allow_groups` aligned
+Single source of truth: `config-templates/ios-xe-policy.yaml` (60 granular `allow_groups` in
+11 categories, aligned with IOS-XE 17.17 Catalyst 9200 Command Reference).
 with the Cisco IOS-XE 17.11 Catalyst 9200 command reference — see
 `docs/ios-xe-command-reference-index.yaml`).
 
@@ -362,7 +363,7 @@ bash tests/policy-test.sh --no-agent
 4. **Open OpenClaw ↗** — governed agent chat (new window; token + pairing).
 
 **What enforces policy:** DefenseClaw guardrail (regex + judge), exec shims, tool-call
-inspection, ssh-ops `ios-xe-policy.yaml` (`always_block` + 35 `allow_groups` with
+inspection, ssh-ops `ios-xe-policy.yaml` (`always_block` + 60 granular `allow_groups` with
 deny/approve/allow modes), four-eyes change approval, OPA admission actions.
 
 **What alerts:** Webex bridge on HIGH/CRITICAL audit events and change apply/self-approval blocks.

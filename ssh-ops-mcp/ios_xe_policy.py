@@ -129,17 +129,55 @@ def get_group_access(group: str | None) -> str:
 def list_groups_for_gui() -> list[dict[str, Any]]:
     """Summarize allow_groups for the admin Policy tab."""
     data = load_policy()
+    categories = data.get("group_categories") or []
+    cat_order = {
+        str(c.get("id") or ""): i
+        for i, c in enumerate(categories)
+        if isinstance(c, dict)
+    }
+    cat_labels = {
+        str(c.get("id") or ""): str(c.get("label") or c.get("id") or "")
+        for c in categories
+        if isinstance(c, dict)
+    }
+
     out: list[dict[str, Any]] = []
-    for name, grp in sorted((data.get("allow_groups") or {}).items()):
+    for name, grp in (data.get("allow_groups") or {}).items():
         if not isinstance(grp, dict):
             continue
         patterns = grp.get("patterns") or []
+        cat_id = str(grp.get("category") or "other")
         out.append({
             "name": str(name),
+            "category": cat_id,
+            "category_label": cat_labels.get(cat_id, cat_id.replace("_", " ").title()),
             "description": str(grp.get("description") or ""),
             "access": get_group_access(str(name)),
             "risk": str(grp.get("risk") or "medium"),
             "pattern_count": len(patterns) if isinstance(patterns, list) else 0,
+        })
+
+    def _sort_key(item: dict[str, Any]) -> tuple[int, str]:
+        cat = str(item.get("category") or "")
+        return (cat_order.get(cat, 999), str(item.get("name") or ""))
+
+    out.sort(key=_sort_key)
+    return out
+
+
+def list_group_categories() -> list[dict[str, str]]:
+    """Ordered category labels for GUI optgroups."""
+    data = load_policy()
+    out: list[dict[str, str]] = []
+    for entry in data.get("group_categories") or []:
+        if not isinstance(entry, dict):
+            continue
+        cid = str(entry.get("id") or "").strip()
+        if not cid:
+            continue
+        out.append({
+            "id": cid,
+            "label": str(entry.get("label") or cid),
         })
     return out
 

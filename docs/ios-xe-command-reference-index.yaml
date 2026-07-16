@@ -1,13 +1,48 @@
 # Index of Cisco IOS-XE configuration command chapters mapped to clawlab allow_groups.
-# Source: Command Reference, Cisco IOS XE Dublin 17.11.x (Catalyst 9200 Switches)
-# PDF: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf
+# Source: Command Reference, Cisco IOS XE 17.17.x (Catalyst 9200 Switches)
+# PDF: https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-17/command_reference/b_1717_9200_cr.pdf
 # Also aligned with Catalyst 9300/9400/9500 17.17.x command references (same chapter layout).
-version: 1
+version: 2
 source:
-  title: "Command Reference, Cisco IOS XE Dublin 17.11.x (Catalyst 9200 Switches)"
-  url: "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-11/command_reference/b_1711_9200_cr.pdf"
+  title: "Command Reference, Cisco IOS XE 17.17.x (Catalyst 9200 Switches)"
+  url: "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-17/command_reference/b_1717_9200_cr.pdf"
+  html: "https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9200/software/release/17-17/command_reference/b_1717_9200_cr.html"
   catalog: "https://www.cisco.com/c/en/us/support/ios-nx-os-software/ios-xe-17/products-command-reference-list.html"
-  fetched: "2026-07-15"
+  fetched: "2026-07-16"
+group_categories:
+  - id: vlan
+    label: "VLAN (Part XIII, ch. 15)"
+    groups: [vlan, vlan_svi, vlan_l3, private_vlan, vtp]
+  - id: interface
+    label: "Interface & Hardware (Part III, ch. 4)"
+    groups: [interface_l2, interface_trunk, voice_vlan, interface_po, storm_control, lldp_cdp, udld, macro_port, loopback]
+  - id: spanning_tree
+    label: "Spanning Tree (Part VI, ch. 7)"
+    groups: [spanning_tree_if, spanning_tree_global]
+  - id: ip_addressing
+    label: "IP Addressing (Part IV, ch. 5)"
+    groups: [ipv6_svi, ip_helpers, dhcp_snooping, dhcp_pool, hsrp_vrrp]
+  - id: routing
+    label: "Routing (Part IX, ch. 10)"
+    groups: [routing_static, static_route, routing_default, routing_ospf, routing_ospfv3, routing_bgp, routing_eigrp, routing_rip, routing_isis, routing_route_map, routing_prefix_list, routing_redistribute]
+  - id: security
+    label: "Security & AAA (Part X, ch. 11)"
+    groups: [aaa_core, aaa_radius, aaa_tacacs, acl_standard, acl_extended, acl_ipv6, acl_mac, acl_apply, dot1x_port]
+  - id: qos
+    label: "QoS (Part VIII, ch. 9)"
+    groups: [qos_class_map, qos_policy_map, qos_service_policy, qos_auto_mls]
+  - id: netmgmt
+    label: "Network Management (Part VII, ch. 8)"
+    groups: [logging_syslog, snmp_traps, netflow_exporter, netflow_record, netflow_monitor, netflow_interface, dns_ntp]
+  - id: system
+    label: "System Management (Part XII, ch. 13)"
+    groups: [hostname_banner, errdisable]
+  - id: multicast
+    label: "Multicast (Part V, ch. 6)"
+    groups: [multicast_pim, multicast_igmp]
+  - id: fabric
+    label: "SD-Access / TrustSec / Stacking"
+    groups: [sd_access, trustsec, stacking]
 chapters:
   - part: "I"
     name: "Cisco SD-Access"
@@ -25,25 +60,25 @@ chapters:
     policy_groups: [vlan_svi, vlan_l3, ipv6_svi, ip_helpers, dhcp_pool, dhcp_snooping, hsrp_vrrp]
   - part: "V"
     name: "IP Multicast Routing"
-    policy_group: multicast
+    policy_groups: [multicast_pim, multicast_igmp]
     default_access: deny
   - part: "VI"
     name: "Layer 2/3"
     policy_groups: [interface_l2, interface_trunk, interface_po, spanning_tree_if, spanning_tree_global, voice_vlan]
   - part: "VII"
     name: "Network Management"
-    policy_groups: [logging_snmp, netflow, dns_ntp]
+    policy_groups: [logging_syslog, snmp_traps, netflow_exporter, netflow_record, netflow_monitor, netflow_interface, dns_ntp]
   - part: "VIII"
     name: "QoS"
-    policy_group: qos_policy
+    policy_groups: [qos_class_map, qos_policy_map, qos_service_policy, qos_auto_mls]
   - part: "IX"
     name: "IP Routing"
-    policy_groups: [static_route]
-    always_block: [router_bgp, router_ospf, router_eigrp, route_map, prefix_list, default_route]
+    policy_groups: [routing_static, routing_ospf, routing_bgp, routing_eigrp]
+    always_block_legacy: [username, copy, reload]
   - part: "X"
     name: "Security"
-    always_block: [aaa, username, line_vty, ip_ssh, snmp_community]
-    policy_groups: [acl_standard, acl_extended, dot1x_port]
+    policy_groups: [aaa_core, aaa_radius, aaa_tacacs, acl_standard, acl_extended, acl_ipv6, acl_mac, acl_apply, dot1x_port]
+    always_block: [username, line_vty, ip_ssh, snmp_community]
   - part: "XI"
     name: "Stack Manager and High Availability"
     policy_group: stacking

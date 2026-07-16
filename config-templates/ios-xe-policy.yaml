@@ -2,7 +2,7 @@
 #   • DefenseClaw inspect (always_block → CRITICAL hard-block)
 #   • ssh-ops MCP propose_change / ios_config_lines (allow_groups + always_block)
 #
-# Command taxonomy aligned with Cisco IOS-XE 17.11 Catalyst 9200 Command Reference
+# Command taxonomy aligned with Cisco IOS-XE 17.17 Catalyst 9200 Command Reference
 # (see docs/ios-xe-command-reference-index.yaml).
 #
 # Severity model (DefenseClaw):
@@ -15,645 +15,801 @@
 version: 1
 platform: ios-xe
 mode: default_deny
-
 approval_policy:
   require_proposer_identity: true
   forbid_self_approval: true
   forbidden_proposers:
-    - agent
-    - mcp
-    - system
-    - unknown
-    - gui-operator
+  - agent
+  - mcp
+  - system
+  - unknown
+  - gui-operator
   default:
     forbid_self_approval: true
-
 always_block:
-  # --- Identity / AAA (Security ch. 11) ---
-  - id: IOS-BLK-USERNAME
-    group: identity
-    pattern: '(?i)^username\s+\S+'
-    title: "Cisco local username create/update"
-    severity: CRITICAL
-  - id: IOS-BLK-NO-USERNAME
-    group: identity
-    pattern: '(?i)^no\s+username\s+\S+'
-    title: "Cisco local username delete"
-    severity: CRITICAL
-  - id: IOS-BLK-AAA
-    group: identity
-    pattern: '(?i)^aaa\s+'
-    title: "AAA configuration change"
-    severity: CRITICAL
-  - id: IOS-BLK-TACACS
-    group: identity
-    pattern: '(?i)^tacacs'
-    title: "TACACS configuration"
-    severity: CRITICAL
-  - id: IOS-BLK-RADIUS
-    group: identity
-    pattern: '(?i)^radius'
-    title: "RADIUS configuration"
-    severity: CRITICAL
-
-  # --- Management plane ---
-  - id: IOS-BLK-ENABLE-SECRET
-    group: management
-    pattern: '(?i)^enable\s+secret\b'
-    title: "Enable secret change"
-    severity: CRITICAL
-  - id: IOS-BLK-LINE
-    group: management
-    pattern: '(?i)^line\s+'
-    title: "Line (console/VTY/AUX) configuration"
-    severity: CRITICAL
-  - id: IOS-BLK-IP-SSH
-    group: management
-    pattern: '(?i)^ip\s+ssh\b'
-    title: "SSH server configuration"
-    severity: CRITICAL
-  - id: IOS-BLK-CRYPTO
-    group: management
-    pattern: '(?i)^crypto\s+'
-    title: "Crypto / PKI / IPsec configuration"
-    severity: CRITICAL
-  - id: IOS-BLK-CONTROL-PLANE
-    group: management
-    pattern: '(?i)^control-plane\b'
-    title: "Control-plane service policy"
-    severity: CRITICAL
-
-  # --- Destructive / exfil (System Management ch. 13) ---
-  - id: IOS-BLK-RELOAD
-    group: destructive
-    pattern: '(?i)^reload\b'
-    title: "Device reload"
-    severity: CRITICAL
-  - id: IOS-BLK-WRITE-ERASE
-    group: destructive
-    pattern: '(?i)^write\s+erase\b'
-    title: "Erase startup config"
-    severity: CRITICAL
-  - id: IOS-BLK-ERASE
-    group: destructive
-    pattern: '(?i)^erase\s+'
-    title: "Erase flash/filesystem"
-    severity: CRITICAL
-  - id: IOS-BLK-FORMAT
-    group: destructive
-    pattern: '(?i)^format\s+'
-    title: "Format filesystem"
-    severity: CRITICAL
-  - id: IOS-BLK-COPY
-    group: destructive
-    pattern: '(?i)^copy\s+'
-    title: "Copy files or configs (exfil/injection risk)"
-    severity: CRITICAL
-  - id: IOS-BLK-BOOT
-    group: destructive
-    pattern: '(?i)^boot\s+'
-    title: "Boot system / image path"
-    severity: CRITICAL
-  - id: IOS-BLK-ARCHIVE
-    group: destructive
-    pattern: '(?i)^archive\b'
-    title: "Configuration archive"
-    severity: CRITICAL
-  - id: IOS-BLK-FACTORY-RESET
-    group: destructive
-    pattern: '(?i)^factory-reset\b'
-    title: "Factory reset"
-    severity: CRITICAL
-  - id: IOS-BLK-INSTALL
-    group: destructive
-    pattern: '(?i)^install\s+'
-    title: "Software install / SMU"
-    severity: CRITICAL
-  - id: IOS-BLK-LICENSE
-    group: destructive
-    pattern: '(?i)^license\s+'
-    title: "License manipulation"
-    severity: CRITICAL
-  - id: IOS-BLK-SDM
-    group: destructive
-    pattern: '(?i)^sdm\s+prefer\b'
-    title: "SDM template change (reload required)"
-    severity: CRITICAL
-  - id: IOS-BLK-KRON
-    group: destructive
-    pattern: '(?i)^kron\b'
-    title: "Scheduled EXEC (kron)"
-    severity: CRITICAL
-  - id: IOS-BLK-EEM
-    group: destructive
-    pattern: '(?i)^event\s+manager\b'
-    title: "Embedded Event Manager applet"
-    severity: CRITICAL
-
-  # --- Dynamic routing (IP Routing ch. 10) ---
-  - id: IOS-BLK-ROUTER-BGP
-    group: routing
-    pattern: '(?i)^router\s+bgp\b'
-    title: "BGP routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTER-OSPF
-    group: routing
-    pattern: '(?i)^router\s+ospf\b'
-    title: "OSPF routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTER-OSPFV3
-    group: routing
-    pattern: '(?i)^router\s+ospfv3\b'
-    title: "OSPFv3 routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTER-EIGRP
-    group: routing
-    pattern: '(?i)^router\s+eigrp\b'
-    title: "EIGRP routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTER-RIP
-    group: routing
-    pattern: '(?i)^router\s+rip\b'
-    title: "RIP routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTER-ISIS
-    group: routing
-    pattern: '(?i)^router\s+isis\b'
-    title: "IS-IS routing process"
-    severity: CRITICAL
-  - id: IOS-BLK-ROUTE-MAP
-    group: routing
-    pattern: '(?i)^route-map\s+'
-    title: "Route-map policy"
-    severity: CRITICAL
-  - id: IOS-BLK-PREFIX-LIST
-    group: routing
-    pattern: '(?i)^ip\s+prefix-list\b'
-    title: "IP prefix-list"
-    severity: CRITICAL
-  - id: IOS-BLK-IPV6-PREFIX-LIST
-    group: routing
-    pattern: '(?i)^ipv6\s+prefix-list\b'
-    title: "IPv6 prefix-list"
-    severity: CRITICAL
-  - id: IOS-BLK-REDISTRIBUTE
-    group: routing
-    pattern: '(?i)^redistribute\b'
-    title: "Route redistribution"
-    severity: CRITICAL
-  - id: IOS-BLK-IP-ROUTE-DEFAULT
-    group: routing
-    pattern: '(?i)^ip\s+route\s+0\.0\.0\.0\b'
-    title: "Default route injection"
-    severity: CRITICAL
-  - id: IOS-BLK-IPV6-ROUTE-DEFAULT
-    group: routing
-    pattern: '(?i)^ipv6\s+route\s+::/0\b'
-    title: "IPv6 default route injection"
-    severity: CRITICAL
-
-  # --- SNMP / HTTP ---
-  - id: IOS-BLK-SNMP-COMMUNITY
-    group: snmp
-    pattern: '(?i)^snmp-server\s+community\b'
-    title: "SNMP community string"
-    severity: CRITICAL
-  - id: IOS-BLK-SNMP-GROUP
-    group: snmp
-    pattern: '(?i)^snmp-server\s+group\b'
-    title: "SNMP V3 group"
-    severity: CRITICAL
-  - id: IOS-BLK-SNMP-USER
-    group: snmp
-    pattern: '(?i)^snmp-server\s+user\b'
-    title: "SNMP V3 user"
-    severity: CRITICAL
-  - id: IOS-BLK-HTTP-SERVER
-    group: management
-    pattern: '(?i)^ip\s+http\s+server\b'
-    title: "HTTP server enable"
-    severity: CRITICAL
-
-# access per group (admin portal Policy tab):
-#   deny    — always deny: proposals rejected; DefenseClaw CRITICAL on patterns
-#   approve — approval required: four-eyes propose → approve → apply (default)
-#   allow   — always allow: auto-approved on propose; apply_change still required
+- id: IOS-BLK-USERNAME
+  group: identity
+  pattern: (?i)^username\s+\S+
+  title: Cisco local username create/update
+  severity: CRITICAL
+- id: IOS-BLK-NO-USERNAME
+  group: identity
+  pattern: (?i)^no\s+username\s+\S+
+  title: Cisco local username delete
+  severity: CRITICAL
+- id: IOS-BLK-ENABLE-SECRET
+  group: management
+  pattern: (?i)^enable\s+secret\b
+  title: Enable secret change
+  severity: CRITICAL
+- id: IOS-BLK-LINE
+  group: management
+  pattern: (?i)^line\s+
+  title: Line (console/VTY/AUX) configuration
+  severity: CRITICAL
+- id: IOS-BLK-IP-SSH
+  group: management
+  pattern: (?i)^ip\s+ssh\b
+  title: SSH server configuration
+  severity: CRITICAL
+- id: IOS-BLK-CRYPTO
+  group: management
+  pattern: (?i)^crypto\s+
+  title: Crypto / PKI / IPsec configuration
+  severity: CRITICAL
+- id: IOS-BLK-CONTROL-PLANE
+  group: management
+  pattern: (?i)^control-plane\b
+  title: Control-plane service policy
+  severity: CRITICAL
+- id: IOS-BLK-RELOAD
+  group: destructive
+  pattern: (?i)^reload\b
+  title: Device reload
+  severity: CRITICAL
+- id: IOS-BLK-WRITE-ERASE
+  group: destructive
+  pattern: (?i)^write\s+erase\b
+  title: Erase startup config
+  severity: CRITICAL
+- id: IOS-BLK-ERASE
+  group: destructive
+  pattern: (?i)^erase\s+
+  title: Erase flash/filesystem
+  severity: CRITICAL
+- id: IOS-BLK-FORMAT
+  group: destructive
+  pattern: (?i)^format\s+
+  title: Format filesystem
+  severity: CRITICAL
+- id: IOS-BLK-COPY
+  group: destructive
+  pattern: (?i)^copy\s+
+  title: Copy files or configs (exfil/injection risk)
+  severity: CRITICAL
+- id: IOS-BLK-BOOT
+  group: destructive
+  pattern: (?i)^boot\s+
+  title: Boot system / image path
+  severity: CRITICAL
+- id: IOS-BLK-ARCHIVE
+  group: destructive
+  pattern: (?i)^archive\b
+  title: Configuration archive
+  severity: CRITICAL
+- id: IOS-BLK-FACTORY-RESET
+  group: destructive
+  pattern: (?i)^factory-reset\b
+  title: Factory reset
+  severity: CRITICAL
+- id: IOS-BLK-INSTALL
+  group: destructive
+  pattern: (?i)^install\s+
+  title: Software install / SMU
+  severity: CRITICAL
+- id: IOS-BLK-LICENSE
+  group: destructive
+  pattern: (?i)^license\s+
+  title: License manipulation
+  severity: CRITICAL
+- id: IOS-BLK-SDM
+  group: destructive
+  pattern: (?i)^sdm\s+prefer\b
+  title: SDM template change (reload required)
+  severity: CRITICAL
+- id: IOS-BLK-KRON
+  group: destructive
+  pattern: (?i)^kron\b
+  title: Scheduled EXEC (kron)
+  severity: CRITICAL
+- id: IOS-BLK-EEM
+  group: destructive
+  pattern: (?i)^event\s+manager\b
+  title: Embedded Event Manager applet
+  severity: CRITICAL
+- id: IOS-BLK-SNMP-COMMUNITY
+  group: snmp
+  pattern: (?i)^snmp-server\s+community\b
+  title: SNMP community string
+  severity: CRITICAL
+- id: IOS-BLK-SNMP-GROUP
+  group: snmp
+  pattern: (?i)^snmp-server\s+group\b
+  title: SNMP V3 group
+  severity: CRITICAL
+- id: IOS-BLK-SNMP-USER
+  group: snmp
+  pattern: (?i)^snmp-server\s+user\b
+  title: SNMP V3 user
+  severity: CRITICAL
+- id: IOS-BLK-HTTP-SERVER
+  group: management
+  pattern: (?i)^ip\s+http\s+server\b
+  title: HTTP server enable
+  severity: CRITICAL
+group_categories:
+- id: vlan
+  label: VLAN (Part XIII, ch. 15)
+- id: interface
+  label: Interface & Hardware (Part III, ch. 4)
+- id: spanning_tree
+  label: Spanning Tree (Part VI, ch. 7)
+- id: ip_addressing
+  label: IP Addressing (Part IV, ch. 5)
+- id: routing
+  label: Routing (Part IX, ch. 10)
+- id: security
+  label: Security & AAA (Part X, ch. 11)
+- id: qos
+  label: QoS (Part VIII, ch. 9)
+- id: netmgmt
+  label: Network Management (Part VII, ch. 8)
+- id: system
+  label: System Management (Part XII, ch. 13)
+- id: multicast
+  label: Multicast (Part V, ch. 6)
+- id: fabric
+  label: SD-Access / TrustSec / Stacking
 allow_groups:
-
-  # --- VLAN (ch. 15) ---
   vlan:
-    description: "Create VLAN and assign name"
+    category: vlan
+    description: Create VLAN and assign name
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^vlan\s+\d+'
-      - '(?i)^\s*name\s+'
-
+    - (?i)^vlan\s+\d+
+    - (?i)^\s*name\s+
   vlan_svi:
-    description: "L3 SVI only (interface VlanN + ip address) — VLAN must already exist"
+    category: vlan
+    description: L3 SVI only (interface VlanN + ip address)
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+Vlan\d+'
-      - '(?i)^\s*ip\s+address\s+(?:\d{1,3}\.){3}\d{1,3}(?:\s+(?:\d{1,3}\.){3}\d{1,3}|/\d{1,2}|\s+\d{1,2})?(?:\s+secondary)?\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*shutdown\s*$'
-
+    - (?i)^interface\s+Vlan\d+
+    - (?i)^\s*ip\s+address\s+(?:\d{1,3}\.){3}\d{1,3}(?:\s+(?:\d{1,3}\.){3}\d{1,3}|/\d{1,2}|\s+\d{1,2})?(?:\s+secondary)?\s*$
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*description\s+
+    - (?i)^\s*shutdown\s*$
   vlan_l3:
-    description: "Create VLAN plus SVI (L3 switch / gateway) — use for C9300 SVI deploys"
+    category: vlan
+    description: Create VLAN plus SVI (L3 switch / gateway)
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^vlan\s+\d+'
-      - '(?i)^\s*name\s+'
-      - '(?i)^interface\s+Vlan\d+'
-      - '(?i)^\s*ip\s+address\s+(?:\d{1,3}\.){3}\d{1,3}(?:\s+(?:\d{1,3}\.){3}\d{1,3}|/\d{1,2}|\s+\d{1,2})?(?:\s+secondary)?\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-      - '(?i)^\s*description\s+'
-
+    - (?i)^vlan\s+\d+
+    - (?i)^\s*name\s+
+    - (?i)^interface\s+Vlan\d+
+    - (?i)^\s*ip\s+address\s+(?:\d{1,3}\.){3}\d{1,3}(?:\s+(?:\d{1,3}\.){3}\d{1,3}|/\d{1,2}|\s+\d{1,2})?(?:\s+secondary)?\s*$
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*description\s+
   private_vlan:
-    description: "Private VLAN mapping (isolated/community)"
+    category: vlan
+    description: Private VLAN mapping (isolated/community)
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^vlan\s+\d+'
-      - '(?i)^\s*private-vlan\b'
-      - '(?i)^\s*name\s+'
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*switchport\s+mode\s+private-vlan\b'
-      - '(?i)^\s*switchport\s+private-vlan\b'
-
+    - (?i)^vlan\s+\d+
+    - (?i)^\s*private-vlan\b
+    - (?i)^\s*name\s+
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*switchport\s+mode\s+private-vlan\b
+    - (?i)^\s*switchport\s+private-vlan\b
   vtp:
-    description: "VTP domain/mode/version (high blast radius)"
+    category: vlan
+    description: VTP domain/mode/version
     access: deny
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^vtp\s+'
-      - '(?i)^\s*vtp\s+'
-
-  # --- Interface L2 access (ch. 4 + ch. 7) ---
+    - (?i)^vtp\s+
+    - (?i)^\s*vtp\s+
   interface_l2:
-    description: "Access port admin state, description, access VLAN, portfast edge"
+    category: interface
+    description: Access port admin state, VLAN, portfast edge
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et)\S+'
-      - '(?i)^\s*shutdown\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*switchport\s+mode\s+access\s*$'
-      - '(?i)^\s*switchport\s+access\s+vlan\s+\d+'
-      - '(?i)^\s*switchport\s+nonegotiate\s*$'
-      - '(?i)^\s*spanning-tree\s+portfast\s+edge\s*$'
-      - '(?i)^\s*spanning-tree\s+bpduguard\s+enable\s*$'
-      - '(?i)^\s*speed\s+\S+'
-      - '(?i)^\s*duplex\s+\S+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et)\S+
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*description\s+
+    - (?i)^\s*switchport\s+mode\s+access\s*$
+    - (?i)^\s*switchport\s+access\s+vlan\s+\d+
+    - (?i)^\s*switchport\s+nonegotiate\s*$
+    - (?i)^\s*spanning-tree\s+portfast\s+edge\s*$
+    - (?i)^\s*spanning-tree\s+bpduguard\s+enable\s*$
+    - (?i)^\s*speed\s+\S+
+    - (?i)^\s*duplex\s+\S+
   interface_trunk:
-    description: "Trunk port mode, allowed VLANs, native VLAN"
+    category: interface
+    description: Trunk mode, allowed VLANs, native VLAN
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et)\S+'
-      - '(?i)^\s*switchport\s+mode\s+trunk\s*$'
-      - '(?i)^\s*switchport\s+trunk\s+'
-      - '(?i)^\s*switchport\s+nonegotiate\s*$'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*shutdown\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Ethernet|Et)\S+
+    - (?i)^\s*switchport\s+mode\s+trunk\s*$
+    - (?i)^\s*switchport\s+trunk\s+
+    - (?i)^\s*switchport\s+nonegotiate\s*$
+    - (?i)^\s*description\s+
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*no\s+shutdown\s*$
   voice_vlan:
-    description: "Access port voice VLAN (Cisco phone)"
+    category: interface
+    description: Access port voice VLAN (Cisco phone)
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*switchport\s+mode\s+access\s*$'
-      - '(?i)^\s*switchport\s+access\s+vlan\s+\d+'
-      - '(?i)^\s*switchport\s+voice\s+vlan\s+'
-      - '(?i)^\s*mls\s+qos\s+trust\s+'
-      - '(?i)^\s*description\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*switchport\s+mode\s+access\s*$
+    - (?i)^\s*switchport\s+access\s+vlan\s+\d+
+    - (?i)^\s*switchport\s+voice\s+vlan\s+
+    - (?i)^\s*mls\s+qos\s+trust\s+
+    - (?i)^\s*description\s+
   interface_po:
-    description: "EtherChannel / port-channel (LACP/PAgP)"
+    category: interface
+    description: EtherChannel / port-channel (LACP/PAgP)
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S+'
-      - '(?i)^\s*channel-group\s+\d+'
-      - '(?i)^\s*channel-protocol\s+'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*shutdown\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-      - '(?i)^\s*switchport\s+'
-      - '(?i)^lacp\s+'
-      - '(?i)^port-channel\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S+
+    - (?i)^\s*channel-group\s+\d+
+    - (?i)^\s*channel-protocol\s+
+    - (?i)^\s*description\s+
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*switchport\s+
+    - (?i)^lacp\s+
+    - (?i)^port-channel\s+
   storm_control:
-    description: "Broadcast/multicast/unicast storm-control thresholds"
+    category: interface
+    description: Storm-control thresholds
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*storm-control\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*storm-control\s+
   lldp_cdp:
-    description: "LLDP/CDP transmit/receive on interface or globally"
+    category: interface
+    description: LLDP/CDP on interface or globally
     access: approve
     risk: low
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*lldp\s+'
-      - '(?i)^\s*cdp\s+'
-      - '(?i)^lldp\s+run\s*$'
-      - '(?i)^cdp\s+run\s*$'
-      - '(?i)^no\s+cdp\s+run\s*$'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*lldp\s+
+    - (?i)^\s*cdp\s+
+    - (?i)^lldp\s+run\s*$
+    - (?i)^cdp\s+run\s*$
+    - (?i)^no\s+cdp\s+run\s*$
   udld:
-    description: "UDLD aggressive/normal on fiber uplinks"
+    category: interface
+    description: UDLD on fiber uplinks
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te)\S+'
-      - '(?i)^\s*udld\s+'
-      - '(?i)^udld\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te)\S+
+    - (?i)^\s*udld\s+
+    - (?i)^udld\s+
   macro_port:
-    description: "Cisco SmartPort / interface macro apply"
+    category: interface
+    description: SmartPort / interface macro apply
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*macro\s+'
-      - '(?i)^macro\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*macro\s+
+    - (?i)^macro\s+
   loopback:
-    description: "Loopback interface with IPv4 address"
+    category: interface
+    description: Loopback interface with IPv4 address
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+Loopback\d+'
-      - '(?i)^\s*ip\s+address\s+'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*shutdown\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-
-  # --- Spanning tree (ch. 7) ---
+    - (?i)^interface\s+Loopback\d+
+    - (?i)^\s*ip\s+address\s+
+    - (?i)^\s*description\s+
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*no\s+shutdown\s*$
   spanning_tree_if:
-    description: "Per-interface STP cost, priority, portfast, guard"
+    category: spanning_tree
+    description: Per-interface STP cost, priority, portfast, guard
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S+'
-      - '(?i)^\s*spanning-tree\s+'
-
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S+
+    - (?i)^\s*spanning-tree\s+
   spanning_tree_global:
-    description: "Global STP mode (rapid-pvst/mst), root bridge, extend system-id"
+    category: spanning_tree
+    description: Global STP mode (rapid-pvst/mst), root bridge
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^spanning-tree\s+'
-      - '(?i)^spanning-tree\s+mst\s+configuration'
-      - '(?i)^\s*instance\s+\d+'
-      - '(?i)^\s*name\s+'
-      - '(?i)^\s*revision\s+\d+'
-
-  # --- IP addressing (ch. 5) ---
+    - (?i)^spanning-tree\s+
+    - (?i)^spanning-tree\s+mst\s+configuration
+    - (?i)^\s*instance\s+\d+
+    - (?i)^\s*name\s+
+    - (?i)^\s*revision\s+\d+
   ipv6_svi:
-    description: "IPv6 address on SVI or routed interface"
+    category: ip_addressing
+    description: IPv6 address on SVI or routed interface
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:Vlan\d+|Loopback\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*'
-      - '(?i)^\s*ipv6\s+address\s+'
-      - '(?i)^\s*ipv6\s+enable\s*$'
-      - '(?i)^\s*no\s+shutdown\s*$'
-
+    - (?i)^interface\s+(?:Vlan\d+|Loopback\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*
+    - (?i)^\s*ipv6\s+address\s+
+    - (?i)^\s*ipv6\s+enable\s*$
+    - (?i)^\s*no\s+shutdown\s*$
   ip_helpers:
-    description: "IP helper-address (DHCP relay) on SVI or interface"
+    category: ip_addressing
+    description: IP helper-address (DHCP relay)
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:Vlan\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*'
-      - '(?i)^\s*ip\s+helper-address\s+'
-
+    - (?i)^interface\s+(?:Vlan\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*
+    - (?i)^\s*ip\s+helper-address\s+
   dhcp_snooping:
-    description: "DHCP snooping global and per-VLAN"
+    category: ip_addressing
+    description: DHCP snooping global and per-VLAN
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+dhcp\s+snooping\b'
-      - '(?i)^ip\s+dhcp\s+snooping\s+vlan\s+'
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*ip\s+dhcp\s+snooping\s+'
-
+    - (?i)^ip\s+dhcp\s+snooping\b
+    - (?i)^ip\s+dhcp\s+snooping\s+vlan\s+
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*ip\s+dhcp\s+snooping\s+
   dhcp_pool:
-    description: "On-box DHCP address pool (scoped server)"
+    category: ip_addressing
+    description: On-box DHCP address pool
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+dhcp\s+pool\s+'
-      - '(?i)^\s*network\s+'
-      - '(?i)^\s*default-router\s+'
-      - '(?i)^\s*dns-server\s+'
-      - '(?i)^\s*domain-name\s+'
-      - '(?i)^\s*lease\s+'
-
+    - (?i)^ip\s+dhcp\s+pool\s+
+    - (?i)^\s*network\s+
+    - (?i)^\s*default-router\s+
+    - (?i)^\s*dns-server\s+
+    - (?i)^\s*domain-name\s+
+    - (?i)^\s*lease\s+
   hsrp_vrrp:
-    description: "HSRP / VRRP first-hop redundancy on interface"
+    category: ip_addressing
+    description: HSRP / VRRP first-hop redundancy
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+Vlan\d+'
-      - '(?i)^\s*standby\s+'
-      - '(?i)^\s*vrrp\s+'
-      - '(?i)^\s*ip\s+address\s+'
-
-  # --- Static routing (ch. 10 — non-default only) ---
-  static_route:
-    description: "Static routes (not 0.0.0.0/0 or ::/0)"
+    - (?i)^interface\s+Vlan\d+
+    - (?i)^\s*standby\s+
+    - (?i)^\s*vrrp\s+
+    - (?i)^\s*ip\s+address\s+
+  routing_static: &id001
+    category: routing
+    description: Static routes (non-default)
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+route\s+(?!0\.0\.0\.0\b)\S+'
-      - '(?i)^ip\s+route\s+vrf\s+\S+\s+(?!0\.0\.0\.0\b)\S+'
-      - '(?i)^ipv6\s+route\s+(?!::/0\b)\S+'
-
-  # --- ACLs (Security ch. 11) ---
+    - (?i)^ip\s+route\s+(?!0\.0\.0\.0\b)\S+
+    - (?i)^ip\s+route\s+vrf\s+\S+\s+(?!0\.0\.0\.0\b)\S+
+    - (?i)^ipv6\s+route\s+(?!::/0\b)\S+
+  routing_default:
+    category: routing
+    description: Default route injection (0.0.0.0/0 or ::/0)
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^ip\s+route\s+0\.0\.0\.0\b
+    - (?i)^ipv6\s+route\s+::/0\b
+  routing_ospf:
+    category: routing
+    description: OSPF routing process and area/network
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+ospf\b
+    - (?i)^\s*network\s+
+    - (?i)^\s*area\s+
+    - (?i)^\s*passive-interface\s+
+    - (?i)^\s*default-information\s+
+  routing_ospfv3:
+    category: routing
+    description: OSPFv3 routing process
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+ospfv3\b
+    - (?i)^\s*address-family\s+
+  routing_bgp:
+    category: routing
+    description: BGP routing process and neighbors
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+bgp\b
+    - (?i)^\s*neighbor\s+
+    - (?i)^\s*network\s+
+    - (?i)^\s*address-family\s+
+    - (?i)^\s*bgp\s+
+  routing_eigrp:
+    category: routing
+    description: EIGRP routing process
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+eigrp\b
+    - (?i)^\s*network\s+
+    - (?i)^\s*passive-interface\s+
+    - (?i)^\s*af-interface\s+
+  routing_rip:
+    category: routing
+    description: RIP routing process
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+rip\b
+    - (?i)^\s*network\s+
+    - (?i)^\s*version\s+
+  routing_isis:
+    category: routing
+    description: IS-IS routing process
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^router\s+isis\b
+    - (?i)^\s*net\s+
+    - (?i)^\s*metric-style\s+
+  routing_route_map:
+    category: routing
+    description: Route-map policy definitions
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^route-map\s+
+    - (?i)^\s*(?:match|set)\s+
+  routing_prefix_list:
+    category: routing
+    description: IP/IPv6 prefix-list filters
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^ip\s+prefix-list\b
+    - (?i)^ipv6\s+prefix-list\b
+    - (?i)^\s*(?:permit|deny|seq)\s+
+  routing_redistribute:
+    category: routing
+    description: Route redistribution under routing process
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^redistribute\b
+  aaa_core:
+    category: security
+    description: AAA new-model, authentication, authorization, accounting
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^aaa\s+new-model\s*$
+    - (?i)^aaa\s+authentication\s+
+    - (?i)^aaa\s+authorization\s+
+    - (?i)^aaa\s+accounting\s+
+    - (?i)^aaa\s+session-id\s+
+    - (?i)^aaa\s+server\s+
+    - (?i)^aaa\s+group\s+
+  aaa_radius:
+    category: security
+    description: RADIUS server and global RADIUS settings
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^radius\s+
+    - (?i)^radius-server\s+
+    - (?i)^aaa\s+group\s+server\s+radius\s+
+  aaa_tacacs:
+    category: security
+    description: TACACS+ server and global TACACS settings
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^tacacs\s+
+    - (?i)^tacacs-server\s+
+    - (?i)^aaa\s+group\s+server\s+tacacs\+?\s+
   acl_standard:
-    description: "Standard numbered/named ACL entries"
+    category: security
+    description: Standard numbered/named IPv4 ACL entries
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+access-list\s+standard\s+'
-      - '(?i)^\s*(?:permit|deny)\s+'
-      - '(?i)^\s*remark\s+'
-
+    - (?i)^ip\s+access-list\s+standard\s+
+    - (?i)^access-list\s+\d+\s+
+    - (?i)^\s*(?:permit|deny)\s+
+    - (?i)^\s*remark\s+
   acl_extended:
-    description: "Extended numbered/named ACL entries"
+    category: security
+    description: Extended numbered/named IPv4 ACL entries
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+access-list\s+extended\s+'
-      - '(?i)^\s*(?:permit|deny)\s+'
-      - '(?i)^\s*remark\s+'
-
+    - (?i)^ip\s+access-list\s+extended\s+
+    - (?i)^access-list\s+\d{3,}\s+
+    - (?i)^\s*(?:permit|deny)\s+
+    - (?i)^\s*remark\s+
+  acl_ipv6:
+    category: security
+    description: IPv6 access-list entries
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^ipv6\s+access-list\s+
+    - (?i)^\s*(?:permit|deny|sequence)\s+
+    - (?i)^\s*remark\s+
+  acl_mac:
+    category: security
+    description: Layer-2 MAC access-list
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^mac\s+access-list\s+
+    - (?i)^\s*(?:permit|deny)\s+
+  acl_apply:
+    category: security
+    description: Apply ACL to interface (ip/ipv6 access-group)
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|Vlan|Port-channel|Po)\S*
+    - (?i)^\s*ip\s+access-group\s+
+    - (?i)^\s*ipv6\s+traffic-filter\s+
   dot1x_port:
-    description: "802.1X on access port (authentication host-mode)"
+    category: security
+    description: 802.1X / access-session on access port
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*authentication\s+'
-      - '(?i)^\s*dot1x\s+'
-      - '(?i)^\s*access-session\s+'
-
-  # --- QoS (ch. 9) ---
-  qos_policy:
-    description: "Class-map, policy-map, service-policy, auto qos"
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*authentication\s+
+    - (?i)^\s*dot1x\s+
+    - (?i)^\s*access-session\s+
+  qos_class_map:
+    category: qos
+    description: Class-map match criteria
     access: approve
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^class-map\s+'
-      - '(?i)^policy-map\s+'
-      - '(?i)^\s*class\s+'
-      - '(?i)^\s*priority\b'
-      - '(?i)^\s*police\s+'
-      - '(?i)^\s*shape\s+'
-      - '(?i)^\s*bandwidth\s+'
-      - '(?i)^\s*set\s+'
-      - '(?i)^\s*match\s+'
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+'
-      - '(?i)^\s*service-policy\s+'
-      - '(?i)^auto\s+qos\s+'
-      - '(?i)^\s*mls\s+qos\s+'
-
-  # --- Network management (ch. 8) ---
-  logging_snmp:
-    description: "Syslog hosts, SNMP traps (not community strings)"
+    - (?i)^class-map\s+
+    - (?i)^\s*match\s+
+  qos_policy_map:
+    category: qos
+    description: Policy-map classes and actions
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^policy-map\s+
+    - (?i)^\s*class\s+
+    - (?i)^\s*priority\b
+    - (?i)^\s*police\s+
+    - (?i)^\s*shape\s+
+    - (?i)^\s*bandwidth\s+
+    - (?i)^\s*set\s+
+  qos_service_policy:
+    category: qos
+    description: Apply service-policy on interface or control-plane
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa)\S+
+    - (?i)^\s*service-policy\s+
+    - (?i)^control-plane\b
+    - (?i)^\s*service-policy\s+
+  qos_auto_mls:
+    category: qos
+    description: Auto QoS and MLS QoS trust settings
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^logging\s+'
-      - '(?i)^snmp-server\s+host\s+'
-      - '(?i)^snmp-server\s+enable\s+traps\s+'
-      - '(?i)^snmp-server\s+location\s+'
-      - '(?i)^snmp-server\s+contact\s+'
-
-  netflow:
-    description: "Flexible NetFlow / flow exporter-monitor"
+    - (?i)^auto\s+qos\s+
+    - (?i)^\s*mls\s+qos\s+
+    - (?i)^mls\s+qos\s+
+  logging_syslog:
+    category: netmgmt
+    description: Syslog hosts, severity, source-interface
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^flow\s+'
-      - '(?i)^\s*description\s+'
-      - '(?i)^\s*transport\s+'
-      - '(?i)^\s*destination\s+'
-      - '(?i)^\s*record\s+'
-      - '(?i)^\s*exporter\s+'
-      - '(?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te)\S+'
-      - '(?i)^\s*ip\s+flow\s+'
-
+    - (?i)^logging\s+
+    - (?i)^service\s+timestamps\s+
+  snmp_traps:
+    category: netmgmt
+    description: SNMP traps, location, contact (not communities)
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^snmp-server\s+host\s+
+    - (?i)^snmp-server\s+enable\s+traps\s+
+    - (?i)^snmp-server\s+location\s+
+    - (?i)^snmp-server\s+contact\s+
+  netflow_exporter:
+    category: netmgmt
+    description: Flexible NetFlow exporter definition
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^flow\s+exporter\s+
+    - (?i)^\s*description\s+
+    - (?i)^\s*destination\s+
+    - (?i)^\s*transport\s+
+  netflow_record:
+    category: netmgmt
+    description: Flexible NetFlow record (collect/match fields)
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^flow\s+record\s+
+    - (?i)^\s*match\s+
+    - (?i)^\s*collect\s+
+  netflow_monitor:
+    category: netmgmt
+    description: Flexible NetFlow monitor (record + exporter)
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^flow\s+monitor\s+
+    - (?i)^\s*record\s+
+    - (?i)^\s*exporter\s+
+    - (?i)^\s*cache\s+
+  netflow_interface:
+    category: netmgmt
+    description: Apply NetFlow monitor on interface
+    access: approve
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^interface\s+(?:GigabitEthernet|Gi|TenGigabitEthernet|Te|Vlan)\S*
+    - (?i)^\s*ip\s+flow\s+monitor\s+
+    - (?i)^\s*ip\s+flow\s+ingress\s+
+    - (?i)^\s*ip\s+flow\s+egress\s+
   dns_ntp:
-    description: "DNS domain/name-server and NTP sources"
+    category: netmgmt
+    description: DNS domain/name-server and NTP sources
     access: approve
     risk: low
     defenseclaw_alert: true
     patterns:
-      - '(?i)^ip\s+domain-name\s+'
-      - '(?i)^ip\s+name-server\s+'
-      - '(?i)^ip\s+domain\s+lookup\s+'
-      - '(?i)^ntp\s+server\s+'
-      - '(?i)^ntp\s+source\s+'
-      - '(?i)^ntp\s+authenticate\s+'
-      - '(?i)^clock\s+timezone\s+'
-
-  # --- System (ch. 12–13) ---
+    - (?i)^ip\s+domain-name\s+
+    - (?i)^ip\s+name-server\s+
+    - (?i)^ip\s+domain\s+lookup\s+
+    - (?i)^ntp\s+server\s+
+    - (?i)^ntp\s+source\s+
+    - (?i)^ntp\s+authenticate\s+
+    - (?i)^clock\s+timezone\s+
   hostname_banner:
-    description: "Hostname and login/MOTD banners"
+    category: system
+    description: Hostname and login/MOTD banners
     access: approve
     risk: low
     defenseclaw_alert: true
     patterns:
-      - '(?i)^hostname\s+'
-      - '(?i)^banner\s+'
-
+    - (?i)^hostname\s+
+    - (?i)^banner\s+
   errdisable:
-    description: "Errdisable detect/recovery causes and timers"
+    category: system
+    description: Errdisable detect/recovery causes and timers
     access: approve
     risk: medium
     defenseclaw_alert: true
     patterns:
-      - '(?i)^errdisable\s+'
-
-  # --- Fabric / advanced (deny by default — enable in Policy tab if needed) ---
+    - (?i)^errdisable\s+
+  multicast_pim:
+    category: multicast
+    description: PIM sparse/dense and RP configuration
+    access: deny
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^ip\s+pim\s+
+    - (?i)^ipv6\s+pim\s+
+    - (?i)^ip\s+multicast-routing\b
+    - (?i)^ipv6\s+multicast-routing\b
+  multicast_igmp:
+    category: multicast
+    description: IGMP/MLD snooping querier settings
+    access: deny
+    risk: medium
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^ip\s+igmp\s+
+    - (?i)^ipv6\s+mld\s+
+    - (?i)^\s*ip\s+igmp\s+
   sd_access:
-    description: "Cisco SD-Access / LISP fabric (SD-Access ch. 2)"
+    category: fabric
+    description: Cisco SD-Access / LISP fabric
     access: deny
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^lisp\s+'
-      - '(?i)^fabric\s+'
-      - '(?i)^cts\s+role-based\s+'
-      - '(?i)^extranet\s+'
-
+    - (?i)^lisp\s+
+    - (?i)^fabric\s+
+    - (?i)^extranet\s+
   trustsec:
-    description: "Cisco TrustSec / CTS / SXP (TrustSec ch. 3)"
+    category: fabric
+    description: Cisco TrustSec / CTS / SXP
     access: deny
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^cts\s+'
-      - '(?i)^\s*cts\s+'
-
-  multicast:
-    description: "IP multicast routing (PIM, RP, mroute)"
-    access: deny
-    risk: high
-    defenseclaw_alert: true
-    patterns:
-      - '(?i)^ip\s+multicast-routing\b'
-      - '(?i)^ipv6\s+multicast-routing\b'
-      - '(?i)^ip\s+pim\s+'
-      - '(?i)^ipv6\s+pim\s+'
-      - '(?i)^ip\s+msdp\b'
-
+    - (?i)^cts\s+
+    - (?i)^\s*cts\s+
   stacking:
-    description: "Stack / switch-number / stackwise virtual"
+    category: fabric
+    description: Stack / switch-number / StackWise Virtual
     access: deny
     risk: high
     defenseclaw_alert: true
     patterns:
-      - '(?i)^switch\s+\d+\s+'
-      - '(?i)^stackwise-virtual\b'
-      - '(?i)^hw-module\s+switch\s+\d+\s+'
+    - (?i)^switch\s+\d+\s+
+    - (?i)^stackwise-virtual\b
+    - (?i)^hw-module\s+switch\s+\d+\s+
+  static_route: *id001
