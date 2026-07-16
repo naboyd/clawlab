@@ -90,6 +90,7 @@ NAV = """
   <a href="{{ url_for('actions') }}" class="{{ 'active' if tab=='actions' else '' }}">Actions</a>
   <a href="{{ url_for('webhooks') }}" class="{{ 'active' if tab=='webhooks' else '' }}">Webhooks</a>
   <a href="{{ url_for('firewall') }}" class="{{ 'active' if tab=='firewall' else '' }}">Firewall</a>
+  <a href="{{ url_for('ios_xe_policy') }}" class="{{ 'active' if tab=='ios_xe' else '' }}">IOS-XE policy</a>
   <a href="{{ url_for('audit') }}" class="{{ 'active' if tab=='audit' else '' }}">Audit</a>
   <a href="{{ url_for('advanced') }}" class="{{ 'active' if tab=='advanced' else '' }}">Advanced</a>
 </nav>
@@ -172,6 +173,7 @@ OVERVIEW = """
     <li><b>Rule pack</b> — regex rules, judge prompts, suppressions under <code>rule_pack_dir</code></li>
     <li><b>Actions</b> — per-severity skill/MCP/plugin admission in <code>config.yaml</code></li>
     <li><b>Firewall</b> — host egress policy in <code>firewall.yaml</code></li>
+    <li><b>IOS-XE policy</b> — network device config allow_groups in <code>ios-xe-policy.yaml</code></li>
     <li><b>Webhooks</b> — alert destinations (secrets via env vars only)</li>
   </ul>
   <p class="hint">Run the <code>defenseclaw-canary</code> skill after policy changes to verify
@@ -634,6 +636,130 @@ def firewall():
     )
     return render_page(
         FIREWALL, "firewall", firewall_path=str(fw_path), content=content
+    )
+
+
+# --------------------------------------------------------------------------- #
+# IOS-XE policy (network device config governance)
+# --------------------------------------------------------------------------- #
+
+IOS_XE_POLICY = """
+<div class="card">
+  <h2 style="margin-top:0">IOS-XE configuration policy</h2>
+  <p class="hint">Editing <code>{{ policy_path }}</code>. This file defines
+  <code>allow_groups</code> (AAA, ACLs, QoS, routing, NetFlow, etc.) and
+  <code>always_block</code> patterns used by ssh-ops change approval and merged
+  into the DefenseClaw rule pack.</p>
+  {% if summary.group_count %}
+  <p class="hint"><b>{{ summary.group_count }}</b> allow groups ·
+  <b>{{ summary.always_block_count }}</b> always-block rules
+  {% if summary.categories %} · categories:
+  {% for cat in summary.categories %}{{ cat.label }} ({{ cat.count }}){% if not loop.last %}, {% endif %}{% endfor %}
+  {% endif %}
+  </p>
+  {% endif %}
+  {% if mirror_paths %}
+  <p class="hint">Save also updates:
+  {% for p in mirror_paths %}<code>{{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+  </p>
+  {% endif %}
+  <form method="post">
+    <input type="hidden" name="action" value="save">
+    <textarea name="content" rows="28">{{ content }}</textarea>
+    <button type="submit">Save ios-xe-policy.yaml</button>
+  </form>
+  <form method="post" style="margin-top:.75rem">
+    <input type="hidden" name="action" value="merge">
+    <button type="submit" class="secondary">Merge into DefenseClaw rule pack</button>
+  </form>
+  <p class="hint">After changing <code>access: deny</code> or <code>always_block</code>,
+  click <b>Merge into DefenseClaw rule pack</b> (reloads the DefenseClaw sidecar only).
+  Use <b>Reload gateway</b> on Overview if OpenClaw itself needs a restart.
+  Per-group access toggles are also on the ssh-ops MCP Admin Policy tab.</p>
+</div>
+"""
+
+
+@app.route("/ios-xe-policy", methods=["GET", "POST"])
+def ios_xe_policy():
+    msg, msg_class = msg_from_query()
+    policy_path = ps.ios_xe_policy_path()
+    mirror_paths = [str(p) for p in ps.ios_xe_policy_mirror_paths()]
+
+    if request.method == "POST":
+        action = (request.form.get("action") or "save").strip().lower()
+        if action == "merge":
+            ok, output = ps.merge_ios_xe_policy_rules()
+            if ok:
+                reload_ok, reload_out = ps.reload_defenseclaw_gateway()
+                output = f"{output}\n\n{reload_out}"
+                if not reload_ok:
+                    output += (
+                        "\n\n(IOS-XE rules merged; DefenseClaw sidecar reload failed — "
+                        "run: defenseclaw-gateway restart)"
+                    )
+            return redirect(
+                url_for(
+                    "ios_xe_policy",
+                    msg=output,
+                    kind="ok" if ok else "err",
+                )
+            )
+
+        content = request.form.get("content") or ""
+        try:
+            written = ps.save_ios_xe_policy_content(content)
+        except ps.PolicyError as exc:
+            summary = {}
+            if policy_path.is_file():
+                try:
+                    summary = ps.ios_xe_policy_summary(
+                        yaml.safe_load(policy_path.read_text()) or {}
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            return render_page(
+                IOS_XE_POLICY,
+                "ios_xe",
+                policy_path=str(policy_path),
+                mirror_paths=mirror_paths,
+                content=content,
+                summary=summary,
+                msg=str(exc),
+                msg_class="err",
+            )
+        paths = ", ".join(str(p) for p in written)
+        return redirect(
+            url_for(
+                "ios_xe_policy",
+                msg=f"Saved ios-xe-policy.yaml ({paths}). Merge rules if deny/always_block changed.",
+                kind="ok",
+            )
+        )
+
+    if policy_path.is_file():
+        content = ps.read_text_file(policy_path)
+        try:
+            summary = ps.ios_xe_policy_summary(yaml.safe_load(content) or {})
+        except Exception:  # noqa: BLE001
+            summary = {}
+    else:
+        content = (
+            "# IOS-XE configuration policy\n"
+            "version: 1\n"
+            "allow_groups: {}\n"
+            "always_block: []\n"
+        )
+        summary = {}
+    return render_page(
+        IOS_XE_POLICY,
+        "ios_xe",
+        policy_path=str(policy_path),
+        mirror_paths=mirror_paths,
+        content=content,
+        summary=summary,
+        msg=msg,
+        msg_class=msg_class,
     )
 
 

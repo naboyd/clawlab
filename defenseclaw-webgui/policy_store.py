@@ -7,6 +7,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -235,6 +236,9 @@ def activate_policy(name: str) -> tuple[bool, str]:
 
 
 def reload_gateway() -> tuple[bool, str]:
+    """Reload DefenseClaw sidecar and OpenClaw gateway (best-effort for each)."""
+    outputs: list[str] = []
+    ok_any = False
     for cmd in (
         ["defenseclaw-gateway", "restart"],
         ["systemctl", "--user", "restart", "openclaw-gateway"],
@@ -249,12 +253,32 @@ def reload_gateway() -> tuple[bool, str]:
             )
         except FileNotFoundError:
             continue
-        output = (proc.stdout or "") + (proc.stderr or "")
-        output = output.strip() or "(no output)"
+        output = ((proc.stdout or "") + (proc.stderr or "")).strip() or "(no output)"
+        label = " ".join(cmd)
         if proc.returncode == 0:
-            return True, f"{' '.join(cmd)}:\n{output}"
-        return False, f"{' '.join(cmd)} failed:\n{output}"
-    return False, "No gateway reload command available."
+            ok_any = True
+            outputs.append(f"{label}:\n{output}")
+        else:
+            outputs.append(f"{label} failed:\n{output}")
+    if not outputs:
+        return False, "No gateway reload command available."
+    return ok_any, "\n\n".join(outputs)
+
+
+def reload_defenseclaw_gateway() -> tuple[bool, str]:
+    """Reload only the DefenseClaw sidecar (safe after IOS-XE rule merge)."""
+    try:
+        proc = subprocess.run(
+            ["defenseclaw-gateway", "restart"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False, "defenseclaw-gateway CLI not found."
+    output = ((proc.stdout or "") + (proc.stderr or "")).strip() or "(no output)"
+    return proc.returncode == 0, f"defenseclaw-gateway restart:\n{output}"
 
 
 def recent_audit_events(limit: int = 50) -> list[dict]:
@@ -295,3 +319,145 @@ def relative_to_home(path: Path) -> str:
         return str(path.relative_to(DEFENSECLAW_HOME))
     except ValueError:
         return str(path)
+
+
+def clawlab_repo() -> Path:
+    """Clawlab checkout used for ios-xe-policy templates and merge scripts."""
+    env = os.environ.get("CLAWLAB_REPO", "").strip()
+    if env:
+        candidate = Path(env).expanduser()
+        if candidate.is_dir():
+            return candidate
+    bundled = Path(__file__).resolve().parent.parent
+    if (bundled / "config-templates" / "ios-xe-policy.yaml").is_file():
+        return bundled
+    return Path.home() / "clawlab"
+
+
+def ios_xe_policy_path() -> Path:
+    """Canonical ios-xe-policy.yaml for the DefenseClaw admin editor."""
+    for key in ("IOS_XE_POLICY_PATH", "SSH_OPS_IOS_XE_POLICY"):
+        env = os.environ.get(key, "").strip()
+        if env:
+            return Path(env).expanduser()
+    return clawlab_repo() / "config-templates" / "ios-xe-policy.yaml"
+
+
+def ios_xe_policy_mirror_paths() -> list[Path]:
+    """Additional locations updated when saving from the DefenseClaw admin UI."""
+    repo = clawlab_repo()
+    mirrors = [repo / "ssh-ops-mcp" / "ios-xe-policy.yaml"]
+    runtime = Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml"
+    if runtime.parent.is_dir():
+        mirrors.append(runtime)
+    return mirrors
+
+
+def validate_ios_xe_policy(data: object) -> tuple[bool, str]:
+    if not isinstance(data, dict):
+        return False, "ios-xe-policy.yaml must be a YAML mapping."
+    groups = data.get("allow_groups")
+    if not isinstance(groups, dict) or not groups:
+        return False, "allow_groups must be a non-empty mapping."
+    for name, grp in groups.items():
+        if not isinstance(grp, dict):
+            return False, f"allow_groups.{name} must be a mapping."
+        patterns = grp.get("patterns")
+        if not isinstance(patterns, list) or not patterns:
+            return False, f"allow_groups.{name}.patterns must be a non-empty list."
+        access = str(grp.get("access") or "approve").strip().lower()
+        if access.replace("-", "_").replace(" ", "_") not in {
+            "deny",
+            "approve",
+            "allow",
+            "always_deny",
+            "always_allow",
+            "approval_required",
+            "block",
+            "blocked",
+        }:
+            return False, f"allow_groups.{name}.access has invalid value: {access}"
+    always_block = data.get("always_block")
+    if always_block is not None and not isinstance(always_block, list):
+        return False, "always_block must be a list when present."
+    return True, ""
+
+
+def ios_xe_policy_summary(data: dict) -> dict:
+    groups = data.get("allow_groups") or {}
+    categories = data.get("group_categories") or []
+    cat_labels = {
+        str(c.get("id") or ""): str(c.get("label") or c.get("id") or "")
+        for c in categories
+        if isinstance(c, dict)
+    }
+    by_category: dict[str, int] = {}
+    for name, grp in groups.items():
+        if not isinstance(grp, dict):
+            continue
+        cat = str(grp.get("category") or "other")
+        by_category[cat] = by_category.get(cat, 0) + 1
+    return {
+        "group_count": sum(1 for g in groups.values() if isinstance(g, dict)),
+        "always_block_count": len(data.get("always_block") or []),
+        "categories": [
+            {
+                "id": cat_id,
+                "label": cat_labels.get(cat_id, cat_id.replace("_", " ").title()),
+                "count": count,
+            }
+            for cat_id, count in sorted(by_category.items())
+        ],
+    }
+
+
+def save_ios_xe_policy_content(content: str) -> list[Path]:
+    try:
+        parsed = yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        raise PolicyError(f"YAML syntax error: {exc}") from exc
+    ok, detail = validate_ios_xe_policy(parsed)
+    if not ok:
+        raise PolicyError(detail)
+    normalized = content if content.endswith("\n") else content + "\n"
+    seen: set[Path] = set()
+    written: list[Path] = []
+    for path in [ios_xe_policy_path(), *ios_xe_policy_mirror_paths()]:
+        resolved = path.expanduser().resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        write_text_file(path, normalized)
+        written.append(path)
+    return written
+
+
+def merge_ios_xe_policy_rules() -> tuple[bool, str]:
+    repo = clawlab_repo()
+    script = repo / "admin-access" / "merge-ios-xe-policy.py"
+    if not script.is_file():
+        return False, f"merge script not found: {script}"
+    policy = ios_xe_policy_path()
+    if not policy.is_file():
+        return False, f"Policy file not found: {policy}"
+    rules_dir = rule_pack_dir() / "rules"
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--rules-dir",
+                str(rules_dir),
+                "--policy",
+                str(policy),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            cwd=str(repo),
+        )
+    except subprocess.TimeoutExpired:
+        return False, "merge-ios-xe-policy.py timed out."
+    output = ((proc.stdout or "") + (proc.stderr or "")).strip() or "(no output)"
+    return proc.returncode == 0, output

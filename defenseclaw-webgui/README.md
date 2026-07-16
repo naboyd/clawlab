@@ -14,6 +14,7 @@ bind, secrets never displayed, optional nginx+PAM for LAN access.
 | **Actions** | `skill_actions`, `mcp_actions`, `plugin_actions`; activate OPA policy |
 | **Webhooks** | `webhooks[]` in config (tokens via `secret_env` only) |
 | **Firewall** | `firewall.yaml` egress policy |
+| **IOS-XE policy** | `config-templates/ios-xe-policy.yaml` — device config allow_groups |
 | **Audit** | Read-only tail of `audit.db` |
 | **Advanced** | Full `config.yaml` editor |
 
@@ -61,6 +62,7 @@ Default port: **8445** → proxies to `127.0.0.1:8770`.
 | Rule pack YAML files | Gateway reload |
 | OPA named policy | **Activate policy** on Actions tab, or `defenseclaw policy activate <name>` |
 | `firewall.yaml` | DefenseClaw recompiles on next apply (gateway reload) |
+| `ios-xe-policy.yaml` | **Merge into DefenseClaw rule pack** on IOS-XE tab, then gateway reload |
 
 Run the `defenseclaw-canary` skill after policy changes to verify enforcement
 and Webex alerting.
@@ -81,3 +83,5 @@ and Webex alerting.
 | `DEFENSECLAW_ENV` | `~/.defenseclaw/.env` |
 | `DEFENSECLAW_GUI_HOST` | `127.0.0.1` |
 | `DEFENSECLAW_GUI_PORT` | `8770` |
+| `CLAWLAB_REPO` | `~/clawlab` (ios-xe-policy.yaml location) |
+| `IOS_XE_POLICY_PATH` | override canonical policy file path |
