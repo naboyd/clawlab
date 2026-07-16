@@ -130,3 +130,10 @@ def check_propose_change(*, role: str, username: str | None) -> None:
             "verified X-Auth-User / X-Claw-Mcp-Bind header.",
             code="missing_identity",
         )
+
+
+def check_policy_admin(*, role: str, username: str | None, action: str) -> None:
+    """IOS-XE policy edits and enforcement reload require admin role."""
+    if not rbac_enabled():
+        return
+    _require_admin(effective_role(role, username), action)

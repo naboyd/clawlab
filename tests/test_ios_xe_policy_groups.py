@@ -59,6 +59,45 @@ class IosXePolicyGroupTests(unittest.TestCase):
         self.assertIn("qos", cats)
         self.assertIn("netmgmt", cats)
 
+    def test_always_block_reload_rejected(self) -> None:
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(["reload"])
+        self.assertTrue(errs)
+        self.assertIn("reload", errs[0].lower())
+        self.assertIsNone(matched)
+        self.assertEqual(risk, "blocked")
+
+    def test_routing_ospf_explicit_group_rejected(self) -> None:
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            ["router ospf 1"],
+            group="routing_ospf",
+        )
+        self.assertTrue(errs)
+        self.assertIn("always deny", errs[0].lower())
+        self.assertIsNone(matched)
+        self.assertEqual(risk, "blocked")
+
+    def test_aaa_core_line_blocked(self) -> None:
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            ["aaa new-model"],
+            group="aaa_core",
+        )
+        self.assertTrue(errs)
+        self.assertIsNone(matched)
+
+    def test_netflow_exporter_lines_valid(self) -> None:
+        lines = ["flow exporter EXPORTER1", " destination 192.168.1.1"]
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            lines,
+            group="netflow_exporter",
+        )
+        self.assertFalse(errs, errs)
+        self.assertEqual(matched, "netflow_exporter")
+
+    def test_qos_class_map_exists(self) -> None:
+        groups = ios_xe_policy.load_policy().get("allow_groups") or {}
+        self.assertIn("qos_class_map", groups)
+        self.assertIn("acl_extended", groups)
+
 
 if __name__ == "__main__":
     unittest.main()

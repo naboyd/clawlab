@@ -48,6 +48,22 @@ PY
 
 install -d -m 0755 "$UNIT_DIR"
 install -m 0644 "$REPO/systemd-user/mcp-identity-proxy.service" "$UNIT_DIR/"
+
+# Upstream MCP listens on the podman bridge IP (see quadlets/ssh-ops-mcp.container PublishPort).
+MCP_HOST="${SSH_OPS_MCP_HOST:-}"
+if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
+  MCP_HOST="$(grep -E '^PublishPort=' "$REPO/quadlets/ssh-ops-mcp.container" \
+    | head -1 | sed -E 's/.*PublishPort=([^:]+):8766.*/\1/')"
+fi
+MCP_HOST="${MCP_HOST:-192.168.128.93}"
+OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
+install -d -m 0755 "$OVERRIDE_DIR"
+cat >"$OVERRIDE_DIR/upstream.conf" <<EOF
+[Service]
+Environment=SSH_OPS_MCP_UPSTREAM=https://${MCP_HOST}:8766
+EOF
+echo "  mcp-identity-proxy upstream = https://${MCP_HOST}:8766"
+
 systemctl --user daemon-reload
 systemctl --user enable --now mcp-identity-proxy.service
 

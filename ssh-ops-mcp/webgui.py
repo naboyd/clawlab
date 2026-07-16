@@ -46,6 +46,16 @@ except ImportError:
     ios_xe_policy = None  # type: ignore[assignment]
     network_apply = None  # type: ignore[assignment]
 
+try:
+    import policy_reload
+except ImportError:
+    policy_reload = None  # type: ignore[assignment]
+
+try:
+    import rbac
+except ImportError:
+    rbac = None  # type: ignore[assignment]
+
 _network_apply_ready = False
 
 try:
@@ -657,6 +667,10 @@ use group <code>vlan_l3</code> — not <code>vlan</code> or <code>vlan_svi</code
 <b>Always deny</b> blocks proposals and adds DefenseClaw CRITICAL rules for the group's patterns.
 <b>Approval required</b> is the normal four-eyes flow.
 <b>Always allow</b> auto-approves on propose; you still run Apply.</p>
+{% if not policy_admin %}
+<div class="banner err">Policy changes require <b>admin</b> role.
+Signed in as <code>{{ gui_user }}</code> ({{ gui_role }}). Contact an admin to edit group access or reload enforcement.</div>
+{% endif %}
 {% if not policy_groups %}
 <div class="banner err">Policy module not available.</div>
 {% else %}
@@ -671,20 +685,52 @@ use group <code>vlan_l3</code> — not <code>vlan</code> or <code>vlan_svi</code
     <td>{{ g.description or '—' }}</td>
     <td>{{ g.pattern_count }}</td>
     <td>
+      {% if policy_admin %}
       <select name="access_{{ g.name }}">
         <option value="deny" {% if g.access=='deny' %}selected{% endif %}>Always deny</option>
         <option value="approve" {% if g.access=='approve' %}selected{% endif %}>Approval required</option>
         <option value="allow" {% if g.access=='allow' %}selected{% endif %}>Always allow</option>
       </select>
+      {% else %}
+      {% if g.access=='deny' %}Always deny{% elif g.access=='allow' %}Always allow{% else %}Approval required{% endif %}
+      {% endif %}
     </td>
   </tr>
   {% endfor %}
   </table>
+  {% if policy_admin %}
   <button type="submit">Save group policy</button>
+  {% endif %}
 </form>
+{% if policy_admin %}
+<form method="post" action="{{ url_for('policy_reload_enforcement') }}" class="card"
+      style="margin-top:1rem;border-color:#e8c4a0;background:#fffaf5"
+      onsubmit="return confirmPolicyReload(this);">
+  <input type="hidden" name="tab" value="policy">
+  <input type="hidden" name="confirm_reload" value="1">
+  <h3 style="margin-top:0;font-size:1rem">Apply policy to DefenseClaw</h3>
+  <p class="hint"><b>Warning:</b> merges <code>ios-xe-policy.yaml</code> into the DefenseClaw rule pack and
+  <b>restarts the DefenseClaw sidecar</b> so chat inspect and MCP enforcement pick up deny/always_block changes.
+  In-flight agent sessions may be interrupted briefly.</p>
+  <label style="font-weight:normal;display:flex;align-items:center;gap:.45rem;margin:.65rem 0">
+    <input type="checkbox" name="reload_openclaw" value="1">
+    Also restart OpenClaw gateway (Control UI / chat — longer blip)
+  </label>
+  <button type="submit" class="btn-warn" style="background:#c0392b">Reload policy &amp; restart gateways</button>
+</form>
+<script>
+function confirmPolicyReload(form){
+  var openclaw=form.querySelector('input[name=reload_openclaw]').checked;
+  var msg='Merge ios-xe-policy.yaml into DefenseClaw and restart the DefenseClaw sidecar?';
+  if(openclaw){ msg+='\\n\\nOpenClaw gateway will also restart.'; }
+  msg+='\\n\\nActive sessions may be interrupted.';
+  return window.confirm(msg);
+}
+</script>
+{% endif %}
 <p class="hint">Policy file: <code>{{ policy_path }}</code>.
-After changing deny modes, re-run <code>install-clawlab-guardrail-rules.sh</code> on the
-DefenseClaw gateway host so chat inspect rules stay in sync.</p>
+Save updates access modes locally; use <b>Reload policy</b> after deny changes so DefenseClaw inspect rules match.
+Host fallback: <code>bash admin-access/refresh-clawlab-policies.sh --preserve-access</code></p>
 {% endif %}
 </div>
 </body></html>
@@ -788,6 +834,31 @@ def _gui_user() -> str:
         if u and u.get("username"):
             return str(u["username"])
     return (os.environ.get("SSH_OPS_GUI_USER") or "gui-operator").strip() or "gui-operator"
+
+
+def _gui_role() -> str:
+    if claw_auth:
+        u = claw_auth.current_user()
+        if u and u.get("role"):
+            return str(u["role"]).strip().lower()
+    return (os.environ.get("SSH_OPS_GUI_ROLE") or "operator").strip().lower() or "operator"
+
+
+def _policy_admin() -> bool:
+    if rbac is None:
+        return True
+    if not rbac.rbac_enabled():
+        return True
+    return rbac.is_admin(rbac.effective_role(_gui_role(), _gui_user()))
+
+
+def _require_policy_admin(action: str) -> None:
+    if rbac is None:
+        return
+    try:
+        rbac.check_policy_admin(role=_gui_role(), username=_gui_user(), action=action)
+    except rbac.RbacDenied as exc:
+        raise PermissionError(str(exc)) from exc
 
 
 def _changes_for_gui(raw_changes: list[dict], *, viewer: str | None = None) -> list[dict]:
@@ -942,6 +1013,9 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         in ("1", "true", "yes", "on"),
         policy_groups=policy_groups,
         policy_path=policy_path_str,
+        policy_admin=_policy_admin(),
+        gui_user=_gui_user(),
+        gui_role=_gui_role(),
     )
     ctx.update(extra)
     return render_template_string(PAGE, **ctx)
@@ -1526,6 +1600,10 @@ def change_propose_lines():
 def policy_save_groups():
     if ios_xe_policy is None:
         return _policy_redirect("Policy module unavailable.", err=True)
+    try:
+        _require_policy_admin("Policy group edits")
+    except PermissionError as exc:
+        return _policy_redirect(str(exc), err=True)
     updates: dict[str, str] = {}
     for key, val in request.form.items():
         if key.startswith("access_"):
@@ -1536,7 +1614,32 @@ def policy_save_groups():
         ios_xe_policy.update_groups_access(updates)
     except (ValueError, OSError) as exc:
         return _policy_redirect(str(exc), err=True)
-    return _policy_redirect("Policy group access updated.")
+    return _policy_redirect(
+        "Policy group access updated. Use “Reload policy & restart gateways” "
+        "if you changed Always deny modes."
+    )
+
+
+@app.route("/policy/reload", methods=["POST"])
+def policy_reload_enforcement():
+    if policy_reload is None:
+        return _policy_redirect("Policy reload module unavailable.", err=True)
+    try:
+        _require_policy_admin("Policy enforcement reload")
+    except PermissionError as exc:
+        return _policy_redirect(str(exc), err=True)
+    if request.form.get("confirm_reload") != "1":
+        return _policy_redirect("Reload cancelled (confirmation required).", err=True)
+    reload_openclaw = request.form.get("reload_openclaw") == "1"
+    try:
+        ok, message = policy_reload.reload_enforcement(reload_openclaw=reload_openclaw)
+    except policy_reload.PolicyReloadError as exc:
+        return _policy_redirect(str(exc), err=True)
+    except Exception as exc:  # noqa: BLE001
+        return _policy_redirect(f"Reload failed: {exc}", err=True)
+    if not ok:
+        return _policy_redirect(message, err=True)
+    return _policy_redirect(message)
 
 
 @app.route("/changes/propose", methods=["POST"])

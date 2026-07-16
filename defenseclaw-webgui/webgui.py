@@ -17,11 +17,12 @@ LAN access (see nginx/defenseclaw-admin.conf).
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 import yaml
-from flask import Flask, redirect, render_template_string, request, url_for
+from flask import Flask, abort, jsonify, redirect, render_template_string, request, url_for
 
 import policy_store as ps
 
@@ -128,6 +129,17 @@ def msg_from_query() -> tuple[str, str]:
     text = request.args.get("msg") or ""
     kind = request.args.get("kind") or ("ok" if text else "")
     return text, kind
+
+
+def _internal_or_admin_authorized() -> bool:
+    token = os.environ.get("CLAWLAB_INTERNAL_TOKEN", "").strip()
+    if token and request.headers.get("X-Clawlab-Internal-Token") == token:
+        return True
+    if claw_auth:
+        user = claw_auth.current_user()
+        if user and (user.get("role") or "").strip().lower() == "admin":
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -844,6 +856,37 @@ def advanced():
     cfg = ps.load_config()
     content = yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False)
     return render_page(ADVANCED, "advanced", content=content)
+
+
+@app.route("/api/policy/reload-enforcement", methods=["POST"])
+def api_policy_reload_enforcement():
+    """Internal/admin: merge IOS-XE policy into rule pack and restart sidecars."""
+    if not _internal_or_admin_authorized():
+        abort(403)
+
+    payload = request.get_json(silent=True) or {}
+    reload_openclaw = bool(payload.get("reload_openclaw"))
+    if not payload and request.form.get("reload_openclaw") == "1":
+        reload_openclaw = True
+
+    ok, merge_out = ps.merge_ios_xe_policy_rules()
+    messages = [merge_out]
+    if not ok:
+        return jsonify({"ok": False, "message": "\n\n".join(messages)}), 500
+
+    sidecar_ok, sidecar_out = ps.reload_defenseclaw_gateway()
+    messages.append(sidecar_out)
+
+    openclaw_out = ""
+    if reload_openclaw:
+        gw_ok, gw_out = ps.reload_gateway()
+        openclaw_out = gw_out
+        messages.append(gw_out)
+        ok = ok and sidecar_ok and gw_ok
+    else:
+        ok = ok and sidecar_ok
+
+    return jsonify({"ok": ok, "message": "\n\n".join(messages), "reload_openclaw": reload_openclaw})
 
 
 @app.route("/validate", methods=["POST"])

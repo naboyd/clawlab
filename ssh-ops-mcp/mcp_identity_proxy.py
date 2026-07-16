@@ -35,7 +35,7 @@ import secrets_store
 from claw_user_lookup import lookup_role
 
 UPSTREAM = os.environ.get(
-    "SSH_OPS_MCP_UPSTREAM", "https://127.0.0.1:8766"
+    "SSH_OPS_MCP_UPSTREAM", "https://192.168.128.93:8766"
 ).rstrip("/")
 LISTEN_HOST = os.environ.get("SSH_OPS_MCP_PROXY_HOST", "127.0.0.1")
 LISTEN_PORT = int(os.environ.get("SSH_OPS_MCP_PROXY_PORT", "8767"))

@@ -25,11 +25,17 @@ PublishPort=127.0.0.1:8765:8765
 Volume=%h/ssh_ops_mcp/data:/data:Z
 Volume=%h/.ssh:/root/.ssh:ro,Z
 Volume=%h/.claw-auth/users.db:/claw-auth/users.db:ro,Z
+Volume=%h/clawlab:/clawlab:ro,Z
+Volume=%h/.defenseclaw/policies/guardrail/strict/rules:/defenseclaw-rules:Z
 EnvironmentFile=%h/.claw-portals/config.env
 Environment=CLAW_AUTH_DB=/claw-auth/users.db
 Environment=SSH_OPS_RBAC=1
 Environment=CLAW_AUTH_REQUIRED=1
 Environment=PORTAL_MOUNT_PATH=/ssh-ops
+Environment=CLAWLAB_REPO=/clawlab
+Environment=DEFENSECLAW_RULES_DIR=/defenseclaw-rules
+Environment=DEFENSECLAW_WEBGUI_URL=http://host.containers.internal:8770
+AddHost=host.containers.internal:host-gateway
 
 [Service]
 Restart=always

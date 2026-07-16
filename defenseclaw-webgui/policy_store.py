@@ -343,6 +343,14 @@ def ios_xe_policy_path() -> Path:
     return clawlab_repo() / "config-templates" / "ios-xe-policy.yaml"
 
 
+def ios_xe_policy_merge_path() -> Path:
+    """Policy file used when merging into DefenseClaw (prefer live MCP runtime copy)."""
+    runtime = Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml"
+    if runtime.is_file():
+        return runtime
+    return ios_xe_policy_path()
+
+
 def ios_xe_policy_mirror_paths() -> list[Path]:
     """Additional locations updated when saving from the DefenseClaw admin UI."""
     repo = clawlab_repo()
@@ -437,7 +445,7 @@ def merge_ios_xe_policy_rules() -> tuple[bool, str]:
     script = repo / "admin-access" / "merge-ios-xe-policy.py"
     if not script.is_file():
         return False, f"merge script not found: {script}"
-    policy = ios_xe_policy_path()
+    policy = ios_xe_policy_merge_path()
     if not policy.is_file():
         return False, f"Policy file not found: {policy}"
     rules_dir = rule_pack_dir() / "rules"

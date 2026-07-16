@@ -231,10 +231,9 @@ OpenClaw agent ──MCP HTTPS :8766──► ssh-ops MCP (Podman)
 
 ### IOS-XE change governance
 
-Single source of truth: `config-templates/ios-xe-policy.yaml` (60 granular `allow_groups` in
-11 categories, aligned with IOS-XE 17.17 Catalyst 9200 Command Reference).
-with the Cisco IOS-XE 17.11 Catalyst 9200 command reference — see
-`docs/ios-xe-command-reference-index.yaml`).
+Single source of truth: `config-templates/ios-xe-policy.yaml` (**60 granular `allow_groups`**
+in **11 categories**, aligned with IOS-XE 17.17 Catalyst 9200 Command Reference —
+see `docs/ios-xe-command-reference-index.yaml`).
 
 | Layer | Enforces |
 |-------|----------|
@@ -242,7 +241,7 @@ with the Cisco IOS-XE 17.11 Catalyst 9200 command reference — see
 | DefenseClaw HIGH advisories | Risky-but-permitted patterns from allowed groups |
 | MCP `run_command` | Read-only allowlist only |
 | MCP `propose_change` | `always_block` + selected `allow_groups` (default deny) |
-| Per-group access (Policy tab) | **deny** / **approve** / **allow** (auto-approve on propose) |
+| Per-group access (Policy tab) | **deny** / **approve** / **allow** (admin-only save + reload button) |
 | Four-eyes approval | Proposer cannot approve own change (`forbid_self_approval`) |
 | `apply_change` | Requires `approved` status; backup → push → verify → write mem |
 
@@ -251,7 +250,8 @@ with the Cisco IOS-XE 17.11 Catalyst 9200 command reference — see
 Merge DefenseClaw rules after policy edits:
 
 ```bash
-bash admin-access/install-clawlab-guardrail-rules.sh
+bash admin-access/refresh-clawlab-policies.sh --preserve-access
+# or Policy tab → Reload policy & restart gateways (admin)
 ```
 
 ---

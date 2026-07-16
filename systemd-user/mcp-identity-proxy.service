@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=CLAW_AUTH_DB=%h/.claw-auth/users.db
-Environment=SSH_OPS_MCP_UPSTREAM=https://127.0.0.1:8766
+Environment=SSH_OPS_MCP_UPSTREAM=https://192.168.128.93:8766
 Environment=SSH_OPS_MCP_PROXY_HOST=127.0.0.1
 Environment=SSH_OPS_MCP_PROXY_PORT=8767
 Environment=SSH_OPS_MCP_PROXY_VERIFY_TLS=0

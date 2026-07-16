@@ -1,0 +1,75 @@
+%% clawlab IOS-XE policy enforcement — regenerate PNG:
+%%   bash admin-access/render-architecture-diagram.sh
+flowchart TB
+  classDef store fill:#eef4ff,stroke:#2c5cff,color:#1a1a1a
+  classDef gate fill:#fff4e6,stroke:#c0392b,color:#1a1a1a
+  classDef ui fill:#e8f7eb,stroke:#0a5c22,color:#1a1a1a
+  classDef svc fill:#f5f5f5,stroke:#666,color:#1a1a1a
+
+  subgraph Portal["Unified portal :8443 (nginx + claw-auth)"]
+    Hub["Hub / login"]
+    MCPUI["ssh-ops MCP Admin\n/ssh-ops/"]
+    DCUI["DefenseClaw editor\n/defenseclaw/"]
+    OCUI["OpenClaw Control UI\n/openclaw/"]
+  end
+
+  subgraph PolicyYAML["Policy YAML (single taxonomy, 60 allow_groups)"]
+    Gen["generate_ios_xe_allow_groups.py\n+ sync-ios-xe-policy.py"]
+    Template["config-templates/ios-xe-policy.yaml"]
+    Runtime["/data/ios-xe-policy.yaml\n(Podman volume)"]
+    Bundled["ssh-ops-mcp/ios-xe-policy.yaml"]
+  end
+
+  subgraph Refresh["Operator refresh"]
+    RefreshSh["refresh-clawlab-policies.sh\n--preserve-access"]
+    ReloadBtn["Policy tab: Reload policy\n(admin + confirm)"]
+    MergePy["merge-ios-xe-policy.py"]
+    RulePack["DefenseClaw rule pack\ncommands.yaml IOS-BLK / IOS-DENY"]
+  end
+
+  subgraph AgentPath["Agent / MCP path"]
+    Agent["OpenClaw agent"]
+    MCP["ssh-ops MCP :8766"]
+    Propose["propose_change\nios_config_lines"]
+    Apply["apply_change\n(netmiko push)"]
+  end
+
+  subgraph DCInspect["DefenseClaw guardrail"]
+    Plugin["DefenseClaw plugin\n(fetch interceptor)"]
+    Sidecar["defenseclaw-gateway :18970\ninspect-tool API"]
+    Shims["Exec shims\n(curl, bash, …)"]
+  end
+
+  Hub --> MCPUI
+  Hub --> DCUI
+  Hub --> OCUI
+
+  Gen --> Template
+  Template --> Bundled
+  RefreshSh --> Template
+  RefreshSh --> Runtime
+  ReloadBtn --> MergePy
+  MergePy --> RulePack
+  ReloadBtn --> Sidecar
+
+  MCPUI -->|"Policy tab (admin only)\nSave access modes"| Runtime
+  DCUI -->|"IOS-XE YAML editor\n+ merge button"| Template
+
+  OCUI --> Agent
+  Agent --> MCP
+  MCP --> Propose
+  Propose -->|"validate_config_lines\nalways_block + allow_groups"| Runtime
+  Propose -->|"four-eyes approve"| Apply
+
+  Agent -->|"bash / tool calls"| Plugin
+  Plugin --> Sidecar
+  Sidecar -->|"regex IOS-BLK / IOS-DENY"| RulePack
+  Sidecar --> Shims
+
+  Runtime -.->|"deny groups → CRITICAL rules"| MergePy
+  Template -.-> MergePy
+
+  class Template,Runtime,Bundled,RulePack store
+  class Sidecar,Shims gate
+  class MCPUI,DCUI,ReloadBtn ui
+  class MCP,Propose,Apply,Agent svc
