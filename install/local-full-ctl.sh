@@ -125,11 +125,17 @@ p = sys.argv[1]
 with open(p) as f:
     d = json.load(f)
 gw = d.setdefault("gateway", {})
+changed = False
 if gw.get("mode") != "local":
     gw["mode"] = "local"
+    changed = True
+if "host" in gw:
+    gw.pop("host", None)
+    changed = True
+if changed:
     with open(p, "w") as f:
         json.dump(d, f, indent=1)
-    print("patched gateway.mode=local")
+    print("patched gateway (mode=local, removed obsolete host key)")
 PY
 }
 

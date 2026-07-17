@@ -110,6 +110,7 @@ def main() -> int:
 
     gw["bind"] = "loopback"
     gw["mode"] = "local"
+    gw.pop("host", None)
     gw["trustedProxies"] = ["127.0.0.1", "::1"]
     auth.pop("trustedProxy", None)
     auth.pop("password", None)

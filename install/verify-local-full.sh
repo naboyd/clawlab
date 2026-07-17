@@ -84,10 +84,29 @@ fi
 
 echo
 echo "--- OpenClaw device pairing (gateway) ---"
-if command -v openclaw >/dev/null 2>&1; then
-  openclaw devices list 2>/dev/null | sed 's/^/    /' || warn "openclaw devices list failed (gateway down or old CLI?)"
+if port_open 18789; then
+  if [[ -f "$REPO/claw-auth/openclaw_devices.py" ]]; then
+    "$HOME/.clawlab/venv/bin/python" - <<PY 2>/dev/null | sed 's/^/    /' || warn "device list via gateway API failed"
+import sys
+sys.path.insert(0, "$REPO/claw-auth")
+import openclaw_devices as od
+data = od.list_devices()
+pending = data.get("pending") or []
+paired = data.get("paired") or []
+print(f"source={data.get('source')} pending={len(pending)} paired={len(paired)}")
+for row in pending[:5]:
+    rid = row.get("requestId") or row.get("id") or "?"
+    print(f"  pending: {rid}")
+PY
+    ok "gateway :18789 reachable for device pairing"
+  else
+    ok "gateway :18789 (device API module missing)"
+  fi
+elif command -v openclaw >/dev/null 2>&1; then
+  openclaw devices list 2>/dev/null | sed 's/^/    /' || warn "openclaw devices list failed (gateway down?)"
+  warn "openclaw-gateway :18789 not listening — see ~/.clawlab/run/openclaw-gateway.log (often obsolete gateway.host key)"
 else
-  warn "openclaw CLI not on PATH"
+  warn "openclaw-gateway :18789 not listening — see ~/.clawlab/run/openclaw-gateway.log"
 fi
 
 echo
