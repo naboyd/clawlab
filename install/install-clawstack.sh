@@ -20,6 +20,8 @@
 #
 # Usage:
 #   bash install/install-clawstack.sh
+#   bash install/install-clawstack.sh --local-full
+#   bash install/install-clawstack.sh --local | --server
 #   bash install/install-clawstack.sh --skip-precheck
 #   bash install/preinstall-check.sh [--fix]
 #
@@ -37,16 +39,6 @@ source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
 CLAWLAB_REPO="$(clawlab_repo_root "$0")"
 export CLAWSTACK_ASSETS="${CLAWSTACK_ASSETS:-$CLAWLAB_REPO}"
 
-SKIP_PRECHECK=0
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --skip-precheck) SKIP_PRECHECK=1 ;;
-    -h|--help) sed -n '1,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) die "Unknown option: $1 (try --help)" ;;
-  esac
-  shift
-done
-
 # ---------------------------------------------------------------- ui helpers --
 c_b=$'\e[1m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_d=$'\e[2m'; c_0=$'\e[0m'
 log()  { printf '%s==>%s %s\n' "$c_g$c_b" "$c_0" "$*"; }
@@ -56,6 +48,24 @@ die()  { printf '%sERROR:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
 ask()  { local p="$1" d="${2:-}" a; if [ -n "$d" ]; then read -r -p "  $p [$d]: " a; echo "${a:-$d}"; else read -r -p "  $p: " a; echo "$a"; fi; }
 ask_secret() { local p="$1" a; read -r -s -p "  $p: " a; echo >&2; printf '%s' "$a"; }
 yesno() { local p="$1" d="${2:-y}" a; read -r -p "  $p [$( [ "$d" = y ] && echo 'Y/n' || echo 'y/N' )]: " a; a="${a:-$d}"; [[ "$a" =~ ^[Yy] ]]; }
+
+SKIP_PRECHECK=0
+MODE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-precheck) SKIP_PRECHECK=1 ;;
+    --local) MODE=local ;;
+    --local-full) MODE=local-full ;;
+    --server) MODE=server ;;
+    --mode=*) MODE="${1#*=}" ;;
+    -h|--help) sed -n '1,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "Unknown option: $1 (try --help)" ;;
+  esac
+  shift
+done
+
+[[ -z "$MODE" || "$MODE" =~ ^(local|local-full|server)$ ]] \
+  || die "mode must be local, local-full, or server (got: $MODE)"
 
 [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root (sudo is used where needed)."
 if [[ "$CLAWLAB_PLATFORM" == "linux" ]]; then
@@ -91,7 +101,9 @@ info "        local-full  = + portal hub :8083, claw-auth, ssh-ops MCP/GUI (Mac/
 info "        server      = legacy Linux PAM nginx :8444 (prefer claw-portals/install-portals.sh)"
 DEFAULT_MODE="local"
 [[ "$CLAWLAB_PLATFORM" == "macos" ]] && DEFAULT_MODE="local-full"
-MODE="$(ask 'Install mode (local/local-full/server)' "$DEFAULT_MODE")"
+if [[ -z "$MODE" ]]; then
+  MODE="$(ask 'Install mode (local/local-full/server)' "$DEFAULT_MODE")"
+fi
 [[ "$MODE" =~ ^(local|local-full|server)$ ]] || die "mode must be local, local-full, or server"
 
 if [[ "$MODE" == "local-full" ]] && ! clawlab_local_full_supported; then
