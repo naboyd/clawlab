@@ -184,7 +184,14 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_buffering off;
+        proxy_cache off;
         proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
     location /openclaw/ {
         proxy_pass http://127.0.0.1:18789;
@@ -192,7 +199,14 @@ server {
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$http_host;
+        proxy_buffering off;
+        proxy_cache off;
         proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
     }
 }
 NGINX
@@ -200,34 +214,45 @@ NGINX
 
 clawlab_local_full_apply_openclaw_portal() {
   local oc="$HOME/.openclaw/openclaw.json"
-  [[ -f "$oc" ]] || return 0
+  [[ -f "$oc" ]] || die "missing $oc — run install-clawstack.sh first"
+  [[ -f "$CLAWLAB_REPO/admin-access/apply-token-portal.py" ]] \
+    || die "missing apply-token-portal.py"
   DOMAIN="$LOCAL_FULL_DOMAIN" PORT_PORTAL="$LOCAL_FULL_PORT" SCHEME=http \
-    python3 - "$oc" <<'PY'
-import json, os, sys
-p = sys.argv[1]
-port = os.environ.get("PORT_PORTAL", "8083")
-domain = os.environ.get("DOMAIN", "127.0.0.1")
-with open(p) as f:
-    d = json.load(f)
-gw = d.setdefault("gateway", {})
-gw["mode"] = "local"
-ui = gw.setdefault("controlUi", {})
-ui["basePath"] = "/openclaw"
-origins = set(ui.get("allowedOrigins") or [])
-origins.add(f"http://{domain}:{port}")
-origins.add(f"http://127.0.0.1:{port}")
-origins.add(f"http://localhost:{port}")
-ui["allowedOrigins"] = sorted(origins)
-gw.setdefault("auth", {})["mode"] = "token"
-gw["auth"]["token"] = "OPENCLAW_GATEWAY_TOKEN"
-with open(p, "w") as f:
-    json.dump(d, f, indent=1)
-print("openclaw portal origins:", ", ".join(ui["allowedOrigins"]))
+    python3 "$CLAWLAB_REPO/admin-access/apply-token-portal.py" \
+    || die "apply-token-portal.py failed — fix ~/.openclaw/openclaw.json and re-run"
+}
+
+clawlab_local_full_configure_mcp_identity() {
+  local repo="$1"
+  local oc="$HOME/.openclaw/openclaw.json"
+  local ext_src="$repo/clawlab-extensions/clawlab-mcp-identity"
+  local ext_dst="$HOME/.openclaw/extensions/clawlab-mcp-identity"
+  [[ -f "$oc" && -d "$ext_src" ]] || return 0
+  mkdir -p "$HOME/.openclaw/extensions"
+  rm -rf "$ext_dst"
+  cp -a "$ext_src" "$ext_dst"
+  PROXY_URL="http://127.0.0.1:8767/mcp" CLAWLAB_REPO="$repo" python3 - <<PY
+import json, os
+from pathlib import Path
+cfg = Path(os.path.expanduser("$oc"))
+data = json.loads(cfg.read_text())
+mcp = data.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
+mcp["url"] = os.environ["PROXY_URL"]
+mcp.setdefault("transport", "streamable-http")
+plugins = data.setdefault("plugins", {})
+allow = list(plugins.setdefault("allow", []))
+if "clawlab-mcp-identity" not in allow:
+    allow.append("clawlab-mcp-identity")
+plugins["allow"] = allow
+plugins.setdefault("entries", {}).setdefault("clawlab-mcp-identity", {})["enabled"] = True
+paths = list(plugins.setdefault("load", {}).setdefault("paths", []))
+ext = os.path.expanduser("$ext_dst")
+if ext not in paths:
+    paths.append(ext)
+plugins["load"]["paths"] = paths
+cfg.write_text(json.dumps(data, indent=2) + "\n")
+print("MCP identity plugin enabled; ssh-ops url ->", mcp["url"])
 PY
-  if [[ -f "$CLAWLAB_REPO/admin-access/apply-token-portal.py" ]]; then
-    DOMAIN="$LOCAL_FULL_DOMAIN" PORT_PORTAL="$LOCAL_FULL_PORT" \
-      python3 "$CLAWLAB_REPO/admin-access/apply-token-portal.py" 2>/dev/null || true
-  fi
 }
 
 clawlab_local_full_register_mcp() {
@@ -289,13 +314,14 @@ clawlab_install_local_full() {
 
   bash "$ctl" start
   clawlab_local_full_register_mcp "$repo"
+  clawlab_local_full_configure_mcp_identity "$repo"
   clawlab_local_full_ensure_admin_user "$repo"
 
   info "Portal hub:  http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/"
-  info "OpenClaw:    http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/openclaw/"
+  info "OpenClaw:    hub tab → Open OpenClaw ↗ (first visit: approve device on OpenClaw devices tab)"
   info "MCP Admin:   http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/ssh-ops/"
   info "DefenseClaw: http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/defenseclaw/"
-  info "MCP API:     http://127.0.0.1:8766/mcp (registered in openclaw.json)"
+  info "MCP API:     http://127.0.0.1:8766/mcp (identity proxy :8767 when running)"
+  info "Verify:      bash $repo/install/verify-local-full.sh"
   info "Manage:      bash $ctl {start|stop|status|restart}"
-  info "Create user: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
 }

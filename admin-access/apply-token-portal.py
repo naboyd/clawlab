@@ -109,6 +109,7 @@ def main() -> int:
     shutil.copy(CONFIG_PATH, str(CONFIG_PATH) + ".pre-token-portal.bak")
 
     gw["bind"] = "loopback"
+    gw["mode"] = "local"
     gw["trustedProxies"] = ["127.0.0.1", "::1"]
     auth.pop("trustedProxy", None)
     auth.pop("password", None)
@@ -122,13 +123,27 @@ def main() -> int:
     ui = gw.setdefault("controlUi", {})
     domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
     port = os.environ.get("PORT_PORTAL", "8443")
+    scheme = os.environ.get("SCHEME", "https").strip().lower()
     origins = {
-        f"https://{domain}:{port}",
-        f"https://192.168.128.93:{port}",
-        f"https://icecream:{port}",
         "http://127.0.0.1:18789",
         "http://localhost:18789",
     }
+    if scheme == "http":
+        origins.update(
+            {
+                f"http://{domain}:{port}",
+                f"http://127.0.0.1:{port}",
+                f"http://localhost:{port}",
+            }
+        )
+    else:
+        origins.update(
+            {
+                f"https://{domain}:{port}",
+                f"https://192.168.128.93:{port}",
+                f"https://icecream:{port}",
+            }
+        )
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))
     ui["basePath"] = "/openclaw"
     # SSH tunnel / plain HTTP needs token-only auth (no WebCrypto device identity).

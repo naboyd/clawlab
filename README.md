@@ -81,6 +81,11 @@ After install, manage the loopback stack without systemd:
 bash install/local-full-ctl.sh status
 bash install/local-full-ctl.sh restart   # after config changes
 
+# Verify stack
+bash install/verify-local-full.sh
+
+# First OpenClaw: hub → Open OpenClaw ↗ → OpenClaw devices tab → Approve
+
 # First login user (if none yet)
 ~/.clawlab/venv/bin/python claw-auth/manage.py create-user admin
 

@@ -173,11 +173,19 @@ MIME
 
 start_claw_auth() {
   load_portal_env
+  local -a extra_env=()
+  if [[ -f "$HOME/.openclaw/.env" ]]; then
+    # shellcheck disable=SC1091
+    set -a; source "$HOME/.openclaw/.env"; set +a
+  fi
+  [[ -n "${OPENCLAW_GATEWAY_TOKEN:-}" ]] && extra_env+=(OPENCLAW_GATEWAY_TOKEN="$OPENCLAW_GATEWAY_TOKEN")
+  [[ -n "${SCHEME:-}" ]] && extra_env+=(SCHEME="$SCHEME")
   start_bg claw-auth env \
     CLAW_AUTH_HOME="$HOME/.claw-auth" \
     CLAW_AUTH_HOST=127.0.0.1 \
     CLAW_AUTH_PORT=8780 \
     CLAW_AUTH_SECURE=0 \
+    "${extra_env[@]}" \
     "$CLAW_PYTHON" "$REPO/claw-auth/authd.py"
 }
 
@@ -225,6 +233,9 @@ start_nginx() {
     if [[ "$CLAWLAB_PKG" == "brew" ]]; then
       warn "nginx not installed — running: brew install nginx"
       brew install nginx || { warn "brew install nginx failed"; return 1; }
+    elif [[ "$CLAWLAB_PKG" == "apt" ]]; then
+      warn "nginx not installed — running: sudo apt-get install nginx"
+      sudo apt-get install -y nginx || { warn "apt install nginx failed"; return 1; }
     else
       warn "nginx not installed (brew install nginx)"
       return 1
@@ -274,13 +285,44 @@ start_ssh_ops() {
   bash "$REPO/ssh-ops-mcp/podctl.sh" --build --recreate
 }
 
+start_mcp_identity_proxy() {
+  load_portal_env
+  [[ -f "$REPO/ssh-ops-mcp/mcp_identity_proxy.py" ]] || return 0
+  if port_open 8767; then
+    info "mcp-identity-proxy already listening on :8767"
+    return 0
+  fi
+  start_bg mcp-identity-proxy env \
+    CLAW_AUTH_DB="$HOME/.claw-auth/users.db" \
+    SSH_OPS_MCP_UPSTREAM="http://127.0.0.1:8766" \
+    SSH_OPS_MCP_PROXY_HOST=127.0.0.1 \
+    SSH_OPS_MCP_PROXY_PORT=8767 \
+    SSH_OPS_MCP_PROXY_VERIFY_TLS=0 \
+    SSH_OPS_DATA="$CLAWLAB_SSH_OPS_DATA" \
+    SSH_OPS_ENV="$CLAWLAB_SSH_OPS_DATA/.env" \
+    SSH_OPS_KEYFILE="$CLAWLAB_SSH_OPS_DATA/master.key" \
+    "$CLAW_PYTHON" "$REPO/ssh-ops-mcp/mcp_identity_proxy.py" \
+    || warn "mcp-identity-proxy failed — see $RUN/mcp-identity-proxy.log"
+}
+
+start_aux_services() {
+  local dc="$HOME/.defenseclaw"
+  if [[ -f "$dc/webex-bridge/dc-webex-bridge.py" ]]; then
+    start_bg dc-webex-bridge env DEFENSECLAW_HOME="$dc" \
+      "$CLAW_PYTHON" "$dc/webex-bridge/dc-webex-bridge.py" \
+      || warn "dc-webex-bridge failed — see $RUN/dc-webex-bridge.log"
+  fi
+}
+
 cmd_start() {
   log "Starting local-full stack"
   start_claw_auth
   start_defenseclaw_webgui
   start_openclaw_gateway
   start_ssh_ops
-  start_nginx || true
+  start_mcp_identity_proxy
+  start_aux_services
+  start_nginx || die "nginx required for local-full portal — fix errors above and retry"
   cmd_status
 }
 
@@ -289,6 +331,8 @@ cmd_stop() {
   stop_nginx
   stop_bg claw-auth
   stop_bg defenseclaw-webgui
+  stop_bg mcp-identity-proxy
+  stop_bg dc-webex-bridge
   stop_openclaw_gateway
   if command -v podman >/dev/null 2>&1; then
     podman rm -f ssh-ops-gui ssh-ops-mcp 2>/dev/null || true
@@ -318,8 +362,10 @@ cmd_status() {
   curl -fsS "http://127.0.0.1:8780/healthz" >/dev/null 2>&1 && echo "  OK   claw-auth healthz" || echo "  --   claw-auth healthz"
   if curl -fsS "http://127.0.0.1:${LOCAL_FULL_PORT:-8083}/" -o /dev/null 2>/dev/null; then
     echo "  OK   portal :${LOCAL_FULL_PORT:-8083}"
+  elif curl -fsS -o /dev/null -w "%{http_code}" "http://127.0.0.1:${LOCAL_FULL_PORT:-8083}/" 2>/dev/null | grep -q '^30'; then
+    echo "  OK   portal :${LOCAL_FULL_PORT:-8083} (auth redirect — expected without login)"
   elif port_open "${LOCAL_FULL_PORT:-8083}"; then
-    echo "  OK   portal :${LOCAL_FULL_PORT:-8083} (auth redirect expected without login)"
+    echo "  OK   portal :${LOCAL_FULL_PORT:-8083} (listening)"
   else
     echo "  --   portal :${LOCAL_FULL_PORT:-8083} (nginx down — brew install nginx; bash install/local-full-ctl.sh restart)"
   fi

@@ -58,6 +58,11 @@ start_container() {
   [[ -f "$PORTAL_ENV" ]] && env_file=(--env-file "$PORTAL_ENV")
   case "$mode" in
     gui)
+      local rules_dir="${DEFENSECLAW_RULES_DIR:-$HOME/.defenseclaw/policies/guardrail/strict/rules}"
+      local -a rules_mount=()
+      if [[ -d "$rules_dir" ]]; then
+        rules_mount=(-v "$rules_dir:/defenseclaw-rules:ro")
+      fi
       podman run -d --name "$name" --restart unless-stopped \
         -p "$GUI_PUBLISH" \
         "${env_file[@]}" \
@@ -65,11 +70,13 @@ start_container() {
         -e PORTAL_MOUNT_PATH=/ssh-ops \
         -e CLAWLAB_REPO=/clawlab \
         -e DEFENSECLAW_WEBGUI_URL=http://host.containers.internal:8770 \
+        -e DEFENSECLAW_RULES_DIR=/defenseclaw-rules \
         --add-host=host.containers.internal:host-gateway \
         -v "$DATA_DIR:/data" \
         -v "$SSH_DIR:/root/.ssh:ro" \
         -v "$CLAWLAB_REPO:/clawlab:ro" \
         -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
+        "${rules_mount[@]}" \
         -e CLAW_AUTH_DB=/claw-auth/users.db \
         -e SSH_OPS_RBAC=1 \
         "$IMAGE" gui >/dev/null

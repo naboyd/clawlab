@@ -642,7 +642,7 @@ echo
 if [[ "$MODE" == "local-full" && "$AUTO_DEFAULTS" -eq 0 ]]; then
   log "Local-full portal layout (loopback hub + nginx)"
   info "  Portal hub :${LOCAL_FULL_PORT:-8083}  ·  OpenClaw gateway :18789"
-  info "  ssh-ops Admin GUI :8765  ·  MCP API :8766  ·  DefenseClaw :8780"
+  info "  ssh-ops Admin GUI :8765  ·  MCP API :8766  ·  DefenseClaw :8770"
   LOCAL_FULL_DOMAIN="$(ask 'Portal bind address' '127.0.0.1')"
   LOCAL_FULL_PORT="$(ask 'Portal hub port (nginx listens here)' '8083')"
   export LOCAL_FULL_DOMAIN LOCAL_FULL_PORT
@@ -674,7 +674,9 @@ fi
 LOCAL_FULL_NOTE=""
 if [[ "$MODE" == "local-full" ]]; then
   LOCAL_FULL_NOTE="
-  Portal hub: http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status"
+  Portal hub: http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status
+  First OpenClaw visit: hub → Open OpenClaw ↗ → OpenClaw devices tab → Approve
+  Verify: bash $SCRIPT_DIR/verify-local-full.sh"
 fi
 
 cat <<EOF

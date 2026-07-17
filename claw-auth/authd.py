@@ -30,6 +30,11 @@ from flask import (
 
 import store
 
+try:
+    import openclaw_devices
+except ImportError:
+    openclaw_devices = None  # type: ignore[assignment]
+
 SESSION_COOKIE = os.environ.get("CLAW_AUTH_COOKIE", "claw_session")
 TOKEN_ENV = "OPENCLAW_GATEWAY_TOKEN"
 SECURE_COOKIES = os.environ.get("CLAW_AUTH_SECURE", "auto").lower()
@@ -177,7 +182,9 @@ LOGIN_PAGE = """
 <style>{{ style }}</style></head><body>
 <div class="card">
   <h1 style="margin-top:0">clawlab admin login</h1>
-  <p class="hint">One login for the clawlab portal hub (OpenClaw, MCP Admin, DefenseClaw).</p>
+  <p class="hint">One login for the clawlab portal hub (OpenClaw, MCP Admin, DefenseClaw).
+  First OpenClaw use: open the Control UI, then approve the browser device on the
+  <strong>OpenClaw devices</strong> tab (admins).</p>
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
   <form method="post" action="">
     <input type="hidden" name="next" value="{{ next_url }}">
@@ -217,7 +224,16 @@ HUB_PAGE = """
   .open-btn{display:inline-block;margin-top:1rem;padding:.65rem 1.25rem;background:#2c5cff;color:#fff;
             border-radius:8px;text-decoration:none;font-size:.9rem}
   .open-btn:hover{background:#3d6dff}
+  .pair-banner{background:#3d2e00;border:1px solid #8a6d00;color:#ffe082;
+               padding:.55rem 1rem;font-size:.88rem;text-align:center}
+  .pair-banner a{color:#8ab4ff}
+  .tab .badge{display:inline-block;margin-left:.35rem;padding:.05rem .45rem;
+              border-radius:999px;background:#c5221f;color:#fff;font-size:.72rem}
+  .hint{color:#9aa0a6;font-size:.85rem;line-height:1.45}
 </style></head><body>
+{% if is_admin or pending_banner %}
+<div class="pair-banner"{% if not pending_banner %} style="display:none"{% endif %}>{{ pending_banner|safe }}</div>
+{% endif %}
 <header>
   <h1>clawlab</h1>
   <div class="meta">Signed in as <b>{{ user.username }}</b>
@@ -227,7 +243,7 @@ HUB_PAGE = """
 <nav class="tabs">
   {% for tab in tabs %}
   <button type="button" class="tab{% if loop.first %} active{% endif %}"
-          data-tab="{{ tab.id }}" onclick="showTab('{{ tab.id }}')">{{ tab.label }}</button>
+          data-tab="{{ tab.id }}" onclick="showTab('{{ tab.id }}')">{{ tab.label }}{% if tab.badge %}<span class="badge">{{ tab.badge }}</span>{% endif %}</button>
   {% endfor %}
 </nav>
 <div class="frame-wrap">
@@ -236,10 +252,12 @@ HUB_PAGE = """
   <div id="panel-{{ tab.id }}" class="hub-panel{% if loop.first %} active{% endif %}">
     <div class="external-card">
       <h2>{{ tab.label }}</h2>
+      <p class="hint"><strong>First time in this browser:</strong> click Open below, then approve the
+      pending device on the <strong>OpenClaw devices</strong> tab (or ask an admin).
+      The Control UI cannot connect until pairing is approved.</p>
       <p class="hint">OpenClaw blocks iframe embedding (gateway clickjacking protection).
-      Use the button below — it opens with your gateway token and an MCP identity bind
-      (<code>clawBind</code>) for verified RBAC on tool calls.
-      Install <code>clawlab-mcp-identity</code> and the MCP identity proxy for chat enforcement.
+      The link includes your gateway token{% if mcp_bind %} and MCP identity bind
+      (<code>clawBind</code>){% endif %}.
       Do not bookmark plain <code>/openclaw/</code> without the token.</p>
       <a class="open-btn" href="{{ tab.external }}" target="_blank" rel="noopener noreferrer">
         Open {{ tab.label }} ↗</a>
@@ -269,6 +287,81 @@ function showTab(id){
   });
 }
 </script>
+<script>
+(function(){
+  var banner = document.querySelector('.pair-banner');
+  if (!banner) return;
+  function refresh(){
+    fetch('{{ ext_url("/admin/openclaw-devices/status") }}', {credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d || !d.pending) return;
+        if (d.pending === 0) { banner.style.display='none'; return; }
+        banner.style.display='block';
+        banner.innerHTML = d.pending + ' OpenClaw device(s) waiting for approval — '
+          + '<a href="#" onclick="showTab(\'openclaw-devices\');return false;">Open OpenClaw devices tab</a>';
+      }).catch(function(){});
+  }
+  setInterval(refresh, 15000);
+})();
+</script>
+</body></html>
+"""
+
+DEVICES_PAGE = """
+<!doctype html><html><head><meta charset="utf-8"><title>OpenClaw devices</title>
+<style>{{ style }}
+.btn-sm{padding:.35rem .7rem;font-size:.82rem}
+.pending{background:#fff8e6}
+</style></head><body>
+<div class="card">
+  <h1 style="margin-top:0">OpenClaw device pairing</h1>
+  <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
+  <p class="hint">After you open the OpenClaw Control UI in a new browser, a pending pairing
+  request appears here. Approve it before the Control UI can connect.</p>
+  {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
+  {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+  <h2>Pending ({{ pending|length }})</h2>
+  {% if pending %}
+  <table>
+    <tr><th>Request</th><th>Role</th><th>Details</th><th></th></tr>
+    {% for d in pending %}
+    <tr class="pending">
+      <td><code>{{ d.requestId or d.id or '?' }}</code></td>
+      <td>{{ d.role or d.requestedRole or '—' }}</td>
+      <td class="hint">{{ d.summary or d.client or d.userAgent or d.publicKey or '—' }}</td>
+      <td>
+        <form method="post" style="display:inline" onsubmit="return confirm('Approve this device?')">
+          <input type="hidden" name="action" value="approve">
+          <input type="hidden" name="request_id" value="{{ d.requestId or d.id }}">
+          <button type="submit" class="btn-sm">Approve</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint">No pending requests. Open the <strong>OpenClaw</strong> tab and click
+  <em>Open OpenClaw ↗</em>, then refresh this page.</p>
+  {% endif %}
+  <h2>Paired ({{ paired|length }})</h2>
+  {% if paired %}
+  <table>
+    <tr><th>Device</th><th>Role</th><th>Details</th></tr>
+    {% for d in paired %}
+    <tr>
+      <td><code>{{ d.deviceId or d.id or d.requestId or '?' }}</code></td>
+      <td>{{ d.role or d.approvedRole or '—' }}</td>
+      <td class="hint">{{ d.summary or d.client or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="hint">No paired devices yet.</p>
+  {% endif %}
+  <p class="hint" style="margin-top:1.2rem">Source: {{ source }}. Gateway: {{ gateway_url }}</p>
+  <p><a href="">Refresh</a></p>
+</div>
 </body></html>
 """
 
@@ -334,6 +427,10 @@ def _clear_session_cookie(resp):
 
 def _read_gateway_token() -> str:
     """Gateway token for Control UI #token= fragment (portal admins only)."""
+    if openclaw_devices is not None:
+        tok = openclaw_devices.read_gateway_token()
+        if tok:
+            return tok
     val = os.environ.get(TOKEN_ENV, "").strip()
     if val:
         return val
@@ -348,6 +445,25 @@ def _read_gateway_token() -> str:
     return ""
 
 
+def _portal_scheme() -> str:
+    scheme = os.environ.get("SCHEME", "").strip().lower()
+    if scheme in ("http", "https"):
+        return scheme
+    hub = os.environ.get("CLAW_PORTAL_HUB_URL", "").strip()
+    if hub.startswith("http://"):
+        return "http"
+    if hub.startswith("https://"):
+        return "https"
+    proto = (request.headers.get("X-Forwarded-Proto") or "").lower()
+    if proto in ("http", "https"):
+        return proto
+    return "https"
+
+
+def _ws_scheme() -> str:
+    return "wss" if _portal_scheme() == "https" else "ws"
+
+
 def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
     """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target).
 
@@ -360,25 +476,26 @@ def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
         page_path = "/" + page_path
 
     host_header = (host_header or "").strip()
+    ws = _ws_scheme()
     if host_header:
         host = host_header.split(",")[0].strip()
         if ":" in host:
             hostname, port = host.rsplit(":", 1)
         else:
-            hostname, port = host, "443"
-        wss = f"wss://{hostname}:{port}/openclaw/"
+            hostname, port = host, ("443" if ws == "wss" else "80")
+        gw_url = f"{ws}://{hostname}:{port}/openclaw/"
     else:
         portal_url = os.environ.get("CLAW_PORTAL_OPENCLAW_URL", "").strip()
         if portal_url:
             parsed = urlparse(portal_url)
-            host = parsed.hostname or "icecream.naboydciscolab.com"
-            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or (443 if ws == "wss" else 80)
             path = (parsed.path or "/openclaw/").rstrip("/") + "/"
-            wss = f"wss://{host}:{port}{path}"
+            gw_url = f"{ws}://{host}:{port}{path}"
         else:
-            wss = "wss://icecream.naboydciscolab.com:8443/openclaw/"
+            gw_url = f"{ws}://127.0.0.1:8083/openclaw/"
 
-    query = f"gatewayUrl={quote(wss, safe='')}"
+    query = f"gatewayUrl={quote(gw_url, safe='')}"
     if mcp_bind:
         query += f"&clawBind={quote(mcp_bind, safe='')}"
     token = _read_gateway_token()
@@ -388,24 +505,66 @@ def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
     return url
 
 
-def _portal_tabs(host_header: str = "", *, mcp_bind: str = "") -> list[dict]:
-    return [
+def _device_snapshot() -> dict:
+    if openclaw_devices is None:
+        return {"pending": [], "paired": [], "source": "unavailable", "error": "module missing"}
+    return openclaw_devices.list_devices()
+
+
+def _pending_banner_html(pending_n: int, *, is_admin: bool) -> str:
+    if pending_n <= 0:
+        return ""
+    if is_admin:
+        return (
+            f"{pending_n} OpenClaw device(s) waiting for approval — "
+            'open the <a href="#" onclick="showTab(\'openclaw-devices\');return false;">'
+            "OpenClaw devices</a> tab to approve."
+        )
+    return (
+        f"{pending_n} OpenClaw device(s) waiting for admin approval — "
+        "open the OpenClaw tab first, then ask an admin to approve on "
+        "<strong>OpenClaw devices</strong>."
+    )
+
+
+def _portal_tabs(
+    host_header: str = "",
+    *,
+    mcp_bind: str = "",
+    pending_n: int = 0,
+    is_admin: bool = False,
+) -> list[dict]:
+    tabs: list[dict] = [
         {
             "id": "openclaw",
             "label": "OpenClaw",
             "external": _openclaw_hub_url(host_header, mcp_bind=mcp_bind),
         },
-        {
-            "id": "ssh-ops",
-            "label": "MCP Admin",
-            "src": os.environ.get("CLAW_PORTAL_SSH_OPS_PATH", "/ssh-ops/"),
-        },
-        {
-            "id": "defenseclaw",
-            "label": "DefenseClaw Policies",
-            "src": os.environ.get("CLAW_PORTAL_DEFENSECLAW_PATH", "/defenseclaw/"),
-        },
     ]
+    if is_admin:
+        tabs.append(
+            {
+                "id": "openclaw-devices",
+                "label": "OpenClaw devices",
+                "src": _external_path("/admin/openclaw-devices"),
+                "badge": str(pending_n) if pending_n > 0 else "",
+            }
+        )
+    tabs.extend(
+        [
+            {
+                "id": "ssh-ops",
+                "label": "MCP Admin",
+                "src": os.environ.get("CLAW_PORTAL_SSH_OPS_PATH", "/ssh-ops/"),
+            },
+            {
+                "id": "defenseclaw",
+                "label": "DefenseClaw Policies",
+                "src": os.environ.get("CLAW_PORTAL_DEFENSECLAW_PATH", "/defenseclaw/"),
+            },
+        ]
+    )
+    return tabs
 
 
 def _portal_links() -> list[dict]:
@@ -541,12 +700,93 @@ def hub():
         mcp_bind = store.create_mcp_bind(sess["username"])
     except ValueError:
         mcp_bind = ""
+    is_admin = sess.get("role") == "admin"
+    devices = _device_snapshot()
+    pending_n = len(devices.get("pending") or [])
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
         user=sess,
-        tabs=_portal_tabs(portal_host, mcp_bind=mcp_bind),
+        mcp_bind=mcp_bind,
+        tabs=_portal_tabs(
+            portal_host,
+            mcp_bind=mcp_bind,
+            pending_n=pending_n,
+            is_admin=is_admin,
+        ),
         links=_portal_links(),
+        pending_banner=_pending_banner_html(pending_n, is_admin=is_admin),
+        is_admin=is_admin,
+    )
+
+
+@app.route("/admin/openclaw-devices/status")
+def openclaw_devices_status():
+    sess = _session_user()
+    if not sess:
+        return ("", 401)
+    if sess["role"] != "admin":
+        return ("", 403)
+    devices = _device_snapshot()
+    pending_n = len(devices.get("pending") or [])
+    return {
+        "pending": pending_n,
+        "paired": len(devices.get("paired") or []),
+        "source": devices.get("source"),
+        "error": devices.get("error"),
+    }
+
+
+@app.route("/admin/openclaw-devices", methods=["GET", "POST"])
+def admin_openclaw_devices():
+    sess = _session_user()
+    if not sess:
+        return _login_redirect(request.full_path)
+    if sess["role"] != "admin":
+        return ("forbidden", 403)
+
+    msg = ""
+    msg_err = False
+    if request.method == "POST" and request.form.get("action") == "approve":
+        rid = (request.form.get("request_id") or "").strip()
+        if openclaw_devices is None:
+            msg = "openclaw_devices module unavailable."
+            msg_err = True
+        else:
+            result = openclaw_devices.approve_device(rid)
+            if result.get("ok"):
+                log.info(
+                    "device_approve ip=%s admin=%s request_id=%s source=%s",
+                    _client_ip(),
+                    sess["username"],
+                    rid,
+                    result.get("source"),
+                )
+                msg = f"Approved device request {rid}."
+            else:
+                msg = result.get("error") or "Approval failed."
+                msg_err = True
+                log.warning(
+                    "device_approve_fail ip=%s admin=%s request_id=%s err=%s",
+                    _client_ip(),
+                    sess["username"],
+                    rid,
+                    msg,
+                )
+
+    devices = _device_snapshot()
+    gw_url = openclaw_devices.gateway_base_url() if openclaw_devices else "—"
+    return render_template_string(
+        DEVICES_PAGE,
+        style=STYLE,
+        user=sess,
+        pending=devices.get("pending") or [],
+        paired=devices.get("paired") or [],
+        source=devices.get("source") or "none",
+        error=devices.get("error") or "",
+        gateway_url=gw_url,
+        msg=msg,
+        msg_err=msg_err,
     )
 
 

@@ -148,14 +148,15 @@ clawlab_install_prereqs() {
     apt)
       sudo apt-get update -qq
       sudo apt-get install -y -qq git curl jq python3 python3-yaml python3-venv build-essential ca-certificates
-      if [[ "$mode" == "server" ]]; then
-        sudo apt-get install -y -qq nginx libnginx-mod-http-auth-pam openssl
+      if [[ "$mode" == "server" || "$mode" == "local-full" ]]; then
+        sudo apt-get install -y -qq nginx libnginx-mod-http-auth-pam openssl 2>/dev/null \
+          || sudo apt-get install -y -qq nginx openssl
       fi
       ;;
     brew)
       brew install git curl jq python@3.12 yaml-cpp openssl
-      if [[ "$mode" == "server" ]]; then
-        brew install nginx lego
+      if [[ "$mode" == "server" || "$mode" == "local-full" ]]; then
+        brew install nginx lego 2>/dev/null || brew install nginx
       fi
       ;;
     *)
