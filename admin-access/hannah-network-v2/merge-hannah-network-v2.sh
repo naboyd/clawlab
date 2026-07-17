@@ -81,13 +81,14 @@ if [ "${SKIP_GENERATE:-0}" != "1" ]; then
   export HANNAI_OPS_TRAINING="$HANNAI_TRAINING"
   if compgen -G "$HANNAI_TRAINING/field_definitions/ios_xe_routing_and_cli_format_*.jsonl" >/dev/null; then
     python3 "$WORK/convert_iosxe_to_ssh_ops.py" -o "$IOSXE_JSONL" || warn "IOS-XE conversion failed"
+  elif [ -s "$IOSXE_JSONL" ]; then
+    warn "No ios_xe_routing_and_cli_format_*.jsonl on icecream — using bundled $(basename "$IOSXE_JSONL")"
+    log "Bundled IOS-XE rows: $(wc -l < "$IOSXE_JSONL" | tr -d ' ')"
   else
-    warn "No ios_xe_routing_and_cli_format_*.jsonl on icecream — skipping"
-    : > "$IOSXE_JSONL"
+    warn "No ios_xe source captures and no bundled $(basename "$IOSXE_JSONL") — skipping IOS-XE rows"
   fi
 else
   log "SKIP_GENERATE=1 — using bundled clawlab_ssh_ops_training.jsonl"
-  : > "$IOSXE_JSONL"
 fi
 
 [ -f "$SSH_OPS_JSONL" ] || die "Missing $SSH_OPS_JSONL (git pull clawlab for admin-access/hannah-network-v2/)"
