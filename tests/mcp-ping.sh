@@ -39,10 +39,14 @@ step "4) list_hosts"
 r="$(mcp_tool_call list_hosts '{}' || true)"
 [ -n "$r" ] || fail "${MCP_LAST_ERR:-list_hosts returned empty body}"
 rows="$(mcp_list_hosts_rows "$r" || true)"
-[ -n "$rows" ] || fail "list_hosts parsed zero hosts"
-echo "$rows" | while IFS=$'\t' read -r name kind; do
-  printf '  host %-24s kind=%s\n' "$name" "$kind"
-done
+if [ -n "$rows" ]; then
+  echo "$rows" | while IFS=$'\t' read -r name kind; do
+    printf '  host %-24s kind=%s\n' "$name" "$kind"
+  done
+else
+  printf '  raw response (first 400 chars): %s\n' "$(printf '%s' "$r" | head -c 400)"
+  fail "list_hosts parsed zero hosts"
+fi
 
 step "5) Linux host probe (optional)"
 linux="$(mcp_pick_linux_host "${CLAWLAB_HOST:-}" || true)"

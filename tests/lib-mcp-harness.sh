@@ -100,9 +100,9 @@ mcp_load_config() {
 mcp_list_hosts_rows() {
   local r="${1:-}"
   [[ -n "$r" ]] || return 1
-  echo "$r" | python3 - <<'PY'
-import json, sys
-raw = sys.stdin.read()
+  MCP_JSON="$r" python3 - <<'PY'
+import json, os
+raw = os.environ.get("MCP_JSON", "")
 try:
     d = json.loads(raw)
 except json.JSONDecodeError:
@@ -125,20 +125,21 @@ def ingest(rows):
         hosts.append((name, kind))
 
 result = d.get("result") or {}
-for block in result.get("content") or []:
-    if isinstance(block, dict) and block.get("type") == "text":
-        try:
-            ingest(json.loads(block.get("text") or "[]"))
-        except json.JSONDecodeError:
-            pass
-        break
-sc = result.get("structuredContent")
-if isinstance(sc, list):
-    ingest(sc)
-elif isinstance(sc, dict):
-    ingest(sc.get("hosts") or [])
-if not hosts and isinstance(d.get("result"), list):
-    ingest(d.get("result"))
+if isinstance(result, list):
+    ingest(result)
+else:
+    for block in result.get("content") or []:
+        if isinstance(block, dict) and block.get("type") == "text":
+            try:
+                ingest(json.loads(block.get("text") or "[]"))
+            except json.JSONDecodeError:
+                pass
+            break
+    sc = result.get("structuredContent")
+    if isinstance(sc, list):
+        ingest(sc)
+    elif isinstance(sc, dict):
+        ingest(sc.get("hosts") or [])
 for name, kind in hosts:
     print(f"{name}\t{kind}")
 PY
