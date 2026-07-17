@@ -163,8 +163,10 @@ mcp_pick_linux_host() {
   local r row name kind
   r=$(mcp_tool_call list_hosts '{}')
   if [[ -n "$prefer" ]] && mcp_list_hosts_rows "$r" | awk -F '\t' -v p="$prefer" '$1==p && $2=="linux"{found=1} END{exit !found}'; then
-    echo "$prefer"
-    return 0
+    if [[ "$(mcp_run_command_verdict "$prefer" "true")" == allow ]]; then
+      echo "$prefer"
+      return 0
+    fi
   fi
   while IFS=$'\t' read -r name kind; do
     [[ "$kind" == linux ]] || continue

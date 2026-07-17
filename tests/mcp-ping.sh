@@ -55,11 +55,18 @@ else
 fi
 
 step "5) Linux host probe (optional)"
-linux="$(mcp_pick_linux_host "${CLAWLAB_HOST:-}" || true)"
+linux="$(mcp_pick_linux_host "${CLAWLAB_HOST:-mac-local}" || true)"
 if [ -n "$linux" ]; then
   ok "reachable linux host: $linux"
 else
-  warn "no reachable linux host (Mac: enable Remote Login for mac-local)"
+  warn "no reachable linux host from MCP Podman container"
+  mcp_session_start >/dev/null 2>&1 || true
+  probe="$(mcp_tool_call run_command "$(jq -n --arg h mac-local --arg c true '{host:$h,command:$c}')" 2>/dev/null || true)"
+  if [ -n "$probe" ]; then
+    err="$(MCP_JSON="$probe" python3 -c 'import json,os; d=json.loads(os.environ["MCP_JSON"]); r=d.get("result") or {}; print(r.get("stderr") or r.get("error") or "")' 2>/dev/null || true)"
+    [ -n "$err" ] && printf '  hint: %s\n' "$(printf '%s' "$err" | head -c 200)"
+  fi
+  warn "after git pull run: bash install/local-full-ctl.sh restart  (fixes mac-local -> host.containers.internal)"
 fi
 
 step "6) Network host (optional)"

@@ -111,11 +111,12 @@ clawlab_local_full_hosts_is_placeholder() {
     && ! grep -q 'mac-local:' "$hosts" 2>/dev/null
 }
 
-# Mac local-full: loopback ssh-ops inventory (127.0.0.1). Returns 0 if file changed.
+# Mac local-full: ssh-ops inventory for Podman MCP → Mac host SSH. Returns 0 if file changed.
 clawlab_local_full_ensure_hosts_inventory() {
   local repo="$1"
   local hosts="$CLAWLAB_SSH_OPS_DATA/hosts.yaml"
   local changed=0
+  local mac_ssh_host="host.containers.internal"
   mkdir -p "$CLAWLAB_SSH_OPS_DATA"
 
   if [[ "$(uname -s)" != Darwin ]]; then
@@ -132,7 +133,7 @@ clawlab_local_full_ensure_hosts_inventory() {
   if [[ ! -f "$hosts" ]]; then
     clawlab_local_full_mac_hosts_yaml "$repo" >"$hosts"
     changed=1
-    info "Created $hosts with ${LOCAL_FULL_POLICY_HOST} (127.0.0.1, user $USER)"
+    info "Created $hosts with ${LOCAL_FULL_POLICY_HOST} (${mac_ssh_host}, user $USER)"
   elif grep -q 'YOUR_MAC_USERNAME' "$hosts" 2>/dev/null; then
     clawlab_sed_inplace "s/YOUR_MAC_USERNAME/${USER}/g" "$hosts"
     changed=1
@@ -159,7 +160,7 @@ if name in hosts:
     sys.exit(1)
 hosts[name] = {
     "tags": ["lab", "local"],
-    "hostname": "127.0.0.1",
+    "hostname": "host.containers.internal",
     "port": 22,
     "username": os.environ.get("CLAWLAB_POLICY_USER", os.environ.get("USER", "root")),
     "allow_write": False,
@@ -172,10 +173,50 @@ PY
     fi
   fi
 
+  if [[ "$(uname -s)" == Darwin ]] && [[ -f "$hosts" ]] \
+    && SSH_OPS_CONFIG="$hosts" CLAWLAB_POLICY_HOST="$LOCAL_FULL_POLICY_HOST" python3 - <<'PY'; then
+import os
+from pathlib import Path
+try:
+    import yaml
+except ImportError:
+    raise SystemExit(1)
+path = Path(os.environ["SSH_OPS_CONFIG"]).expanduser()
+cfg = yaml.safe_load(path.read_text()) or {}
+hosts = cfg.get("hosts") or {}
+name = os.environ.get("CLAWLAB_POLICY_HOST", "mac-local")
+entry = hosts.get(name)
+if not isinstance(entry, dict):
+    raise SystemExit(1)
+host = str(entry.get("hostname", "")).strip()
+if host in ("127.0.0.1", "localhost", "::1"):
+    entry["hostname"] = "host.containers.internal"
+    path.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False))
+    print(f"Updated {name} hostname for Podman MCP SSH")
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+    changed=1
+    info "Updated ${LOCAL_FULL_POLICY_HOST} hostname -> host.containers.internal (MCP Podman → Mac SSH)"
+  fi
+
+  if [[ "$changed" -eq 0 ]] && [[ "$(uname -s)" == Darwin ]] \
+    && [[ ! -f "$CLAWLAB_SSH_OPS_DATA/.mcp-podman-host-gateway" ]] \
+    && command -v podman >/dev/null 2>&1; then
+    if podman container exists ssh-ops-mcp 2>/dev/null; then
+      if ! podman inspect ssh-ops-mcp --format '{{range .HostConfig.ExtraHosts}}{{println .}}{{end}}' 2>/dev/null \
+        | grep -q 'host.containers.internal'; then
+        changed=1
+        info "Recreating ssh-ops-mcp so Podman can reach Mac host (host.containers.internal)"
+      fi
+    fi
+  fi
+
   if [[ "$changed" -eq 1 ]] && command -v podman >/dev/null 2>&1 \
     && [[ -x "$repo/ssh-ops-mcp/podctl.sh" ]]; then
     CLAWLAB_MANAGE_MCP=1 SSH_OPS_DIR="$repo/ssh-ops-mcp" bash "$repo/ssh-ops-mcp/podctl.sh" --recreate \
       >/dev/null 2>&1 || warn "ssh-ops MCP recreate failed — run: CLAWLAB_MANAGE_MCP=1 bash $repo/ssh-ops-mcp/podctl.sh --recreate"
+    touch "$CLAWLAB_SSH_OPS_DATA/.mcp-podman-host-gateway" 2>/dev/null || true
   fi
 }
 

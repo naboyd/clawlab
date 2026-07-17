@@ -88,6 +88,7 @@ start_container() {
         -e SSH_OPS_MCP_HOST=0.0.0.0 \
         -e SSH_OPS_MCP_PORT=8766 \
         -e SSH_OPS_CONFIG=/data/hosts.yaml \
+        --add-host=host.containers.internal:host-gateway \
         -v "$DATA_DIR:/data" \
         -v "$SSH_DIR:/root/.ssh:ro" \
         -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \

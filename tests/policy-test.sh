@@ -153,7 +153,7 @@ if [ "$MCP_HOSTS" = 1 ]; then
       HOST="$picked"
       MCP_READY=1
     else
-      MCP_SKIP_REASON="no reachable linux host for uptime/df probes (Mac: enable Remote Login for mac-local)"
+      MCP_SKIP_REASON="no reachable linux host for uptime/df probes (Mac: mac-local must use host.containers.internal in MCP Podman — run local-full-ctl.sh restart)"
       echo "  WARN: $MCP_SKIP_REASON"
       echo "        Discovered network switches work for sections 2b/2c only."
     fi
