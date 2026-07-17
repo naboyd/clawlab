@@ -304,7 +304,15 @@ function showTab(id){
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(d){
         if (!d || !d.pending) return;
-        if (d.pending === 0) { banner.style.display='none'; return; }
+        if (d.pending === 0) {
+          banner.style.display='none';
+          var tabBtn = document.querySelector('[data-tab="openclaw-devices"]');
+          if (tabBtn) {
+            var badge = tabBtn.querySelector('.badge');
+            if (badge) badge.remove();
+          }
+          return;
+        }
         banner.style.display='block';
         banner.innerHTML = d.pending + ' OpenClaw device(s) waiting for approval — '
           + '<a href="#" onclick="showTab(\'openclaw-devices\');return false;">Open OpenClaw devices tab</a>';
@@ -327,7 +335,9 @@ DEVICES_PAGE = """
   <h1 style="margin-top:0">OpenClaw device pairing</h1>
   <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
   <p class="hint">After you open the OpenClaw Control UI in a new browser, a pending pairing
-  request appears here. Approve it before the Control UI can connect.</p>
+  request appears here. Approve it before the Control UI can connect. If one pending remains
+  after approve, it is often a <strong>scope upgrade</strong> or a second tab — refresh and
+  approve the latest request id (or close extra Control UI windows).</p>
   {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
   <h2>Pending ({{ pending_rows|length }})</h2>
@@ -529,16 +539,34 @@ def _device_display_rows(items: list | None) -> list[dict[str, str]]:
     for raw in items or []:
         if not isinstance(raw, dict):
             continue
-        rid = str(raw.get("requestId") or raw.get("deviceId") or raw.get("id") or "").strip()
+        rid = str(raw.get("requestId") or raw.get("id") or "").strip()
+        device_id = str(raw.get("deviceId") or "").strip()
         role = str(
             raw.get("role")
             or raw.get("requestedRole")
             or raw.get("approvedRole")
             or ""
         ).strip()
-        detail = raw.get("summary") or raw.get("client") or raw.get("userAgent") or raw.get("publicKey")
+        parts: list[str] = []
+        if raw.get("displayName"):
+            parts.append(f"name={raw.get('displayName')}")
+        if device_id:
+            parts.append(f"device={device_id[:12]}")
+        scopes = raw.get("scopes") or raw.get("requestedScopes")
+        if scopes:
+            parts.append(f"scopes={scopes}")
+        if raw.get("isRepair"):
+            parts.append("scope upgrade")
+        if raw.get("remoteIp"):
+            parts.append(f"ip={raw.get('remoteIp')}")
+        detail = raw.get("summary") or raw.get("client") or raw.get("userAgent")
+        if not detail and not parts:
+            detail = raw.get("publicKey")
         if isinstance(detail, (dict, list)):
             detail = json.dumps(detail, sort_keys=True)
+        if parts:
+            prefix = ", ".join(str(p) for p in parts)
+            detail = prefix if not detail else f"{prefix} — {detail}"
         detail = str(detail or "").strip() or "-"
         if len(detail) > 240:
             detail = detail[:237] + "..."
@@ -550,7 +578,7 @@ def _device_display_rows(items: list | None) -> list[dict[str, str]]:
                 "request_id": rid,
             }
         )
-    return rows
+    return [r for r in rows if r.get("request_id")]
 
 
 def _pending_banner_html(pending_n: int, *, is_admin: bool) -> str:
@@ -745,7 +773,7 @@ def hub():
         mcp_bind = ""
     is_admin = sess.get("role") == "admin"
     devices = _device_snapshot()
-    pending_n = len(devices.get("pending") or [])
+    pending_n = len(_device_display_rows(devices.get("pending")))
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
@@ -771,7 +799,7 @@ def openclaw_devices_status():
     if sess["role"] != "admin":
         return ("", 403)
     devices = _device_snapshot()
-    pending_n = len(devices.get("pending") or [])
+    pending_n = len(_device_display_rows(devices.get("pending")))
     return {
         "pending": pending_n,
         "paired": len(devices.get("paired") or []),
@@ -805,7 +833,9 @@ def admin_openclaw_devices():
                     rid,
                     result.get("source"),
                 )
-                msg = f"Approved device request {rid}."
+                msg = result.get("warning") or f"Approved device request {rid}."
+                if result.get("warning"):
+                    msg_err = False
             else:
                 msg = result.get("error") or "Approval failed."
                 msg_err = True

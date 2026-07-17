@@ -85,6 +85,11 @@ def _http_json(method: str, path: str, *, body: dict | None = None) -> tuple[int
     return 0, {"error": last_err or "gateway unreachable"}
 
 
+def _request_id(row: dict[str, Any]) -> str:
+    """Pairing approve requires requestId — never deviceId."""
+    return str(row.get("requestId") or row.get("id") or "").strip()
+
+
 def _normalize_entries(items: Any) -> list[dict[str, Any]]:
     if not items:
         return []
@@ -101,9 +106,19 @@ def _normalize_entries(items: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _filter_pending(items: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in items or []:
+        rid = _request_id(row)
+        if not rid:
+            continue
+        out.append(row)
+    return out
+
+
 def _normalize_device_payload(payload: Any) -> dict[str, Any]:
     if isinstance(payload, list):
-        return {"pending": _normalize_entries(payload), "paired": []}
+        return {"pending": _filter_pending(_normalize_entries(payload)), "paired": []}
     if not isinstance(payload, dict):
         return {"pending": [], "paired": [], "raw": payload}
 
@@ -112,13 +127,11 @@ def _normalize_device_payload(payload: Any) -> dict[str, Any]:
     if pending is None and paired is None:
         pending = payload.get("pendingRequests") or payload.get("requests")
         paired = payload.get("pairedDevices") or payload.get("devices")
-        if pending is None and paired is None and any(
-            k in payload for k in ("requestId", "deviceId", "id", "role")
-        ):
+        if pending is None and paired is None and _request_id(payload):
             pending = [payload]
 
     return {
-        "pending": _normalize_entries(pending),
+        "pending": _filter_pending(_normalize_entries(pending)),
         "paired": _normalize_entries(paired),
     }
 
@@ -183,43 +196,78 @@ def _cli_parse_list_text(text: str) -> dict[str, Any]:
     return {"pending": pending, "paired": paired}
 
 
-def list_devices() -> dict[str, Any]:
-    """Return {pending, paired, source, error?}."""
-    status, payload = _http_json("GET", "/api/devices")
-    if status == 200:
-        data = _normalize_device_payload(payload)
-        data["source"] = "http"
-        return data
-
-    ok, cli_payload = _cli_json(["devices", "list"])
-    if ok:
-        if isinstance(cli_payload, list):
-            data = {"pending": _normalize_entries(cli_payload), "paired": []}
-        elif isinstance(cli_payload, dict):
-            if "text" in cli_payload and not any(
-                k in cli_payload for k in ("pending", "paired", "pendingRequests", "devices")
-            ):
-                data = _cli_parse_list_text(str(cli_payload.get("text", "")))
-            else:
-                data = _normalize_device_payload(cli_payload)
-        else:
-            data = {"pending": [], "paired": []}
-        data["source"] = "cli"
-        if status and status != 200:
-            data["http_note"] = f"HTTP /api/devices returned {status}"
-        return data
-
-    err_msg = ""
+def _normalize_cli_list(cli_payload: Any) -> dict[str, Any]:
+    if isinstance(cli_payload, list):
+        return {"pending": _filter_pending(_normalize_entries(cli_payload)), "paired": []}
     if isinstance(cli_payload, dict):
-        err_msg = str(cli_payload.get("error") or "")
-    if not err_msg and isinstance(payload, dict):
+        if "text" in cli_payload and not any(
+            k in cli_payload for k in ("pending", "paired", "pendingRequests", "devices")
+        ):
+            return _cli_parse_list_text(str(cli_payload.get("text", "")))
+        return _normalize_device_payload(cli_payload)
+    return {"pending": [], "paired": []}
+
+
+def _list_via_cli() -> dict[str, Any] | None:
+    ok, cli_payload = _cli_json(["devices", "list"])
+    if not ok:
+        return None
+    data = _normalize_cli_list(cli_payload)
+    data["source"] = "cli"
+    return data
+
+
+def _list_via_http() -> dict[str, Any] | None:
+    status, payload = _http_json("GET", "/api/devices")
+    if status != 200:
+        return None
+    data = _normalize_device_payload(payload)
+    data["source"] = "http"
+    return data
+
+
+def list_devices() -> dict[str, Any]:
+    """Return {pending, paired, source, error?}. Prefers openclaw CLI when available."""
+    cli_data = _list_via_cli()
+    if cli_data is not None:
+        return cli_data
+
+    http_data = _list_via_http()
+    if http_data is not None:
+        return http_data
+
+    status, payload = _http_json("GET", "/api/devices")
+    err_msg = ""
+    if isinstance(payload, dict):
         err_msg = str(payload.get("error") or "")
     return {
         "pending": [],
         "paired": [],
         "source": "none",
-        "error": err_msg or f"HTTP status {status}",
+        "error": err_msg or f"HTTP status {status}; openclaw CLI unavailable",
     }
+
+
+def _approve_via_http(request_id: str) -> tuple[bool, str]:
+    last_status = 0
+    last_err = ""
+    for body in ({"requestId": request_id}, {"request_id": request_id}):
+        status, payload = _http_json("POST", "/api/devices/approve", body=body)
+        last_status = status
+        if status in (200, 204):
+            return True, "http"
+        if isinstance(payload, dict):
+            last_err = str(payload.get("error") or payload.get("message") or "")
+    return False, last_err or f"HTTP approve failed (status {last_status})"
+
+
+def _approve_via_cli(request_id: str) -> tuple[bool, str]:
+    ok, cli_payload = _cli_json(["devices", "approve", request_id])
+    if ok:
+        return True, "cli"
+    if isinstance(cli_payload, dict):
+        return False, str(cli_payload.get("error") or "cli approve failed")
+    return False, "cli approve failed"
 
 
 def approve_device(request_id: str) -> dict[str, Any]:
@@ -227,24 +275,55 @@ def approve_device(request_id: str) -> dict[str, Any]:
     if not request_id:
         return {"ok": False, "error": "requestId required"}
 
-    status, payload = _http_json(
-        "POST",
-        "/api/devices/approve",
-        body={"requestId": request_id},
-    )
-    if status in (200, 204):
-        return {"ok": True, "source": "http", "requestId": request_id}
+    before = list_devices()
+    before_ids = {_request_id(p) for p in before.get("pending") or []}
 
-    ok, cli_payload = _cli_json(["devices", "approve", request_id])
-    if ok:
-        return {"ok": True, "source": "cli", "requestId": request_id}
+    source = ""
+    err_parts: list[str] = []
+    http_ok, http_err = _approve_via_http(request_id)
+    if http_ok:
+        source = "http"
+    else:
+        err_parts.append(http_err)
 
-    err = ""
-    if isinstance(payload, dict):
-        err = str(payload.get("error") or payload.get("message") or "")
-    if not err and isinstance(cli_payload, dict):
-        err = str(cli_payload.get("error") or "")
-    return {"ok": False, "error": err or f"approve failed (HTTP {status})"}
+    after = list_devices()
+    if request_id in {_request_id(p) for p in after.get("pending") or []}:
+        ok_cli, cli_err = _approve_via_cli(request_id)
+        if ok_cli:
+            source = source or "cli"
+        elif cli_err:
+            err_parts.append(cli_err)
+        after = list_devices()
+
+    after_pending = after.get("pending") or []
+    after_ids = {_request_id(p) for p in after_pending}
+
+    if request_id in after_ids:
+        hint = (
+            "Request still pending after approve. Close extra Control UI tabs, "
+            "refresh this page, and approve the current requestId (OpenClaw may "
+            "issue a new id after reconnect or scope upgrade)."
+        )
+        return {
+            "ok": False,
+            "error": err_parts[0] if err_parts else hint,
+            "requestId": request_id,
+            "source": source or "none",
+        }
+
+    result: dict[str, Any] = {
+        "ok": True,
+        "source": source or "http",
+        "requestId": request_id,
+    }
+    if len(after_pending) > 0:
+        new_ids = sorted(after_ids - (before_ids - {request_id}))
+        result["warning"] = (
+            f"Approved {request_id[:8]}… but {len(after_pending)} pending request(s) remain "
+            f"({', '.join(x[:8] + '…' for x in new_ids[:3])}). "
+            "Often a scope upgrade or a second browser tab — approve again or close extra tabs."
+        )
+    return result
 
 
 def pending_count() -> int:
