@@ -248,7 +248,8 @@ if command -v defenseclaw >/dev/null 2>&1; then
 else
   warn "defenseclaw CLI not on PATH"
   need_item "defenseclaw CLI (clone ~/src/defenseclaw && ./scripts/install.sh)"
-  rec "clone https://github.com/cisco-ai-defense/defenseclaw to ~/src/defenseclaw && ./scripts/install.sh"
+  rec "clone https://github.com/cisco-ai-defense/defenseclaw to ~/src/defenseclaw"
+  rec "./scripts/install.sh --yes --connector openclaw"
 fi
 
 DC_CFG="$HOME/.defenseclaw/config.yaml"

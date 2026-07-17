@@ -164,7 +164,7 @@ if ! command -v defenseclaw >/dev/null; then
   log "Installing Cisco DefenseClaw"
   [ -d "$SRC/defenseclaw" ] || git clone --depth 1 https://github.com/cisco-ai-defense/defenseclaw "$SRC/defenseclaw"
   rm -f "$BIN/.defenseclaw-source-root" 2>/dev/null || true
-  if ! ( cd "$SRC/defenseclaw" && ./scripts/install.sh --replace-defenseclaw --connector openclaw ); then
+  if ! ( cd "$SRC/defenseclaw" && ./scripts/install.sh --yes --connector openclaw ); then
     die "DefenseClaw install failed — ensure uv and Python 3.12 are available (see output above)"
   fi
 fi
