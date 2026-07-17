@@ -230,19 +230,19 @@ start_nginx() {
       return 1
     fi
   fi
-  [[ -f "$CLAWLAB_NGINX/nginx.conf" ]] || {
-    warn "missing $CLAWLAB_NGINX/nginx.conf — re-run: bash install/install-clawstack.sh --local-full"
-    return 1
-  }
+  load_portal_env
+  clawlab_local_full_write_nginx "$REPO"
   ensure_nginx_mime_types
-  if pid_alive "$RUN/nginx.pid" || port_open "${LOCAL_FULL_PORT:-8083}"; then
-    info "nginx already running"
-    return 0
-  fi
   if ! nginx -t -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX" 2>"$RUN/nginx-test.log"; then
     warn "nginx config test failed — see $RUN/nginx-test.log"
     tail -3 "$RUN/nginx-test.log" >&2 || true
     return 1
+  fi
+  if pid_alive "$RUN/nginx.pid" || port_open "${LOCAL_FULL_PORT:-8083}"; then
+    nginx -s reload -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX" 2>/dev/null \
+      && info "reloaded nginx (http://127.0.0.1:${LOCAL_FULL_PORT:-8083})" \
+      || info "nginx already running"
+    return 0
   fi
   nginx -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX"
   if [[ -f "$CLAWLAB_NGINX/logs/nginx.pid" ]]; then

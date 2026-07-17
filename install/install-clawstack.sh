@@ -20,7 +20,8 @@
 #
 # Usage:
 #   bash install/install-clawstack.sh
-#   bash install/install-clawstack.sh --local-full   # non-interactive defaults
+#   bash install/install-clawstack.sh --local-full   # interactive; Enter accepts defaults
+#   bash install/install-clawstack.sh --local-full --yes   # fully non-interactive
 #   bash install/install-clawstack.sh --yes          # accept all defaults (any mode)
 #   bash install/install-clawstack.sh --local | --server
 #   bash install/install-clawstack.sh --skip-precheck
@@ -50,7 +51,7 @@ die()  { printf '%sERROR:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
 AUTO_DEFAULTS=0
 clawlab_refresh_auto_defaults() {
   AUTO_DEFAULTS=0
-  [[ "${NONINTERACTIVE:-0}" -eq 1 || "$MODE" == "local-full" ]] && AUTO_DEFAULTS=1
+  [[ "${NONINTERACTIVE:-0}" -eq 1 ]] && AUTO_DEFAULTS=1
 }
 
 ask() {
@@ -93,7 +94,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-precheck) SKIP_PRECHECK=1 ;;
     --local) MODE=local ;;
-    --local-full) MODE=local-full; NONINTERACTIVE=1 ;;
+    --local-full) MODE=local-full ;;
     --server) MODE=server ;;
     --mode=*) MODE="${1#*=}" ;;
     --yes|-y|--non-interactive) NONINTERACTIVE=1 ;;
@@ -172,7 +173,7 @@ if [[ "$SKIP_PRECHECK" -eq 0 ]]; then
   bash "$SCRIPT_DIR/preinstall-check.sh" || {
     warn "Pre-install check reported issues — review recommendations above."
     if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
-      warn "Continuing with defaults (local-full / --yes mode)."
+      warn "Continuing with defaults (--yes mode)."
     else
       yesno "Continue anyway?" n || die "Aborted. Fix issues or pass --skip-precheck."
     fi
@@ -195,7 +196,9 @@ fi
 clawlab_refresh_auto_defaults
 
 if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
-  info "Non-interactive defaults enabled (local-full or --yes)"
+  info "Non-interactive defaults enabled (--yes)"
+elif [[ "$MODE" == "local-full" ]]; then
+  info "Local-full: prompts show [defaults] — press Enter to accept (portal :8083, MCP :8766, gateway :18789)"
 fi
 
 if [[ "$MODE" == "local-full" ]] && ! clawlab_local_full_supported; then
@@ -272,6 +275,13 @@ if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
   else
     configure_ollama_provider "llama3.1:8b"
   fi
+elif [[ "$MODE" == "local-full" ]] && yesno "Use default model provider (ollama / llama3.1:8b)?" y; then
+  log "Model providers (local-full default: ollama / llama3.1:8b)"
+  if [[ "$(openclaw_has_provider ollama)" == yes ]]; then
+    info "  ollama provider already configured — keeping existing"
+  else
+    configure_ollama_provider "llama3.1:8b"
+  fi
 else
   log "Model providers (add one or more; blank name to finish)"
   while true; do
@@ -337,7 +347,9 @@ if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
   info "  primary → $PRIMARY (no cloud fallbacks in default local-full profile)"
 else
   PRIMARY="$(ask 'Primary model (provider/model)' 'ollama/llama3.1:8b')"
-  FALLBACKS="$(ask 'Fallback model(s), comma-separated' 'anthropic/claude-sonnet-5')"
+  FB_DEFAULT="anthropic/claude-sonnet-5"
+  [[ "$MODE" == "local-full" ]] && FB_DEFAULT=""
+  FALLBACKS="$(ask 'Fallback model(s), comma-separated (blank = none)' "$FB_DEFAULT")"
 fi
 oc_json "$PRIMARY" "$FALLBACKS" <<'PY'
 import json,sys
@@ -354,11 +366,31 @@ if [[ "$AUTO_DEFAULTS" -eq 1 && "$MODE" == "local-full" ]]; then
   log "MCP servers (local-full auto-registers ssh-ops at http://127.0.0.1:8766/mcp)"
 elif [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
   log "MCP servers (skipped in default mode — re-run without --yes to add)"
-else
-  if [[ "$MODE" == "local-full" ]]; then
-    log "MCP servers (local-full will auto-register ssh-ops at http://127.0.0.1:8766/mcp)"
-    info "  Skip manual MCP entry unless you need extra servers (blank name at prompt to continue)"
+elif [[ "$MODE" == "local-full" ]]; then
+  log "MCP servers (ssh-ops auto-registers after stack start)"
+  info "  ssh-ops GUI :8765  ·  MCP API http://127.0.0.1:8766/mcp  ·  portal /ssh-ops/ on :${LOCAL_FULL_PORT:-8083}"
+  if yesno "Manually register additional MCP servers now?" n; then
+    while true; do
+      echo
+      MNAME="$(ask 'MCP name (blank = done)')"
+      [ -z "$MNAME" ] && break
+      MURL="$(ask "  URL for $MNAME" 'http://127.0.0.1:8766/mcp')"
+      MTRANS="$(ask "  Transport" 'streamable-http')"
+      MTOK="$(ask_secret "  Bearer token for $MNAME (blank if none)")"
+      oc_json "$MNAME" "$MURL" "$MTRANS" "$MTOK" <<'PY'
+import json,sys
+p,name,url,trans,tok=sys.argv[1:]
+d=json.load(open(p))
+srv=d.setdefault("mcp",{}).setdefault("servers",{})
+entry={"url":url,"transport":trans}
+if tok: entry["headers"]={"Authorization":"Bearer "+tok}
+srv[name]=entry
+json.dump(d,open(p,"w"),indent=1); print("  registered MCP",name)
+PY
+      yesno "Add another MCP?" y || break
+    done
   fi
+else
   log "MCP servers (register existing endpoints; blank name to finish)"
   while true; do
     echo
@@ -503,7 +535,7 @@ if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
   else
     info "Webex alerts skipped (set DEFENSECLAW_WEBEX_TOKEN + DEFENSECLAW_WEBEX_ROOM_ID to enable)"
   fi
-elif yesno "Configure a Cisco Webex webhook for alerts?" y; then
+elif yesno "Configure a Cisco Webex webhook for alerts?" "$([ "$MODE" = local-full ] && echo n || echo y)"; then
   WEBEX_TOKEN="$(ask_secret '  Webex bot token')"
   WEBEX_ROOM="$(ask '  Webex room id')"
   grep -q '^DEFENSECLAW_WEBEX_TOKEN=' "$DC_ENV" || echo "DEFENSECLAW_WEBEX_TOKEN=$WEBEX_TOKEN" >> "$DC_ENV"
@@ -607,6 +639,14 @@ fi
 
 # ==================================================== 11. START + SUMMARY =====
 echo
+if [[ "$MODE" == "local-full" && "$AUTO_DEFAULTS" -eq 0 ]]; then
+  log "Local-full portal layout (loopback hub + nginx)"
+  info "  Portal hub :${LOCAL_FULL_PORT:-8083}  ·  OpenClaw gateway :18789"
+  info "  ssh-ops Admin GUI :8765  ·  MCP API :8766  ·  DefenseClaw :8780"
+  LOCAL_FULL_DOMAIN="$(ask 'Portal bind address' '127.0.0.1')"
+  LOCAL_FULL_PORT="$(ask 'Portal hub port (nginx listens here)' '8083')"
+  export LOCAL_FULL_DOMAIN LOCAL_FULL_PORT
+fi
 if [[ "$MODE" == "local-full" ]]; then
   clawlab_install_local_full "$CLAWLAB_REPO"
 elif [[ "$MODE" == "local" ]]; then
@@ -634,7 +674,7 @@ fi
 LOCAL_FULL_NOTE=""
 if [[ "$MODE" == "local-full" ]]; then
   LOCAL_FULL_NOTE="
-  Portal hub: http://127.0.0.1:8083/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status"
+  Portal hub: http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status"
 fi
 
 cat <<EOF

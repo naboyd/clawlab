@@ -63,13 +63,18 @@ clawlab_local_full_ensure_admin_user() {
   local repo="$1"
   # shellcheck disable=SC1090
   set -a; source "$HOME/.claw-portals/config.env"; set +a
-  "$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); print(store.user_count())" | {
-    read -r count
-    if [[ "${count:-0}" -eq 0 ]]; then
+  local count
+  count="$("$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); print(store.user_count())")"
+  if [[ "${count:-0}" -eq 0 ]]; then
+    if [[ "${AUTO_DEFAULTS:-0}" -eq 1 ]]; then
       warn "No claw-auth users yet — create one:"
       info "  $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
+    else
+      log "Portal login (claw-auth for http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/)"
+      "$CLAW_PYTHON" "$repo/claw-auth/manage.py" create-user admin \
+        || warn "create-user failed — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
     fi
-  }
+  fi
 }
 
 clawlab_local_full_write_nginx() {
@@ -125,8 +130,10 @@ server {
 
     location = / {
         auth_request /_claw_auth/verify;
-        auth_request_set \$claw_user \$upstream_http_x_claw_user;
+        auth_request_set \$claw_user \$upstream_http_x_auth_user;
+        auth_request_set \$claw_role \$upstream_http_x_auth_role;
         proxy_set_header X-Auth-User \$claw_user;
+        proxy_set_header X-Auth-Role \$claw_role;
         proxy_set_header X-Forwarded-User \$claw_user;
         proxy_pass http://127.0.0.1:8780/;
         proxy_set_header Host \$http_host;
@@ -135,6 +142,11 @@ server {
     }
     location /admin/ {
         auth_request /_claw_auth/verify;
+        auth_request_set \$claw_user \$upstream_http_x_auth_user;
+        auth_request_set \$claw_role \$upstream_http_x_auth_role;
+        proxy_set_header X-Auth-User \$claw_user;
+        proxy_set_header X-Auth-Role \$claw_role;
+        proxy_set_header X-Forwarded-User \$claw_user;
         proxy_pass http://127.0.0.1:8780/admin/;
         proxy_set_header Host \$http_host;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -142,19 +154,28 @@ server {
 
     location /ssh-ops/ {
         auth_request /_claw_auth/verify;
-        auth_request_set \$claw_user \$upstream_http_x_claw_user;
+        auth_request_set \$claw_user \$upstream_http_x_auth_user;
+        auth_request_set \$claw_role \$upstream_http_x_auth_role;
         proxy_set_header X-Auth-User \$claw_user;
+        proxy_set_header X-Auth-Role \$claw_role;
         proxy_set_header X-Forwarded-User \$claw_user;
         proxy_pass http://127.0.0.1:8765/;
         proxy_set_header Host \$http_host;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$http_host;
     }
 
     location /defenseclaw/ {
         auth_request /_claw_auth/verify;
+        auth_request_set \$claw_user \$upstream_http_x_auth_user;
+        auth_request_set \$claw_role \$upstream_http_x_auth_role;
+        proxy_set_header X-Auth-User \$claw_user;
+        proxy_set_header X-Auth-Role \$claw_role;
+        proxy_set_header X-Forwarded-User \$claw_user;
         proxy_pass http://127.0.0.1:8770/;
         proxy_set_header Host \$http_host;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$http_host;
     }
 
     location = /openclaw {
