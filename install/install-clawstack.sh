@@ -80,6 +80,7 @@ OC_ENV="$OC_HOME/.env"
 DC_ENV="$DC_HOME/.env"
 export PATH="$BIN:$HOME/.npm-global/bin:$PATH"
 clawlab_prepend_openclaw_node_path || true
+clawlab_prepend_uv_path
 
 # python helper: merge a JSON fragment into openclaw.json (deep-ish for our keys)
 oc_json() { python3 - "$OC_HOME/openclaw.json" "$@"; }
@@ -155,12 +156,17 @@ fi
 info "openclaw $(openclaw --version 2>/dev/null | head -1)"
 
 # ============================================================ 3. DEFENSECLAW =
+log "Ensuring uv (DefenseClaw installer)"
+clawlab_install_uv || die "uv not available — run: bash install/preinstall-check.sh --fix"
+info "uv $(uv --version 2>/dev/null | head -1)"
+
 if ! command -v defenseclaw >/dev/null; then
   log "Installing Cisco DefenseClaw"
   [ -d "$SRC/defenseclaw" ] || git clone --depth 1 https://github.com/cisco-ai-defense/defenseclaw "$SRC/defenseclaw"
   rm -f "$BIN/.defenseclaw-source-root" 2>/dev/null || true
-  ( cd "$SRC/defenseclaw" && ./scripts/install.sh --replace-defenseclaw --connector openclaw 2>/dev/null \
-      || make install CONNECTOR=openclaw )
+  if ! ( cd "$SRC/defenseclaw" && ./scripts/install.sh --replace-defenseclaw --connector openclaw ); then
+    die "DefenseClaw install failed — ensure uv and Python 3.12 are available (see output above)"
+  fi
 fi
 info "defenseclaw $(defenseclaw --version 2>/dev/null | head -1)"
 

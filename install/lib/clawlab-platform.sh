@@ -210,6 +210,27 @@ clawlab_install_pnpm() {
   command -v pnpm >/dev/null 2>&1
 }
 
+clawlab_prepend_uv_path() {
+  export PATH="${HOME}/.local/bin:${HOME}/.cargo/bin:${PATH}"
+  hash -r 2>/dev/null || true
+}
+
+clawlab_install_uv() {
+  clawlab_prepend_uv_path
+  command -v uv >/dev/null 2>&1 && return 0
+  case "$CLAWLAB_PKG" in
+    brew) brew install uv ;;
+    apt)
+      curl -fsSL https://astral.sh/uv/install.sh | sh || return 1
+      ;;
+    *)
+      curl -fsSL https://astral.sh/uv/install.sh | sh || return 1
+      ;;
+  esac
+  clawlab_prepend_uv_path
+  command -v uv >/dev/null 2>&1
+}
+
 clawlab_install_lego() {
   command -v lego >/dev/null && return 0
   local bin="${HOME}/.local/bin"

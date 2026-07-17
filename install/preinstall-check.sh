@@ -165,6 +165,30 @@ else
 fi
 echo
 
+echo "--- uv (DefenseClaw build) ---"
+clawlab_prepend_uv_path
+if command -v uv >/dev/null 2>&1; then
+  pass "uv ($(uv --version 2>/dev/null | head -1))"
+elif [[ "$FIX" -eq 1 ]]; then
+  echo "       (running: clawlab_install_uv)"
+  if clawlab_install_uv; then
+    pass "uv ($(uv --version 2>/dev/null | head -1))"
+  else
+    fail "uv install failed"
+    need_item "uv (DefenseClaw Python packaging)"
+    rec "brew install uv   # or: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  fi
+else
+  fail "uv not found (required to build DefenseClaw)"
+  need_item "uv"
+  case "$CLAWLAB_PKG" in
+    brew) rec "brew install uv" ;;
+    *) rec "curl -LsSf https://astral.sh/uv/install.sh | sh" ;;
+  esac
+  rec "or re-run: bash install/preinstall-check.sh --fix"
+fi
+echo
+
 echo "--- ollama / LLM models ---"
 if command -v ollama >/dev/null 2>&1; then
   pass "ollama CLI"
