@@ -29,7 +29,26 @@ Layers covered:
 ```bash
 ./policy-test.sh            # full run (includes the ~2 slow agent turns)
 ./policy-test.sh --no-agent # fast: deterministic direct probes only
+./policy-test.sh --skip-mcp # skip live ssh-ops probes when hosts are not set up
 ```
+
+### ssh-ops host inventory (required for sections 2+)
+
+Live MCP probes need at least one **reachable** host in
+`~/.clawlab/ssh-ops/data/hosts.yaml`. A fresh install copies placeholder
+`web1` / `10.0.0.x` entries that will fail until you replace them.
+
+**Mac local-full (loopback SSH):**
+
+```bash
+cp config-templates/hosts.local-full.sample.yaml ~/.clawlab/ssh-ops/data/hosts.yaml
+# edit username; enable Remote Login on the Mac
+CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --recreate
+CLAWLAB_HOST=mac-local ./policy-test.sh --no-agent
+```
+
+Or add hosts in the portal **MCP Admin** tab. Until then, use `--skip-mcp` —
+sections **1**, **1b**, **1c**, **1d**, and **3** still validate DefenseClaw.
 
 ### On icecream (full stack)
 

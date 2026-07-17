@@ -1,0 +1,23 @@
+# Clawlab extension — reverse-shell and C2 transport patterns for inspect-tool + shims.
+# Install via admin-access/install-clawlab-guardrail-rules.sh (merges into commands.yaml).
+version: 1
+category: command
+rules:
+  - id: CMD-REVSHELL-NC
+    pattern: '(?i)\bnc\s+(-[^\s]+\s+)*-e\b'
+    title: "netcat reverse shell (-e)"
+    severity: CRITICAL
+    confidence: 0.95
+    tags: [c2, revshell, nc]
+  - id: CMD-REVSHELL-BASH-TCP
+    pattern: '(?i)/dev/tcp/'
+    title: "bash /dev/tcp reverse shell"
+    severity: CRITICAL
+    confidence: 0.95
+    tags: [c2, revshell, bash]
+  - id: CMD-REVSHELL-BASH-UDP
+    pattern: '(?i)/dev/udp/'
+    title: "bash /dev/udp reverse shell"
+    severity: CRITICAL
+    confidence: 0.95
+    tags: [c2, revshell, bash]

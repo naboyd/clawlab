@@ -1,0 +1,27 @@
+# Minimal ssh-ops inventory for Mac local-full policy tests.
+# Copy to ~/.clawlab/ssh-ops/data/hosts.yaml and edit username.
+#
+# Requires macOS Remote Login (System Settings → General → Sharing → Remote Login).
+# Then restart MCP: CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --recreate
+
+settings:
+  host_key_policy: auto
+  command_timeout: 30
+  connect_timeout: 10
+
+hosts:
+  mac-local:
+    tags: [lab, local]
+    hostname: 127.0.0.1
+    port: 22
+    username: YOUR_MAC_USERNAME
+    allow_write: false
+
+  # Optional: IOS-XE switch for sections 2b/2c (set CLAWLAB_SWITCH=sw1)
+  # sw1:
+  #   tags: [network]
+  #   platform: cisco_ios
+  #   hostname: 192.168.1.1
+  #   port: 22
+  #   username: netadmin
+  #   # login + enable passwords via MCP Admin → Hosts (encrypted)

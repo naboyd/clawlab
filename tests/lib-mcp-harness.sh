@@ -3,6 +3,19 @@
 # Source from policy-test.sh / scenario-*.sh — do not execute directly.
 set -uo pipefail
 
+# Portable timeout (macOS lacks GNU timeout by default).
+run_timeout() {
+  local secs="$1"
+  shift
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"
+  else
+    perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
+  fi
+}
+
 # Load MCP auth/url from openclaw.json; fall back to direct :8766 when identity proxy is down.
 mcp_load_config() {
   MCP_AUTH=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization'])" 2>/dev/null || true)
@@ -16,9 +29,67 @@ mcp_load_config() {
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness","version":"1"}}}' \
       2>/dev/null || echo 000)
     if [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "500" ]; then
-      MCP_URL="${SSH_OPS_MCP_URL:-https://192.168.128.93:8766/mcp}"
+      MCP_URL="${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"
     fi
   fi
+  if [ -z "$MCP_URL" ]; then
+    MCP_URL="${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"
+  fi
+}
+
+mcp_discover_linux_host() {
+  REPO_ROOT="${REPO:-}" SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" python3 - <<'PY' 2>/dev/null
+import os
+from pathlib import Path
+try:
+    import yaml
+except ImportError:
+    raise SystemExit(0)
+candidates = [
+    Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
+    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
+    Path.home() / "ssh_ops_mcp/data/hosts.yaml",
+]
+repo = os.environ.get("REPO_ROOT", "")
+if repo:
+    candidates.append(Path(repo) / "ssh-ops-mcp/hosts.example.yaml")
+for path in candidates:
+    if not path or not path.is_file():
+        continue
+    cfg = yaml.safe_load(path.read_text()) or {}
+    for name, host in (cfg.get("hosts") or {}).items():
+        plat = str(host.get("platform", "linux") or "linux").strip().lower()
+        if plat in ("linux", "unix", ""):
+            print(name)
+            raise SystemExit(0)
+PY
+}
+
+mcp_inventory_ready() {
+  REPO_ROOT="${REPO:-}" SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" python3 - <<'PY' 2>/dev/null
+import os, sys
+from pathlib import Path
+try:
+    import yaml
+except ImportError:
+    sys.exit(1)
+candidates = [
+    Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
+    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
+    Path.home() / "ssh_ops_mcp/data/hosts.yaml",
+]
+repo = os.environ.get("REPO_ROOT", "")
+if repo:
+    candidates.append(Path(repo) / "ssh-ops-mcp/hosts.example.yaml")
+for path in candidates:
+    if not path or not path.is_file():
+        continue
+    cfg = yaml.safe_load(path.read_text()) or {}
+    hosts = cfg.get("hosts") or {}
+    if isinstance(hosts, dict) and len(hosts) > 0:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 mcp_discover_net_host() {
@@ -32,6 +103,7 @@ except ImportError:
 repo = os.environ.get("REPO_ROOT", "")
 candidates = [
     Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
+    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
     Path.home() / "ssh_ops_mcp/data/hosts.yaml",
 ]
 if repo:
@@ -45,6 +117,32 @@ for path in candidates:
         if plat not in ("linux", "unix", ""):
             print(name)
             raise SystemExit(0)
+PY
+}
+
+# Last JSON object from MCP streamable-http (SSE data: lines) or plain JSON body.
+mcp_parse_response() {
+  python3 - <<'PY'
+import json, sys
+raw = sys.stdin.read()
+if not raw.strip():
+    raise SystemExit(0)
+lines = []
+for line in raw.splitlines():
+    line = line.strip()
+    if line.startswith("data:"):
+        line = line[5:].strip()
+    if line:
+        lines.append(line)
+if not lines:
+    lines = [raw.strip()]
+for line in reversed(lines):
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    print(json.dumps(obj))
+    break
 PY
 }
 
@@ -85,7 +183,29 @@ mcp_tool_call() {
   curl -sk -m25 -X POST "$MCP_URL" "${hdr[@]}" \
     -d "$(jq -n --arg tool "$tool" --argjson args "$args" \
       '{jsonrpc:"2.0",id:2,method:"tools/call",params:{name:$tool,arguments:$args}}')" \
-    2>/dev/null | sed -n 's/^data: //p' | tail -1
+    2>/dev/null | mcp_parse_response
+}
+
+mcp_probe_ready() {
+  local r
+  mcp_session_start
+  r=$(mcp_tool_call list_hosts '{}')
+  if [ -z "$r" ]; then
+    echo "MCP unreachable at $MCP_URL (is ssh-ops MCP up? podctl --status)"
+    return 1
+  fi
+  if echo "$r" | grep -qiE '"error"|"message".*not found|connection refused|unauthorized|401|403'; then
+    echo "MCP error: $(echo "$r" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',{}).get('message',d))" 2>/dev/null || echo "$r" | head -c 120)"
+    return 1
+  fi
+  return 0
+}
+
+mcp_host_reachable() {
+  local host="${1:-}"
+  [ -n "$host" ] || return 1
+  mcp_session_start
+  [ "$(mcp_run_command_verdict "$host" "true")" = allow ]
 }
 
 mcp_response_is_rbac_block() {
@@ -110,8 +230,7 @@ mcp_rbac_verdict() {
   elif mcp_response_is_allowlist_block "$r"; then
     echo block
   elif echo "$r" | grep -q '"error"'; then
-    # Filtered show may fail on device; RBAC did not trip.
-    echo allow
+    echo err
   else
     echo err
   fi
@@ -120,10 +239,12 @@ mcp_rbac_verdict() {
 mcp_run_command_verdict() {
   local r
   r=$(mcp_tool_call run_command "$(jq -n --arg h "$1" --arg c "$2" '{host:$h,command:$c}')")
-  if mcp_response_is_rbac_block "$r" || mcp_response_is_allowlist_block "$r" || echo "$r" | grep -q '"error"'; then
+  if mcp_response_is_rbac_block "$r" || mcp_response_is_allowlist_block "$r"; then
     echo block
   elif echo "$r" | grep -q '"exit_code"'; then
     echo allow
+  elif echo "$r" | grep -q '"error"'; then
+    echo err
   else
     echo err
   fi

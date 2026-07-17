@@ -111,15 +111,18 @@ def main() -> int:
     patterns = rules_dir / "local-patterns.yaml"
     crud_src = src_dir / "clawlab-local-user-crud.yaml"
     intent_src = src_dir / "clawlab-local-user-intent.yaml"
+    c2_src = src_dir / "clawlab-c2-revshell.yaml"
 
     cmd_changed = merge_command_rules(commands, crud_src)
+    if c2_src.is_file():
+        cmd_changed += merge_command_rules(commands, c2_src)
     inj_added, rx_added = merge_local_patterns(patterns, intent_src)
 
     print(f"Merged into {commands}: {cmd_changed} command rule(s) added/updated")
     print(f"Merged into {patterns}: +{inj_added} injection phrase(s), +{rx_added} regex(es)")
 
     # Remove legacy standalone files that lose to commands.yaml on load.
-    for legacy in ("clawlab-local-user-crud.yaml", "clawlab-local-user-intent.yaml"):
+    for legacy in ("clawlab-local-user-crud.yaml", "clawlab-local-user-intent.yaml", "clawlab-c2-revshell.yaml"):
         legacy_path = rules_dir / legacy
         if legacy_path.is_file():
             legacy_path.unlink()
