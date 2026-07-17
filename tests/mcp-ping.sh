@@ -12,6 +12,7 @@ ok() { printf '  OK: %s\n' "$1"; }
 fail() { printf '  FAIL: %s\n' "$1"; exit 1; }
 warn() { printf '  WARN: %s\n' "$1"; }
 
+printf 'clawlab tests @ %s\n' "$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 step "1) Config"
 mcp_load_config
 [ -n "${MCP_URL:-}" ] || fail "MCP_URL empty (openclaw.json missing ssh-ops entry?)"
@@ -44,8 +45,13 @@ if [ -n "$rows" ]; then
     printf '  host %-24s kind=%s\n' "$name" "$kind"
   done
 else
-  printf '  raw response (first 400 chars): %s\n' "$(printf '%s' "$r" | head -c 400)"
-  fail "list_hosts parsed zero hosts"
+  printf '  raw response (first 500 chars):\n    %s\n' "$(printf '%s' "$r" | head -c 500)"
+  if printf '%s' "$r" | python3 -m json.tool >/dev/null 2>&1; then
+    printf '  parsed json keys: '
+    MCP_JSON="$r" python3 -c 'import json,os; d=json.loads(os.environ["MCP_JSON"]); r=d.get("result"); print(list(r.keys()) if isinstance(r,dict) else type(r).__name__)' 2>/dev/null || true
+    echo
+  fi
+  fail "list_hosts parsed zero hosts (git pull clawlab; need commit a4ea919+)"
 fi
 
 step "5) Linux host probe (optional)"

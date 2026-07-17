@@ -139,7 +139,12 @@ else:
     if isinstance(sc, list):
         ingest(sc)
     elif isinstance(sc, dict):
-        ingest(sc.get("hosts") or [])
+        ingest(sc.get("hosts") or sc.get("result") or [])
+if not hosts and os.environ.get("MCP_DEBUG"):
+    import sys
+    print(f"debug: unparsed keys={list(d.keys())}", file=sys.stderr)
+    if isinstance(result, dict):
+        print(f"debug: result keys={list(result.keys())}", file=sys.stderr)
 for name, kind in hosts:
     print(f"{name}\t{kind}")
 PY
@@ -282,14 +287,16 @@ mcp_host_known() {
   mcp_list_hosts_rows "$r" | awk -F '\t' -v h="$host" '$1==h{found=1} END{exit !found}'
 }
 
-# Extract last JSON object from MCP streamable-http (SSE) or plain JSON body.
+# Extract JSON object from MCP streamable-http (SSE) or plain JSON body.
 mcp_parse_response_body() {
   local body="${1:-}"
-  [[ -n "$body" ]] || return 1
+  [[ -n "$body" && -f "$body" ]] || return 1
   local line
-  line="$(sed -n 's/^data: //p' "$body" | tail -1)"
+  line="$(sed -n 's/^data: //p' "$body" | grep -E '"id"[[:space:]]*:[[:space:]]*2' | tail -1)"
+  [[ -z "$line" ]] && line="$(sed -n 's/^data: //p' "$body" | grep '"result"' | tail -1)"
+  [[ -z "$line" ]] && line="$(sed -n 's/^data: //p' "$body" | tail -1)"
   if [[ -z "$line" ]]; then
-    line="$(grep -E '^\{' "$body" | tail -1)"
+    line="$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$body" 2>/dev/null || true)"
   fi
   [[ -n "$line" ]] || return 1
   printf '%s' "$line"
