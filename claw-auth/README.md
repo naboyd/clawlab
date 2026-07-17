@@ -10,6 +10,7 @@ via `claw-portals/install-portals.sh`.
 - **Server-side sessions** — HttpOnly cookie, configurable TTL (default 24h)
 - **nginx auth_request** integration — one login flow per portal port
 - **User admin UI** at `http://127.0.0.1:8780/admin/users`
+- **OpenClaw device pairing UI** at `/admin/openclaw-devices` (portal hub tab; **admin role only**)
 - **CLI** for non-interactive user management
 
 Passwords are hashed with Werkzeug's scrypt-based hasher (via Flask).

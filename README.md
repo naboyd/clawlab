@@ -71,6 +71,34 @@ bash claw-portals/install-portals.sh
 
 ---
 
+## First login & OpenClaw device pairing
+
+> **Do this once per browser** after install. Same flow on **`local-full`** (`http://127.0.0.1:8083/`) and
+> **lab server** (`https://<host>:8443/` with `install-portals.sh` + claw-auth).
+
+| Step | Who | Action |
+|------|-----|--------|
+| **1** | Admin | Create portal user if none exists: `python claw-auth/manage.py create-user admin` |
+| **2** | Anyone | Open the portal hub and sign in |
+| **3** | Anyone | **OpenClaw** tab → **Open OpenClaw ↗** (new window with gateway token) |
+| **4** | **Admin only** | **OpenClaw devices** tab → **Approve** the pending browser device |
+| **5** | Anyone | Return to the OpenClaw Control UI — it should connect |
+
+**Admin-only tab:** The **OpenClaw devices** tab appears only for users with role **`admin`**
+(manage roles via **Users** on the hub or `claw-auth/manage.py create-user alice --role operator`).
+Non-admin operators see a banner asking them to contact an admin; they cannot approve devices.
+
+**CLI fallback** (SSH on the gateway host):
+
+```bash
+openclaw devices list
+openclaw devices approve <request-id>
+```
+
+**Verify local-full stack:** `bash install/verify-local-full.sh`
+
+---
+
 ## Quick start
 
 ### macOS desktop stack (`local-full`)
@@ -84,13 +112,15 @@ bash install/local-full-ctl.sh restart   # after config changes
 # Verify stack
 bash install/verify-local-full.sh
 
-# First OpenClaw: hub → Open OpenClaw ↗ → OpenClaw devices tab → Approve
+# Portal hub
+open http://127.0.0.1:8083/
+```
 
+See **[First login & OpenClaw device pairing](#first-login--openclaw-device-pairing)** above for the full first-connect flow.
+
+```bash
 # First login user (if none yet)
 ~/.clawlab/venv/bin/python claw-auth/manage.py create-user admin
-
-# Portal hub (requires brew nginx if not already installed)
-open http://127.0.0.1:8083/
 ```
 
 ### Live demo (after stack is up)
@@ -112,18 +142,26 @@ systemctl --user restart ssh-ops-gui
 bash claw-auth/doctor.sh
 ```
 
+After redeploy, use the same **[device pairing flow](#first-login--openclaw-device-pairing)** on `:8443`.
+
 ---
 
 ## Unified portal
 
-| Tab | Path | Backend |
-|-----|------|---------|
-| OpenClaw Control UI | `/openclaw/` | `127.0.0.1:18789` |
-| MCP Admin (ssh-ops) | `/ssh-ops/` | `127.0.0.1:8765` |
-| DefenseClaw policies | `/defenseclaw/` | `127.0.0.1:8770` |
+| Tab | Path | Backend | Access |
+|-----|------|---------|--------|
+| OpenClaw Control UI | `/openclaw/` | `127.0.0.1:18789` | All signed-in users (token + device pairing) |
+| **OpenClaw devices** | `/admin/openclaw-devices` | claw-auth → gateway `:18789` | **Admin only** — approve browser pairing |
+| MCP Admin (ssh-ops) | `/ssh-ops/` | `127.0.0.1:8765` | All signed-in users |
+| DefenseClaw policies | `/defenseclaw/` | `127.0.0.1:8770` | All signed-in users |
 
 Default URL: `https://<host>:8443/` (HTTP lab: `:8083`). OpenClaw opens in a new
-window; MCP Admin and DefenseClaw load in the hub via iframes.
+window; MCP Admin, DefenseClaw, and **OpenClaw devices** load in the hub via iframes.
+
+**`local-full` vs lab server:** Device approval uses the same claw-auth UI and gateway API
+on loopback (`127.0.0.1:18789`). Both `local-full` nginx (`:8083`) and `install-portals.sh`
+(`:8443`, claw-auth mode) proxy `/admin/` to claw-auth. Requires claw-auth and the OpenClaw
+gateway on the **same host** (standard install layout).
 
 ---
 

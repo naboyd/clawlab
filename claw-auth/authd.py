@@ -242,8 +242,8 @@ HUB_PAGE = """
 {% endif %}
 <header>
   <h1>clawlab</h1>
-  <div class="meta">Signed in as <b>{{ user.username }}</b>
-    <a href="{{ ext_url('/admin/users') }}">Users</a>
+  <div class="meta">Signed in as <b>{{ user.username }}</b>{% if is_admin %}
+    <a href="{{ ext_url('/admin/users') }}">Users</a>{% endif %}
     <a href="{{ ext_url('/logout') }}">Sign out</a></div>
 </header>
 <nav class="tabs">
@@ -258,8 +258,9 @@ HUB_PAGE = """
   <div id="panel-{{ tab.id }}" class="hub-panel{% if loop.first %} active{% endif %}">
     <div class="external-card">
       <h2>{{ tab.label }}</h2>
-      <p class="hint"><strong>First time in this browser:</strong> click Open below, then approve the
-      pending device on the <strong>OpenClaw devices</strong> tab (or ask an admin).
+      <p class="hint"><strong>First time in this browser:</strong> click Open below{% if is_admin %}, then approve the
+      pending device on the <strong>OpenClaw devices</strong> tab{% else %}, then ask an admin to approve your device
+      on the <strong>OpenClaw devices</strong> tab{% endif %}.
       The Control UI cannot connect until pairing is approved.</p>
       <p class="hint">OpenClaw blocks iframe embedding (gateway clickjacking protection).
       The link includes your gateway token{% if mcp_bind %} and MCP identity bind
@@ -297,6 +298,7 @@ function showTab(id){
 (function(){
   var banner = document.querySelector('.pair-banner');
   if (!banner) return;
+  {% if is_admin %}
   function refresh(){
     fetch('{{ ext_url("/admin/openclaw-devices/status") }}', {credentials:'same-origin'})
       .then(function(r){ return r.ok ? r.json() : null; })
@@ -309,6 +311,7 @@ function showTab(id){
       }).catch(function(){});
   }
   setInterval(refresh, 15000);
+  {% endif %}
 })();
 </script>
 </body></html>
@@ -585,6 +588,7 @@ def _portal_tabs(
             {
                 "id": "openclaw-devices",
                 "label": "OpenClaw devices",
+                "admin_only": True,
                 "src": "/admin/openclaw-devices",
                 "badge": str(pending_n) if pending_n > 0 else "",
             }
