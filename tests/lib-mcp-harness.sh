@@ -3,6 +3,8 @@
 # Source from policy-test.sh / scenario-*.sh — do not execute directly.
 set -uo pipefail
 
+MCP_LAST_ERR=""
+
 # Portable timeout (macOS lacks GNU timeout by default).
 run_timeout() {
   local secs="$1"
@@ -22,15 +24,22 @@ mcp_ssh_ops_data_dir() {
 
 # Source of truth for MCP bearer auth (matches ssh-ops MCP server + Admin UI).
 mcp_load_ssh_ops_token() {
-  local repo="${REPO:-}" data token
+  local repo="${REPO:-}" data token py
   data="$(mcp_ssh_ops_data_dir)"
   [[ -f "$data/.env" && -f "$data/master.key" ]] || return 1
+  if [[ -n "${CLAW_PYTHON:-}" && -x "$CLAW_PYTHON" ]]; then
+    py="$CLAW_PYTHON"
+  elif [[ -x "$HOME/.clawlab/venv/bin/python" ]]; then
+    py="$HOME/.clawlab/venv/bin/python"
+  else
+    py="python3"
+  fi
   token="$(
     SSH_OPS_CONFIG="$data/hosts.yaml" \
     SSH_OPS_ENV="$data/.env" \
     SSH_OPS_KEYFILE="$data/master.key" \
     PYTHONPATH="${repo}/ssh-ops-mcp" \
-    python3 -c 'import secrets_store; print(secrets_store.ensure_mcp_token())' 2>/dev/null \
+    "$py" -c 'import secrets_store; print(secrets_store.ensure_mcp_token())' 2>/dev/null \
     || true
   )"
   [[ -n "$token" ]] || return 1
@@ -272,83 +281,95 @@ mcp_host_known() {
   mcp_list_hosts_rows "$r" | awk -F '\t' -v h="$host" '$1==h{found=1} END{exit !found}'
 }
 
-# Last JSON object from MCP streamable-http (SSE data: lines) or plain JSON body.
-mcp_parse_response() {
-  python3 - <<'PY'
-import json, sys
-raw = sys.stdin.read()
-if not raw.strip():
-    raise SystemExit(0)
-lines = []
-for line in raw.splitlines():
-    line = line.strip()
-    if line.startswith("data:"):
-        line = line[5:].strip()
-    if line:
-        lines.append(line)
-if not lines:
-    lines = [raw.strip()]
-for line in reversed(lines):
-    try:
-        obj = json.loads(line)
-    except json.JSONDecodeError:
-        continue
-    print(json.dumps(obj))
-    break
-PY
+# Extract last JSON object from MCP streamable-http (SSE) or plain JSON body.
+mcp_parse_response_body() {
+  local body="${1:-}"
+  [[ -n "$body" ]] || return 1
+  local line
+  line="$(sed -n 's/^data: //p' "$body" | tail -1)"
+  if [[ -z "$line" ]]; then
+    line="$(grep -E '^\{' "$body" | tail -1)"
+  fi
+  [[ -n "$line" ]] || return 1
+  printf '%s' "$line"
+}
+
+mcp_http_headers() {
+  local user="${1:-}" role="${2:-}"
+  MCP_HTTP_HDR=(
+    -H "Authorization: $MCP_AUTH"
+    -H 'Content-Type: application/json'
+    -H 'Accept: application/json, text/event-stream'
+  )
+  [[ -n "$MCP_SESSION_ID" ]] && MCP_HTTP_HDR+=(-H "Mcp-Session-Id: $MCP_SESSION_ID")
+  [[ -n "$user" ]] && MCP_HTTP_HDR+=(-H "X-Auth-User: $user" -H "X-Forwarded-User: $user")
+  [[ -n "$role" ]] && MCP_HTTP_HDR+=(-H "X-Auth-Role: $role")
 }
 
 mcp_session_start() {
   local user="${1:-}" role="${2:-}"
   MCP_SESSION_ID=""
-  local hf
-  local -a hdr=(
-    -H "Authorization: $MCP_AUTH"
-    -H 'Content-Type: application/json'
-    -H 'Accept: application/json, text/event-stream'
-  )
-  [ -n "$user" ] && hdr+=(-H "X-Auth-User: $user" -H "X-Forwarded-User: $user")
-  [ -n "$role" ] && hdr+=(-H "X-Auth-Role: $role")
-  hf=$(mktemp)
-  curl -sk -m10 -D "$hf" -o /dev/null -X POST "$MCP_URL" "${hdr[@]}" \
+  local hf body code
+  hf="$(mktemp)"
+  body="$(mktemp)"
+  mcp_http_headers "$user" "$role"
+  code="$(curl -sS -m12 -D "$hf" -o "$body" -w '%{http_code}' -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness","version":"1"}}}' \
-    >/dev/null 2>&1 || true
-  MCP_SESSION_ID=$(grep -i '^mcp-session-id:' "$hf" | awk '{print $2}' | tr -d '\r')
-  rm -f "$hf"
-  curl -sk -m10 -o /dev/null -X POST "$MCP_URL" "${hdr[@]}" \
-    ${MCP_SESSION_ID:+-H "Mcp-Session-Id: $MCP_SESSION_ID"} \
+    2>"${body}.err" || echo 000)"
+  MCP_SESSION_ID="$(grep -i '^mcp-session-id:' "$hf" | awk '{print $2}' | tr -d '\r')"
+  if [[ "$code" != "200" && "$code" != "202" ]]; then
+    MCP_LAST_ERR="MCP initialize HTTP ${code} at ${MCP_URL}$(head -c 120 "${body}.err" 2>/dev/null | sed 's/^/ — /')"
+    rm -f "$hf" "$body" "${body}.err"
+    return 1
+  fi
+  if [[ -z "$MCP_SESSION_ID" ]]; then
+    MCP_LAST_ERR="MCP initialize missing Mcp-Session-Id header (got HTTP ${code})"
+    rm -f "$hf" "$body" "${body}.err"
+    return 1
+  fi
+  mcp_http_headers "$user" "$role"
+  curl -sS -m10 -o /dev/null -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
     -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-    >/dev/null 2>&1 || true
+    2>/dev/null || true
+  rm -f "$hf" "$body" "${body}.err"
+  return 0
 }
 
-# mcp_tool_call TOOL JSON_ARGS [USER] [ROLE]  -> last SSE data line
+# mcp_tool_call TOOL JSON_ARGS [USER] [ROLE]  -> last JSON line from MCP response
 mcp_tool_call() {
   local tool="$1" args="$2" user="${3:-}" role="${4:-}"
-  local -a hdr=(
-    -H "Authorization: $MCP_AUTH"
-    -H 'Content-Type: application/json'
-    -H 'Accept: application/json, text/event-stream'
-  )
-  [ -n "$MCP_SESSION_ID" ] && hdr+=(-H "Mcp-Session-Id: $MCP_SESSION_ID")
-  [ -n "$user" ] && hdr+=(-H "X-Auth-User: $user" -H "X-Forwarded-User: $user")
-  [ -n "$role" ] && hdr+=(-H "X-Auth-Role: $role")
-  curl -sk -m25 -X POST "$MCP_URL" "${hdr[@]}" \
-    -d "$(jq -n --arg tool "$tool" --argjson args "$args" \
-      '{jsonrpc:"2.0",id:2,method:"tools/call",params:{name:$tool,arguments:$args}}')" \
-    2>/dev/null | mcp_parse_response
+  local body payload line
+  payload="$(jq -n --arg tool "$tool" --argjson args "$args" \
+    '{jsonrpc:"2.0",id:2,method:"tools/call",params:{name:$tool,arguments:$args}}')" \
+    || { MCP_LAST_ERR="invalid MCP tool args for $tool"; return 1; }
+  body="$(mktemp)"
+  mcp_http_headers "$user" "$role"
+  if ! curl -sS -m30 -o "$body" -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" -d "$payload" 2>"${body}.err"; then
+    MCP_LAST_ERR="MCP tools/call curl failed for $tool ($(tr '\n' ' ' <"${body}.err" | head -c 120))"
+    rm -f "$body" "${body}.err"
+    return 1
+  fi
+  line="$(mcp_parse_response_body "$body" || true)"
+  rm -f "$body" "${body}.err"
+  [[ -n "$line" ]] || { MCP_LAST_ERR="MCP tools/call $tool returned empty body"; return 1; }
+  printf '%s' "$line"
 }
 
 mcp_probe_ready() {
+  MCP_LAST_ERR=""
+  mcp_session_start || {
+    echo "${MCP_LAST_ERR:-MCP session init failed at $MCP_URL}"
+    return 1
+  }
   local r
-  mcp_session_start
-  r=$(mcp_tool_call list_hosts '{}')
-  if [ -z "$r" ]; then
-    echo "MCP unreachable at $MCP_URL (is ssh-ops MCP up? podctl --status)"
+  r="$(mcp_tool_call list_hosts '{}' || true)"
+  if [[ -z "$r" ]]; then
+    echo "${MCP_LAST_ERR:-MCP unreachable at $MCP_URL (is ssh-ops MCP up? podctl --status)}"
     return 1
   fi
-  if echo "$r" | grep -qiE '"error"|"message".*not found|connection refused|unauthorized|401|403'; then
+  if echo "$r" | grep -qiE '"error"|unauthorized|401|403'; then
     if echo "$r" | grep -qi unauthorized; then
-      echo "MCP auth failed (stale openclaw.json token?) — re-run: bash install/local-full-ctl.sh restart"
+      echo "MCP auth failed — run: bash install/local-full-ctl.sh restart"
     else
       echo "MCP error: $(echo "$r" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',{}).get('message',d))" 2>/dev/null || echo "$r" | head -c 120)"
     fi

@@ -140,7 +140,8 @@ elif mcp_inventory_ready; then
 elif mcp_probe_ready >/dev/null 2>&1; then
   MCP_HOSTS=1
 else
-  MCP_SKIP_REASON="no hosts in ~/.clawlab/ssh-ops/data/hosts.yaml (MCP Admin inventory empty?)"
+  probe_msg="$(mcp_probe_ready 2>&1)" || true
+  MCP_SKIP_REASON="${probe_msg:-MCP not ready}"
   echo "  WARN: $MCP_SKIP_REASON"
 fi
 if [ "$MCP_HOSTS" = 1 ]; then
