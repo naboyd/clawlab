@@ -1,45 +1,114 @@
 # clawlab
 
-Self-hosted AI-ops lab: a governed OpenClaw agent on the host **icecream**, with a
-Cisco DefenseClaw governance layer, a hardened **ssh-ops** MCP, Let's Encrypt TLS,
-centralized **claw-auth** admin login (SQLite, with legacy PAM optional), a unified
-tabbed portal hub, and alerting into Cisco Webex.
+Self-hosted AI-ops lab: a governed **OpenClaw** agent with **Cisco DefenseClaw**
+guardrails, a hardened **ssh-ops** MCP for network changes, a unified HTTPS admin
+portal (**claw-auth**), and **Webex** alerting on policy violations.
 
-See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for the full system diagram, ports,
-auth model, and operational runbook.
+![Policy enforcement flow](docs/clawlab-policy-enforcement-flow.png)
 
-> **Secrets never live here.** All tokens, API keys, the Fernet `master.key`, LE
-> private keys, and `.env` files are git-ignored. Config *templates* (with values
-> redacted to `<PLACEHOLDER>`) live in `config-templates/`. Copy them to the real
-> locations and fill in secrets locally.
+See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for ports, auth model, LLM routing,
+and the full operational runbook.
 
-## Project status (Jul 2026)
+> **Secrets never live here.** Tokens, API keys, Fernet keys, and LE private keys stay
+> on the host under `~/.openclaw`, `~/.defenseclaw`, `~/.claw-auth`, etc. Sanitized
+> templates live in `config-templates/`.
 
-Work completed on this repo for the **icecream** lab host
-(`icecream.naboydciscolab.com`, LAN `192.168.128.93`):
+---
 
-### Governance & agent stack
+## What this stack does
 
-- **OpenClaw** gateway on loopback `:18789` with DefenseClaw plugin enforcing guardrails,
-  rule packs, admission actions, and audit logging.
-- **DefenseClaw policy editor** (`defenseclaw-webgui/`) — Flask UI for guardrail settings,
-  rule-pack YAML, actions, webhooks, firewall rules, and audit views.
-- **ssh-ops MCP** (`ssh-ops-mcp/`) — hardened remote command MCP with Fernet-encrypted
-  credentials, audit log, bearer-token MCP endpoint, and Podman-hosted admin GUI.
+| Layer | Role |
+|-------|------|
+| **OpenClaw** | Agent gateway (`:18789`) — chat, tools, MCP clients |
+| **DefenseClaw** | Prompt/tool inspect, regex + LLM judge, exec shims, audit |
+| **ssh-ops MCP** | Read-only `run_command` + gated `propose_change` / `apply_change` |
+| **Portal :8443** | Single URL — OpenClaw, MCP Admin, DefenseClaw policy editor |
+| **claw-auth** | Shared login for all admin tabs (SQLite sessions) |
 
-### Centralized auth (`claw-auth/`)
+**Policy flow (summary):** Operator → agent proposes change → DefenseClaw blocks
+bad tool/prompt patterns → ssh-ops validates IOS-XE allow groups → human approves
+(four-eyes) → `apply_change` pushes config → Webex notifies on apply or block.
 
-Replaced per-portal PAM as the recommended path:
+Regenerate the diagram after edits:
 
-- SQLite user database at `~/.claw-auth/users.db`
-- Login, logout, nginx `auth_request` verify, and user admin UI
-- Session cookies shared across all portal paths on one origin
-- `manage.py` CLI for user CRUD; `doctor.sh` for health checks
-- Logs: `journalctl --user -u claw-auth` and `~/.claw-auth/auth.log`
+```bash
+bash admin-access/render-architecture-diagram.sh
+```
 
-### Unified portal hub (`claw-portals/`)
+---
 
-Single bookmark URL instead of three ports:
+## Install order (3 scripts)
+
+Run these in order on a **new host**. Each step is idempotent (safe to re-run).
+
+| Step | Script | What it does | When |
+|------|--------|--------------|------|
+| **1** | `install/preinstall-check.sh` | Read-only checklist: Node, pnpm, Ollama models, DefenseClaw config, portal, podman | Before anything else; use `--fix` for conservative apt/brew/pnpm fixes |
+| **2** | `install/install-clawstack.sh` | OpenClaw + DefenseClaw, providers, MCP, guardrail + judge backend; **`local-full`** adds portal `:8083` + ssh-ops MCP/GUI | Every new stack; **`local-full`** default on macOS (self-contained desktop); **`local`** = agent-only; **`server`** = legacy Linux |
+| **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, portal tabs, LE TLS (optional) | **Linux lab host** after step 2 (icecream production path) |
+
+```bash
+git clone https://github.com/nabboyd/clawlab.git ~/clawlab
+cd ~/clawlab
+
+# 1 — prerequisites (optional --fix)
+bash install/preinstall-check.sh --fix
+
+# 2 — full desktop stack on Mac (portal + MCP + Claw); use local for agent-only
+bash install/install-clawstack.sh
+# at prompt: local-full   (default on macOS)
+
+# 3 — production HTTPS portal on Linux lab host (skip on Mac local-full)
+bash claw-portals/install-portals.sh
+```
+
+**macOS (self-contained, like icecream without LE):** steps **1 → 2 with `local-full`** — bookmark `http://127.0.0.1:8083/`
+
+**Linux lab server (icecream):** steps **1 → 2 (`local` or `local-full`) → 3** for `:8443` HTTPS + Let's Encrypt
+
+**DefenseClaw scan backend** (step 2 prompt): **local** (Ollama Foundation-Sec judge), **cisco** (AI Defense API), or **both**.
+
+---
+
+## Quick start
+
+### macOS desktop stack (`local-full`)
+
+After install, manage the loopback stack without systemd:
+
+```bash
+bash install/local-full-ctl.sh status
+bash install/local-full-ctl.sh restart   # after config changes
+
+# First login user (if none yet)
+~/.clawlab/venv/bin/python claw-auth/manage.py create-user admin
+
+# Portal hub (requires brew nginx if not already installed)
+open http://127.0.0.1:8083/
+```
+
+### Live demo (after stack is up)
+
+```bash
+bash demo/clawlab-demo.sh              # narrated walkthrough
+bash demo/clawlab-demo.sh --fast       # no pauses
+bash tests/policy-test.sh --no-agent   # full deterministic policy matrix
+```
+
+### Lab host redeploy (icecream)
+
+```bash
+cd ~/clawlab && git pull
+bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=claw-auth
+systemctl --user restart claw-auth defenseclaw-webgui openclaw-gateway
+podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp
+systemctl --user restart ssh-ops-gui
+bash claw-auth/doctor.sh
+```
+
+---
+
+## Unified portal
 
 | Tab | Path | Backend |
 |-----|------|---------|
@@ -47,74 +116,79 @@ Single bookmark URL instead of three ports:
 | MCP Admin (ssh-ops) | `/ssh-ops/` | `127.0.0.1:8765` |
 | DefenseClaw policies | `/defenseclaw/` | `127.0.0.1:8770` |
 
-- **Default URL:** `https://<host>:8443/` (HTTP lab: `:8083`)
-- Tabbed hub in claw-auth serves MCP Admin and DefenseClaw in iframes; OpenClaw
-  opens in a new window (gateway blocks iframe embedding)
-- `install-portals.sh` — interactive or `--non-interactive` installer for TLS
-  (HTTP / HTTPS+Let's Encrypt / existing cert), auth mode, nginx, and systemd units
-- Path-based nginx config (`clawlab-portal.conf`) replaces legacy per-port sites
-- `portal_mount.py` — Flask apps honor `PORTAL_MOUNT_PATH` for subpath routing
-- Python deps in `~/.clawlab/venv` (PEP 668 safe on modern Debian/Ubuntu)
+Default URL: `https://<host>:8443/` (HTTP lab: `:8083`). OpenClaw opens in a new
+window; MCP Admin and DefenseClaw load in the hub via iframes.
 
-### Deployment fixes (icecream)
+---
 
-- Executable install scripts; `--deploy-nginx-only` for sudo nginx re-runs
-- Login form posts to correct `/_claw_auth/login` path (fixed redirect loop)
-- ssh-ops container requires `X-Auth-User` from nginx; direct `:8765` returns 403
-- Podman image rebuild wired into installer; quadlet sets `PORTAL_MOUNT_PATH=/ssh-ops`
+## Repository layout
 
-### Still manual / prerequisites
+### Install scripts (run in order)
 
-- OpenClaw gateway must be running (`openclaw-gateway.service`)
-- Update `~/.openclaw/openclaw.json` `controlUi.allowedOrigins` to portal port **8443**
-- GoDaddy DNS creds in `~/mcp/acme/godaddy.env` for Let's Encrypt issuance
-- MCP bearer token for ssh-ops unchanged on `:8766`
+| Script | Path |
+|--------|------|
+| 1 · Pre-install check | `install/preinstall-check.sh` |
+| 2 · Core stack | `install/install-clawstack.sh` (`local` / **`local-full`** / `server`) |
+| 2b · Local-full ctl | `install/local-full-ctl.sh` (start/stop portal + MCP on Mac) |
+| 3 · HTTPS portal (lab) | `claw-portals/install-portals.sh` |
 
-### Quick redeploy after `git pull`
+Shared helpers: `install/lib/clawlab-platform.sh` (OS detection, Node/pnpm, Ollama, DefenseClaw config patch).
+
+### Other paths
+
+| Path | Purpose |
+|------|---------|
+| `demo/` | **`clawlab-demo.sh`** — high-level good/bad behavior demo |
+| `claw-auth/` | Centralized SQLite auth for admin portals |
+| `ssh-ops-mcp/` | Hardened SSH MCP + admin GUI (Podman) |
+| `defenseclaw-webgui/` | Policy editor (guardrail, rule packs, webhooks) |
+| `defenseclaw-webex-bridge/` | Audit → Webex on HIGH/CRITICAL violations |
+| `admin-access/` | Guardrail rules install, policy refresh, diagram render |
+| `config-templates/` | Sanitized `openclaw.sample.json`, `defenseclaw.sample.yaml`, IOS-XE policy |
+| `tests/` | Policy harness (`policy-test.sh`), scenario scripts |
+| `docs/` | Architecture, scenarios, **policy enforcement diagram** (`.mmd` + `.png`) |
+| `quadlets/` | Rootless Podman units for ssh-ops |
+| `systemd-user/` | Gateway, cert renewal, shim heal, Webex bridge |
+| `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater` |
+
+---
+
+## Bring-up (manual / piecemeal)
+
+Prefer the **3-script install order** above. For ad-hoc assembly:
+
+1. `bash install/preinstall-check.sh --fix`
+2. `bash install/install-clawstack.sh` (or copy templates manually below)
+3. Copy `config-templates/*.env.example` → real `.env` locations; fill secrets locally.
+4. Copy `config-templates/openclaw.sample.json` → `~/.openclaw/openclaw.json`.
+   Each provider needs a `models: [...]` array or the gateway crashes in failover.
+5. Copy `config-templates/defenseclaw.sample.yaml` → `~/.defenseclaw/config.yaml`.
+6. `bash claw-portals/install-portals.sh` for TLS + nginx + claw-auth.
+7. `bash admin-access/install-clawlab-guardrail-rules.sh` for clawlab IOS-XE + CRUD rules.
+8. `systemctl --user enable --now openclaw-gateway` (and ssh-ops quadlets / webgui as needed).
+
+Pull judge model (local DefenseClaw backend):
 
 ```bash
-cd ~/clawlab
-bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=claw-auth
-systemctl --user restart claw-auth defenseclaw-webgui
-podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp
-systemctl --user restart ssh-ops-gui
-bash claw-auth/doctor.sh
+ollama pull hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
 ```
 
-## Layout
+---
 
-| Path | What it is |
-|------|-----------|
-| `ssh-ops-mcp/` | The ssh-ops MCP server (FastMCP): `server.py`, `secrets_store.py` (Fernet), `webgui.py` (admin GUI + token rotation), `Dockerfile`, `entrypoint.sh`, `hosts.example.yaml`. |
-| `claw-auth/` | Centralized SQLite auth for all admin portals (replaces PAM). |
-| `claw-portals/` | Unified installer + tabbed portal hub: HTTP/HTTPS+LE, claw-auth or PAM, single-port nginx (`:8443`). |
-| `defenseclaw-webgui/` | Policy editor web UI (Flask): guardrail settings, rule-pack YAML, actions, webhooks, firewall. Loopback :8770; LAN via unified portal at `/defenseclaw/`. |
-| `defenseclaw-webex-bridge/` | Audit→Webex alert bridge (`dc-webex-bridge.py`) + systemd unit + installer. Fires Webex on HIGH/CRITICAL DefenseClaw violations (closes the 0.8.4 dispatch gap). |
-| `quadlets/` | Rootless podman Quadlet units for the ssh-ops MCP + admin GUI containers. |
-| `systemd-user/` | User services/timers: gateway, lego cert renewal, DefenseClaw ext self-heal, webex bridge. |
-| `nginx/` + `pam/` | Reverse proxies (LE TLS + PAM/Linux-user auth) for the admin GUI, Control UI, MCP. |
-| `admin-access/` | Installer + configs for LAN admin access (nginx + auth_pam + trusted-proxy). |
-| `model-tiering/` | OpenClaw model config (local ollama primary + Claude fallback). |
-| `claw-sysupdate/` | Auto-updater service/timer + fleet-update / system-updater skills. |
-| `skills/` | OpenClaw skills: `fleet-update`, `system-updater`, `defenseclaw-canary`. |
-| `acme/` | GoDaddy DNS-01 env template for lego. |
-| `config-templates/` | Sanitized `openclaw.sample.json`, `defenseclaw.sample.yaml`, and `*.env.example`. |
+## LLM roles
 
-## Bring-up (new device / rebuild)
+| Role | Default |
+|------|---------|
+| OpenClaw agent primary | `ollama/llama3.1:8b` |
+| Agent fallback | Anthropic Claude |
+| DefenseClaw judge | Ollama Foundation-Sec-8B (or Cisco AI Defense when `scanner_mode: remote/both`) |
 
-1. Copy `config-templates/*.env.example` → the real `.env` locations and fill in secrets.
-2. Copy `config-templates/openclaw.sample.json` → `~/.openclaw/openclaw.json`, replace `<...>` placeholders.
-   - Note: each model provider needs a `models: [...]` array — the `anthropic` provider entry
-     must include one or the gateway crashes in failover (`reading 'find'`). See the sample.
-3. Copy `config-templates/defenseclaw.sample.yaml` → `~/.defenseclaw/config.yaml`, set `room_id`.
-4. Install portals: `claw-portals/install-portals.sh` (TLS + claw-auth + nginx for all admin UIs).
-   Or individually: `ssh-ops-mcp/` (quadlets), `defenseclaw-webgui/install-webgui.sh`,
-   `defenseclaw-webex-bridge/install-webex-bridge.sh`, `claw-sysupdate/install-claw-sysupdate.sh` (sudo).
-5. Issue the LE cert with lego (GoDaddy DNS-01) if not using `install-portals.sh --tls=https-le`, then `systemctl --user enable --now` the timers.
+---
 
 ## Notes
 
-- Admin GUIs bind loopback only; LAN access via nginx + **claw-auth** (recommended) or legacy PAM.
-  One portal URL: `https://<host>:8443/` with tabs for OpenClaw, MCP Admin, and DefenseClaw.
-- DefenseClaw enforces via subprocess shims + tool-call inspection (deterministic `strict` rule pack);
-  the webex bridge tails `audit.db` and posts violations.
+- Admin UIs bind loopback; LAN access is via nginx + claw-auth on `:8443`.
+- DefenseClaw enforces via fetch interceptor, sidecar inspect (`:18970`), and exec shims.
+- IOS-XE changes use **60 granular `allow_groups`** — see `config-templates/ios-xe-policy.yaml`.
+- After policy edits: `bash admin-access/refresh-clawlab-policies.sh --preserve-access`
+  or Policy tab → Reload policy & restart gateways.

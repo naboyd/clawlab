@@ -141,15 +141,27 @@ fi
 
 if command -v pnpm >/dev/null 2>&1; then
   pass "pnpm ($(pnpm -v))"
-elif command -v corepack >/dev/null 2>&1; then
-  warn "pnpm missing — enable via corepack"
-  need_item "pnpm (corepack enable && corepack prepare pnpm@latest --activate)"
-  rec "corepack enable && corepack prepare pnpm@latest --activate"
-  maybe_fix "corepack enable"
+elif [[ "$FIX" -eq 1 ]] && command -v node >/dev/null 2>&1; then
+  echo "       (running: clawlab_install_pnpm)"
+  if clawlab_install_pnpm; then
+    pass "pnpm ($(pnpm -v))"
+  else
+    fail "pnpm install failed (tried corepack and npm -g)"
+    need_item "pnpm"
+    rec "corepack enable && corepack prepare pnpm@latest --activate"
+    rec "or: npm install -g pnpm"
+  fi
 else
-  fail "pnpm not found"
   need_item "pnpm"
-  rec "npm install -g pnpm   # or: corepack enable"
+  if command -v node >/dev/null 2>&1; then
+    warn "pnpm not found (Node.js is present — enable corepack or npm -g pnpm)"
+    rec "corepack enable && corepack prepare pnpm@latest --activate"
+    rec "or: npm install -g pnpm"
+    rec "or re-run: bash install/preinstall-check.sh --fix"
+  else
+    fail "pnpm not found (install Node.js first)"
+    rec "re-run with --fix after Node.js >= $NEED_NODE is installed"
+  fi
 fi
 echo
 

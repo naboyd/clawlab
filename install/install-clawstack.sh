@@ -3,8 +3,9 @@
 # install-clawstack.sh  —  Governed OpenClaw + Cisco DefenseClaw AI-ops stack
 # -----------------------------------------------------------------------------
 # Interactive installer. Prompts for:
-#   • install MODE:  server (Linux/apt only — LAN + LE TLS + PAM + nginx :8444)
-#                    local  (127.0.0.1 gateway; works on macOS and Linux)
+#   • install MODE:  local       (127.0.0.1 gateway only)
+#                    local-full  (Mac/desktop: portal :8083 + MCP + claw-auth; like icecream, no LE)
+#                    server      (Linux/apt legacy PAM nginx :8444 — prefer install-portals.sh)
 #   • model PROVIDERS  — iterative (name, api type, key, models)
 #   • MCP servers      — iterative (name, url, bearer token)
 #   • DefenseClaw scan — local Ollama judge / Cisco AI Defense API / both
@@ -30,6 +31,8 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/clawlab-platform.sh
 source "$SCRIPT_DIR/lib/clawlab-platform.sh"
+# shellcheck source=lib/clawlab-local-full.sh
+source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
 
 CLAWLAB_REPO="$(clawlab_repo_root "$0")"
 export CLAWSTACK_ASSETS="${CLAWSTACK_ASSETS:-$CLAWLAB_REPO}"
@@ -83,12 +86,17 @@ fi
 # ================================================================ 0. MODE ====
 echo
 log "ClawStack installer ($CLAWLAB_PLATFORM)"
-info "Modes:  server = Linux lab host — LE TLS, PAM nginx :8444 (legacy; prefer install-portals.sh)"
-info "        local  = gateway on 127.0.0.1 (macOS + Linux)"
+info "Modes:  local       = OpenClaw + DefenseClaw on 127.0.0.1 (agent only)"
+info "        local-full  = + portal hub :8083, claw-auth, ssh-ops MCP/GUI (Mac/desktop)"
+info "        server      = legacy Linux PAM nginx :8444 (prefer claw-portals/install-portals.sh)"
 DEFAULT_MODE="local"
-[[ "$CLAWLAB_PLATFORM" == "linux" ]] && DEFAULT_MODE="local"
-MODE="$(ask 'Install mode (server/local)' "$DEFAULT_MODE")"
-[[ "$MODE" =~ ^(server|local)$ ]] || die "mode must be 'server' or 'local'"
+[[ "$CLAWLAB_PLATFORM" == "macos" ]] && DEFAULT_MODE="local-full"
+MODE="$(ask 'Install mode (local/local-full/server)' "$DEFAULT_MODE")"
+[[ "$MODE" =~ ^(local|local-full|server)$ ]] || die "mode must be local, local-full, or server"
+
+if [[ "$MODE" == "local-full" ]] && ! clawlab_local_full_supported; then
+  die "local-full mode requires macOS or Linux"
+fi
 
 if [[ "$MODE" == "server" ]] && ! clawlab_server_mode_supported; then
   warn "Server mode (nginx + PAM + :8444) requires Linux with apt."
@@ -110,8 +118,8 @@ clawlab_install_prereqs "$MODE"
 log "Ensuring Node.js >= 24"
 clawlab_install_node 24
 info "node $(node -v)  npm $(npm -v)"
-corepack enable >/dev/null 2>&1 || npm install -g pnpm >/dev/null 2>&1 || true
-command -v pnpm >/dev/null || die "pnpm not available — run: corepack enable"
+clawlab_install_pnpm || die "pnpm not available — run: bash install/preinstall-check.sh --fix"
+info "pnpm $(pnpm -v)"
 
 if [ "$MODE" = server ]; then
   clawlab_install_lego || warn "install lego manually (brew install lego / go install …)"
@@ -218,6 +226,10 @@ PY
 
 # ================================================= 6. MCP SERVERS (iterative) =
 echo
+if [[ "$MODE" == "local-full" ]]; then
+  log "MCP servers (local-full will auto-register ssh-ops at http://127.0.0.1:8766/mcp)"
+  info "  Skip manual MCP entry unless you need extra servers (blank name at prompt to continue)"
+fi
 log "MCP servers (register existing endpoints; blank name to finish)"
 while true; do
   echo
@@ -246,7 +258,7 @@ GW_TOKEN="$(openssl rand -hex 24)"
 grep -q '^OPENCLAW_GATEWAY_TOKEN=' "$OC_ENV" || echo "OPENCLAW_GATEWAY_TOKEN=$GW_TOKEN" >> "$OC_ENV"
 grep -q '^OPENCLAW_GATEWAY_PASSWORD=' "$OC_ENV" || echo "OPENCLAW_GATEWAY_PASSWORD=$(openssl rand -hex 24)" >> "$OC_ENV"
 
-if [ "$MODE" = local ]; then
+if [[ "$MODE" == local || "$MODE" == local-full ]]; then
   oc_json <<'PY'
 import json,sys
 p=sys.argv[1]; d=json.load(open(p))
@@ -453,19 +465,34 @@ fi
 
 # ==================================================== 11. START + SUMMARY =====
 echo
-log "Enabling services"
-clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+if [[ "$MODE" == "local-full" ]]; then
+  clawlab_install_local_full "$CLAWLAB_REPO"
+elif [[ "$MODE" == "local" ]]; then
+  log "Enabling services (systemd user units where available)"
+  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+  if [[ "$CLAWLAB_SVC" != "systemd-user" ]]; then
+    info "Start gateway manually: openclaw gateway start"
+  fi
+else
+  log "Enabling services"
+  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+fi
 
 echo
 python3 -c "import json;d=json.load(open('$OC_HOME/openclaw.json'));print('config valid, providers:',list(d.get('models',{}).get('providers',{}).keys()),'| mcp:',list(d.get('mcp',{}).get('servers',{}).keys()))" \
   || warn "openclaw.json failed to parse — run: openclaw config validate"
 
 MAC_NOTE=""
-if [[ "$CLAWLAB_PLATFORM" == "macos" ]]; then
+if [[ "$CLAWLAB_PLATFORM" == "macos" && "$MODE" == "local" ]]; then
   MAC_NOTE="
-  macOS:  Gateway runs locally; use podman for ssh-ops:
-          bash $CLAWLAB_REPO/ssh-ops-mcp/podctl.sh
-          Deploy HTTPS portal on Linux: bash $CLAWLAB_REPO/claw-portals/install-portals.sh"
+  macOS local:  Gateway only. For portal + MCP like icecream, re-run and choose local-full:
+                bash $SCRIPT_DIR/install-clawstack.sh
+  Or start ssh-ops manually: bash $CLAWLAB_REPO/ssh-ops-mcp/podctl.sh --build"
+fi
+LOCAL_FULL_NOTE=""
+if [[ "$MODE" == "local-full" ]]; then
+  LOCAL_FULL_NOTE="
+  Portal hub: http://127.0.0.1:8083/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status"
 fi
 
 cat <<EOF
@@ -478,6 +505,7 @@ ${c_g}${c_b}ClawStack install complete (${MODE} mode on ${CLAWLAB_PLATFORM}).${c
   Precheck:  bash $SCRIPT_DIR/preinstall-check.sh
   Test:      openclaw agent --model <provider/model> -m "say pong"
 $( [ "$MODE" = server ] && echo "  Cert:      run ~/mcp/acme/issue.sh, then reload nginx" )
+${LOCAL_FULL_NOTE}
 ${MAC_NOTE}
 
   Reminder: each model provider has a models[] array + api type — required, or the

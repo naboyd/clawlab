@@ -247,6 +247,9 @@ see `docs/ios-xe-command-reference-index.yaml`).
 
 ![Policy enforcement flow](clawlab-policy-enforcement-flow.png)
 
+Regenerate after layout edits: `bash admin-access/render-architecture-diagram.sh`
+(source: `docs/clawlab-policy-enforcement-flow.mmd`, renderer: `admin-access/render-policy-flow-diagram.py`).
+
 Merge DefenseClaw rules after policy edits:
 
 ```bash

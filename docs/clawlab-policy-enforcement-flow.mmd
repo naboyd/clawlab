@@ -1,75 +1,98 @@
-%% clawlab IOS-XE policy enforcement — regenerate PNG:
-%%   bash admin-access/render-architecture-diagram.sh
-flowchart TB
-  classDef store fill:#eef4ff,stroke:#2c5cff,color:#1a1a1a
-  classDef gate fill:#fff4e6,stroke:#c0392b,color:#1a1a1a
-  classDef ui fill:#e8f7eb,stroke:#0a5c22,color:#1a1a1a
-  classDef svc fill:#f5f5f5,stroke:#666,color:#1a1a1a
+---
+title: Clawlab — Policy Enforcement Flow (2026)
+config:
+  theme: dark
+  themeVariables:
+    primaryColor: "#1a4a7a"
+    primaryTextColor: "#ecf0f1"
+    primaryBorderColor: "#3498db"
+    lineColor: "#7f8c8d"
+    secondaryColor: "#1e5c3a"
+    tertiaryColor: "#4a2c6e"
+    background: "#0f1419"
+    mainBkg: "#1c2128"
+    secondBkg: "#161b22"
+    border1: "#30363d"
+    fontFamily: "Segoe UI, Helvetica, Arial, sans-serif"
+  flowchart:
+    htmlLabels: true
+    curve: basis
+    padding: 16
+    nodeSpacing: 28
+    rankSpacing: 48
+---
+flowchart LR
+  classDef entry fill:#1a4a7a,stroke:#3498db,color:#ecf0f1,stroke-width:2px
+  classDef dc fill:#5c3a0a,stroke:#e67e22,color:#fdebd0,stroke-width:2px
+  classDef dccrit fill:#5c1a1a,stroke:#e74c3c,color:#fff,stroke-width:2px
+  classDef dcwarn fill:#4a4020,stroke:#f1c40f,color:#fff,stroke-width:2px
+  classDef mcp fill:#1a4030,stroke:#27ae60,color:#d5f5e3,stroke-width:2px
+  classDef mcpwarn fill:#5c3a0a,stroke:#e67e22,color:#fdebd0,stroke-width:2px
+  classDef notify fill:#3d2a5c,stroke:#9b59b6,color:#ebdef0,stroke-width:2px
+  classDef legend fill:#161b22,stroke:#484f58,color:#c9d1d9,stroke-width:1px
+  classDef devices fill:#1a4030,stroke:#2ecc71,color:#d5f5e3,stroke-width:2px
+  classDef blocked fill:#5c1a1a,stroke:#e74c3c,color:#fff,stroke-width:2px,stroke-dasharray:5 5
 
-  subgraph Portal["Unified portal :8443 (nginx + claw-auth)"]
-    Hub["Hub / login"]
-    MCPUI["ssh-ops MCP Admin\n/ssh-ops/"]
-    DCUI["DefenseClaw editor\n/defenseclaw/"]
-    OCUI["OpenClaw Control UI\n/openclaw/"]
+  subgraph COL1["1 · USER ENTRY POINTS"]
+    direction TB
+    OP["👤 Operator"]
+    CHAT["OpenClaw Chat\nControl UI · /openclaw/"]
+    AUTH["🔒 claw-auth login\nunified portal :8443"]
+    PORTAL["🌐 MCP Admin Portal\n/ssh-ops/ · Hosts · Discovery\nChanges · Policy"]
+    OP --> CHAT --> AUTH --> PORTAL
   end
 
-  subgraph PolicyYAML["Policy YAML (single taxonomy, 60 allow_groups)"]
-    Gen["generate_ios_xe_allow_groups.py\n+ sync-ios-xe-policy.py"]
-    Template["config-templates/ios-xe-policy.yaml"]
-    Runtime["/data/ios-xe-policy.yaml\n(Podman volume)"]
-    Bundled["ssh-ops-mcp/ios-xe-policy.yaml"]
+  subgraph COL2["2 · DEFENSECLAW — Inspect & Block"]
+    direction TB
+    PIN["🔍 Prompt / Chat Inspect\nregex + LLM judge\nFoundation-Sec or Cisco AI Defense"]
+    CRIT1["CRITICAL = hard block"]
+    TIN["🛡 Tool Inspect API :18970\nexec shims · bash · curl · nc"]
+    CRIT2["CRITICAL patterns · IOS-BLK / IOS-DENY"]
+    HADV["⚠ HIGH Advisory Alerts\nalert only · no hard block"]
+    POL["Policy merge\ncommands.yaml ← ios-xe-policy.yaml\nalways_block + denied allow_groups"]
+    SCR["install-clawlab-guardrail-rules.sh"]
+    PIN --> CRIT1 --> TIN --> CRIT2 --> HADV --> POL --> SCR
   end
 
-  subgraph Refresh["Operator refresh"]
-    RefreshSh["refresh-clawlab-policies.sh\n--preserve-access"]
-    ReloadBtn["Policy tab: Reload policy\n(admin + confirm)"]
-    MergePy["merge-ios-xe-policy.py"]
-    RulePack["DefenseClaw rule pack\ncommands.yaml IOS-BLK / IOS-DENY"]
+  subgraph COL3["3 · SSH-OPS MCP — Write Gate"]
+    direction TB
+    RC["run_command\nread-only allowlist\nshow · ping · uptime"]
+    PC["propose_change\nios-xe-policy.yaml · 60 allow_groups\ndefault deny · always_block"]
+    ACC["Per-group access modes\n🔴 Always deny · 🟠 Approval required · 🟢 Always allow\nvlan_l3 · interface_trunk · trustsec deny"]
+    FE["👥 Four-eyes gate\nforbid_self_approval · proposer ≠ approver"]
+    PEND["⏳ Pending Changes Queue"]
+    APPR["✋ Approve / Reject\ndifferent claw-auth user"]
+    APPLY["✅ apply_change\nbackup → config push → verify → write mem"]
+    SW["🔀 Cisco IOS-XE Switches"]
+    BYPASS["❌ Direct writes blocked\nbash / ssh shortcuts cannot bypass gate"]
+    RC --> PC --> ACC --> FE --> PEND --> APPR --> APPLY --> SW
+    APPLY -.-> BYPASS
   end
 
-  subgraph AgentPath["Agent / MCP path"]
-    Agent["OpenClaw agent"]
-    MCP["ssh-ops MCP :8766"]
-    Propose["propose_change\nios_config_lines"]
-    Apply["apply_change\n(netmiko push)"]
+  subgraph COL4["4 · NOTIFICATIONS"]
+    direction TB
+    WX1["💬 Webex · change event\non successful apply"]
+    WX2["💬 Webex · block / guardrail\naudit.db → dc-webex-bridge"]
+    WX3["💬 Webex · self-approval blocked\nfour-eyes violation"]
+    WX1 --> WX2 --> WX3
   end
 
-  subgraph DCInspect["DefenseClaw guardrail"]
-    Plugin["DefenseClaw plugin\n(fetch interceptor)"]
-    Sidecar["defenseclaw-gateway :18970\ninspect-tool API"]
-    Shims["Exec shims\n(curl, bash, …)"]
+  COL1 ==> COL2 ==> COL3 ==> COL4
+
+  subgraph LEGEND["Legend"]
+    direction LR
+    L1["🔴 CRITICAL hard block"]
+    L2["🟡 HIGH advisory"]
+    L3["🟠 Human approval / four-eyes"]
+    L4["🟢 Allowed apply path"]
   end
 
-  Hub --> MCPUI
-  Hub --> DCUI
-  Hub --> OCUI
-
-  Gen --> Template
-  Template --> Bundled
-  RefreshSh --> Template
-  RefreshSh --> Runtime
-  ReloadBtn --> MergePy
-  MergePy --> RulePack
-  ReloadBtn --> Sidecar
-
-  MCPUI -->|"Policy tab (admin only)\nSave access modes"| Runtime
-  DCUI -->|"IOS-XE YAML editor\n+ merge button"| Template
-
-  OCUI --> Agent
-  Agent --> MCP
-  MCP --> Propose
-  Propose -->|"validate_config_lines\nalways_block + allow_groups"| Runtime
-  Propose -->|"four-eyes approve"| Apply
-
-  Agent -->|"bash / tool calls"| Plugin
-  Plugin --> Sidecar
-  Sidecar -->|"regex IOS-BLK / IOS-DENY"| RulePack
-  Sidecar --> Shims
-
-  Runtime -.->|"deny groups → CRITICAL rules"| MergePy
-  Template -.-> MergePy
-
-  class Template,Runtime,Bundled,RulePack store
-  class Sidecar,Shims gate
-  class MCPUI,DCUI,ReloadBtn ui
-  class MCP,Propose,Apply,Agent svc
+  class OP,CHAT,AUTH,PORTAL entry
+  class PIN,TIN,POL,SCR dc
+  class CRIT1,CRIT2 dccrit
+  class HADV dcwarn
+  class RC,PC,APPLY,SW devices
+  class ACC,FE,PEND mcpwarn
+  class BYPASS blocked
+  class WX1,WX2,WX3 notify
+  class L1,L2,L3,L4 legend

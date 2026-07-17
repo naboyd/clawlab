@@ -11,23 +11,29 @@
 #   ./podctl.sh --logs          append combined container logs to the log file
 #   ./podctl.sh --follow        also stream combined logs live afterwards
 #
-# It manages the long-running admin GUI container (ssh-ops-gui). The MCP server
-# is launched by the desktop app itself (podman run ... mcp), not by this script
-# — but its logs ARE captured here, since we collect from every container built
-# on the ssh-ops image.
+# It manages ssh-ops-gui (:8765) and optionally ssh-ops-mcp (:8766) when
+# CLAWLAB_MANAGE_MCP=1 (local-full / lab stack).
 set -euo pipefail
 
 # ---- config (override via env, or edit) -----------------------------------
-PROJECT_DIR="${SSH_OPS_DIR:-$HOME/ssh_mcp/ssh_ops_mcp}"
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_CLAWLAB_REPO="$(cd "$_SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="${SSH_OPS_DIR:-${_CLAWLAB_REPO}/ssh-ops-mcp}"
 IMAGE="${SSH_OPS_IMAGE:-ssh-ops:latest}"
-DATA_DIR="${SSH_OPS_DATA:-$PROJECT_DIR/data}"
+DATA_DIR="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 SSH_DIR="${SSH_OPS_SSH:-$HOME/.ssh}"
+CLAWLAB_REPO="${CLAWLAB_REPO:-$_CLAWLAB_REPO}"
 GUI_PUBLISH="${SSH_OPS_GUI_PUBLISH:-127.0.0.1:8765:8765}"
-LOG_DIR="$PROJECT_DIR/logs"
+MCP_PUBLISH="${SSH_OPS_MCP_PUBLISH:-127.0.0.1:8766:8766}"
+PORTAL_ENV="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+LOG_DIR="${SSH_OPS_LOG_DIR:-$HOME/.clawlab/ssh-ops/logs}"
 LOG_FILE="$LOG_DIR/pods.log"
 
-# Long-running containers this script (re)starts: "name|mode".
+# Long-running containers: "name|mode".
 MANAGED=( "ssh-ops-gui|gui" )
+if [[ "${CLAWLAB_MANAGE_MCP:-0}" == "1" ]]; then
+  MANAGED+=( "ssh-ops-mcp|mcp" )
+fi
 
 # ---- helpers --------------------------------------------------------------
 say() { printf '>> %s\n' "$*"; }
@@ -47,18 +53,44 @@ build_image() {
 start_container() {
   local name="$1" mode="$2"
   podman rm -f "$name" >/dev/null 2>&1 || true
-  mkdir -p "$DATA_DIR"
+  mkdir -p "$DATA_DIR" "$LOG_DIR"
+  local -a env_file=()
+  [[ -f "$PORTAL_ENV" ]] && env_file=(--env-file "$PORTAL_ENV")
   case "$mode" in
     gui)
       podman run -d --name "$name" --restart unless-stopped \
         -p "$GUI_PUBLISH" \
+        "${env_file[@]}" \
+        -e CLAW_AUTH_REQUIRED=1 \
+        -e PORTAL_MOUNT_PATH=/ssh-ops \
+        -e CLAWLAB_REPO=/clawlab \
+        -e DEFENSECLAW_WEBGUI_URL=http://host.containers.internal:8770 \
+        --add-host=host.containers.internal:host-gateway \
         -v "$DATA_DIR:/data" \
         -v "$SSH_DIR:/root/.ssh:ro" \
+        -v "$CLAWLAB_REPO:/clawlab:ro" \
+        -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
+        -e CLAW_AUTH_DB=/claw-auth/users.db \
+        -e SSH_OPS_RBAC=1 \
         "$IMAGE" gui >/dev/null
+      ;;
+    mcp)
+      podman run -d --name "$name" --restart unless-stopped \
+        -p "$MCP_PUBLISH" \
+        -e SSH_OPS_MCP_TRANSPORT=streamable-http \
+        -e SSH_OPS_MCP_HOST=0.0.0.0 \
+        -e SSH_OPS_MCP_PORT=8766 \
+        -e SSH_OPS_CONFIG=/data/hosts.yaml \
+        -v "$DATA_DIR:/data" \
+        -v "$SSH_DIR:/root/.ssh:ro" \
+        -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
+        -e CLAW_AUTH_DB=/claw-auth/users.db \
+        -e SSH_OPS_RBAC=1 \
+        "$IMAGE" mcp >/dev/null
       ;;
     *) die "unknown container mode '$mode'";;
   esac
-  say "(re)started $name"
+  say "(re)started $name ($mode)"
 }
 
 ensure_up() {
@@ -154,6 +186,6 @@ case "$ACTION" in
     echo; status; echo; collect_logs
     if [ "$FOLLOW" = 1 ]; then echo; follow_logs; fi
     echo
-    say "done. Note: the MCP server is relaunched by fully quitting and reopening the desktop app."
+    say "done."
     ;;
 esac

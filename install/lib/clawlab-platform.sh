@@ -126,6 +126,22 @@ clawlab_install_node() {
   esac
 }
 
+clawlab_install_pnpm() {
+  command -v pnpm >/dev/null 2>&1 && return 0
+  command -v node >/dev/null 2>&1 || return 1
+  if command -v corepack >/dev/null 2>&1; then
+    corepack enable >/dev/null 2>&1 || true
+    corepack prepare pnpm@latest --activate
+    hash -r 2>/dev/null || true
+    command -v pnpm >/dev/null 2>&1 && return 0
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm install -g pnpm
+    hash -r 2>/dev/null || true
+  fi
+  command -v pnpm >/dev/null 2>&1
+}
+
 clawlab_install_lego() {
   command -v lego >/dev/null && return 0
   local bin="${HOME}/.local/bin"

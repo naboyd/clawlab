@@ -1,0 +1,17 @@
+{
+  "theme": "dark",
+  "themeVariables": {
+    "background": "#0f1419",
+    "mainBkg": "#1c2128",
+    "secondBkg": "#161b22",
+    "lineColor": "#7f8c8d",
+    "fontFamily": "Segoe UI, Helvetica, Arial, sans-serif"
+  },
+  "flowchart": {
+    "htmlLabels": true,
+    "curve": "basis",
+    "padding": 20,
+    "nodeSpacing": 30,
+    "rankSpacing": 50
+  }
+}
