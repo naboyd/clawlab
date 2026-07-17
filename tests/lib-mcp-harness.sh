@@ -37,24 +37,31 @@ mcp_load_config() {
   fi
 }
 
+_mcp_inventory_paths() {
+  local -a paths=()
+  if [ -n "${SSH_OPS_CONFIG:-}" ]; then
+    paths+=("$SSH_OPS_CONFIG")
+  fi
+  paths+=(
+    "$HOME/.clawlab/ssh-ops/data/hosts.yaml"
+    "$HOME/ssh_ops_mcp/data/hosts.yaml"
+  )
+  printf '%s\n' "${paths[@]}"
+}
+
 mcp_discover_linux_host() {
-  REPO_ROOT="${REPO:-}" SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" python3 - <<'PY' 2>/dev/null
+  local paths
+  paths=$(_mcp_inventory_paths)
+  SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" MCP_INVENTORY_PATHS="$paths" python3 - <<'PY' 2>/dev/null
 import os
 from pathlib import Path
 try:
     import yaml
 except ImportError:
     raise SystemExit(0)
-candidates = [
-    Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
-    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
-    Path.home() / "ssh_ops_mcp/data/hosts.yaml",
-]
-repo = os.environ.get("REPO_ROOT", "")
-if repo:
-    candidates.append(Path(repo) / "ssh-ops-mcp/hosts.example.yaml")
-for path in candidates:
-    if not path or not path.is_file():
+for raw in (os.environ.get("MCP_INVENTORY_PATHS") or "").splitlines():
+    path = Path(raw.strip()).expanduser()
+    if not path.is_file():
         continue
     cfg = yaml.safe_load(path.read_text()) or {}
     for name, host in (cfg.get("hosts") or {}).items():
@@ -66,50 +73,44 @@ PY
 }
 
 mcp_inventory_ready() {
-  REPO_ROOT="${REPO:-}" SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" python3 - <<'PY' 2>/dev/null
+  local paths
+  paths=$(_mcp_inventory_paths)
+  SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" MCP_INVENTORY_PATHS="$paths" python3 - <<'PY' 2>/dev/null
 import os, sys
 from pathlib import Path
 try:
     import yaml
 except ImportError:
     sys.exit(1)
-candidates = [
-    Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
-    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
-    Path.home() / "ssh_ops_mcp/data/hosts.yaml",
-]
-repo = os.environ.get("REPO_ROOT", "")
-if repo:
-    candidates.append(Path(repo) / "ssh-ops-mcp/hosts.example.yaml")
-for path in candidates:
-    if not path or not path.is_file():
+for raw in (os.environ.get("MCP_INVENTORY_PATHS") or "").splitlines():
+    path = Path(raw.strip()).expanduser()
+    if not path.is_file():
         continue
     cfg = yaml.safe_load(path.read_text()) or {}
     hosts = cfg.get("hosts") or {}
-    if isinstance(hosts, dict) and len(hosts) > 0:
-        raise SystemExit(0)
+    if not isinstance(hosts, dict):
+        continue
+    for host in hosts.values():
+        plat = str(host.get("platform", "linux") or "linux").strip().lower()
+        if plat in ("linux", "unix", ""):
+            raise SystemExit(0)
 raise SystemExit(1)
 PY
 }
 
 mcp_discover_net_host() {
-  REPO_ROOT="${REPO:-}" SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" python3 - <<'PY' 2>/dev/null
+  local paths
+  paths=$(_mcp_inventory_paths)
+  SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" MCP_INVENTORY_PATHS="$paths" python3 - <<'PY' 2>/dev/null
 import os
 from pathlib import Path
 try:
     import yaml
 except ImportError:
     raise SystemExit(0)
-repo = os.environ.get("REPO_ROOT", "")
-candidates = [
-    Path(os.environ.get("SSH_OPS_CONFIG", "")).expanduser(),
-    Path.home() / ".clawlab/ssh-ops/data/hosts.yaml",
-    Path.home() / "ssh_ops_mcp/data/hosts.yaml",
-]
-if repo:
-    candidates.append(Path(repo) / "ssh-ops-mcp/hosts.example.yaml")
-for path in candidates:
-    if not path or not path.is_file():
+for raw in (os.environ.get("MCP_INVENTORY_PATHS") or "").splitlines():
+    path = Path(raw.strip()).expanduser()
+    if not path.is_file():
         continue
     cfg = yaml.safe_load(path.read_text()) or {}
     for name, host in (cfg.get("hosts") or {}).items():
@@ -118,6 +119,35 @@ for path in candidates:
             print(name)
             raise SystemExit(0)
 PY
+}
+
+mcp_host_known() {
+  local host="${1:-}"
+  [ -n "$host" ] || return 1
+  mcp_session_start
+  local r
+  r=$(mcp_tool_call list_hosts '{}')
+  echo "$r" | python3 -c "
+import json, sys
+want = sys.argv[1]
+d = json.load(sys.stdin)
+names = []
+for block in (d.get('result') or {}).get('content') or []:
+    if isinstance(block, dict) and block.get('type') == 'text':
+        try:
+            rows = json.loads(block.get('text') or '[]')
+        except json.JSONDecodeError:
+            rows = []
+        if isinstance(rows, list):
+            names.extend(r.get('name') for r in rows if isinstance(r, dict) and r.get('name'))
+        break
+sc = (d.get('result') or {}).get('structuredContent') or {}
+if isinstance(sc, list):
+    names.extend(x.get('name') for x in sc if isinstance(x, dict) and x.get('name'))
+elif isinstance(sc, dict):
+    names.extend(x.get('name') for x in (sc.get('hosts') or []) if isinstance(x, dict) and x.get('name'))
+raise SystemExit(0 if want in names else 1)
+" "$host" 2>/dev/null
 }
 
 # Last JSON object from MCP streamable-http (SSE data: lines) or plain JSON body.
@@ -204,6 +234,7 @@ mcp_probe_ready() {
 mcp_host_reachable() {
   local host="${1:-}"
   [ -n "$host" ] || return 1
+  mcp_host_known "$host" || return 1
   mcp_session_start
   [ "$(mcp_run_command_verdict "$host" "true")" = allow ]
 }

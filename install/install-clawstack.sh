@@ -678,6 +678,7 @@ if [[ "$MODE" == "local-full" ]]; then
   LOCAL_FULL_NOTE="
   Portal hub: http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/  ·  ctl: bash $SCRIPT_DIR/local-full-ctl.sh status
   First OpenClaw visit: hub → Open OpenClaw ↗ → OpenClaw devices tab → Approve
+  Mac policy: bash $SCRIPT_DIR/local-full-ctl.sh doctor  ·  cd tests && ./policy-test.sh --no-agent
   Verify: bash $SCRIPT_DIR/verify-local-full.sh"
 fi
 

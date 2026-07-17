@@ -364,6 +364,10 @@ DEVICES_PAGE = """
   <em>Open OpenClaw</em>, then refresh this page.</p>
   {% endif %}
   <h2>Paired ({{ paired_rows|length }})</h2>
+  {% if paired_rows|length > 1 %}
+  <p class="hint">Multiple paired entries are normal — each browser profile, tab reconnect, or
+  scope upgrade can register a separate device. You only need one working Control UI session.</p>
+  {% endif %}
   {% if paired_rows %}
   <table>
     <tr><th>Device</th><th>Role</th><th>Details</th></tr>
@@ -534,13 +538,27 @@ def _device_snapshot() -> dict:
         return {"pending": [], "paired": [], "source": "error", "error": str(exc)}
 
 
-def _device_display_rows(items: list | None) -> list[dict[str, str]]:
+def _device_display_rows(
+    items: list | None,
+    *,
+    pending: bool = False,
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for raw in items or []:
         if not isinstance(raw, dict):
             continue
         rid = str(raw.get("requestId") or raw.get("id") or "").strip()
         device_id = str(raw.get("deviceId") or "").strip()
+        client_id = str(raw.get("clientId") or raw.get("client") or "").strip()
+        display_name = str(raw.get("displayName") or raw.get("operatorLabel") or "").strip()
+        if pending:
+            if not rid:
+                continue
+            row_id = rid
+        else:
+            row_id = device_id or display_name or client_id or rid
+            if not row_id:
+                continue
         role = str(
             raw.get("role")
             or raw.get("requestedRole")
@@ -548,18 +566,20 @@ def _device_display_rows(items: list | None) -> list[dict[str, str]]:
             or ""
         ).strip()
         parts: list[str] = []
-        if raw.get("displayName"):
-            parts.append(f"name={raw.get('displayName')}")
-        if device_id:
+        if display_name:
+            parts.append(f"name={display_name}")
+        if client_id and client_id != display_name:
+            parts.append(f"client={client_id}")
+        if device_id and device_id != row_id:
             parts.append(f"device={device_id[:12]}")
-        scopes = raw.get("scopes") or raw.get("requestedScopes")
+        scopes = raw.get("scopes") or raw.get("requestedScopes") or raw.get("approvedScopes")
         if scopes:
             parts.append(f"scopes={scopes}")
         if raw.get("isRepair"):
             parts.append("scope upgrade")
         if raw.get("remoteIp"):
             parts.append(f"ip={raw.get('remoteIp')}")
-        detail = raw.get("summary") or raw.get("client") or raw.get("userAgent")
+        detail = raw.get("summary") or raw.get("userAgent")
         if not detail and not parts:
             detail = raw.get("publicKey")
         if isinstance(detail, (dict, list)):
@@ -572,13 +592,13 @@ def _device_display_rows(items: list | None) -> list[dict[str, str]]:
             detail = detail[:237] + "..."
         rows.append(
             {
-                "id": rid or "?",
+                "id": row_id or "?",
                 "role": role or "-",
                 "detail": detail,
-                "request_id": rid,
+                "request_id": rid if pending else "",
             }
         )
-    return [r for r in rows if r.get("request_id")]
+    return rows
 
 
 def _pending_banner_html(pending_n: int, *, is_admin: bool) -> str:
@@ -773,7 +793,7 @@ def hub():
         mcp_bind = ""
     is_admin = sess.get("role") == "admin"
     devices = _device_snapshot()
-    pending_n = len(_device_display_rows(devices.get("pending")))
+    pending_n = len(_device_display_rows(devices.get("pending"), pending=True))
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
@@ -799,7 +819,7 @@ def openclaw_devices_status():
     if sess["role"] != "admin":
         return ("", 403)
     devices = _device_snapshot()
-    pending_n = len(_device_display_rows(devices.get("pending")))
+    pending_n = len(_device_display_rows(devices.get("pending"), pending=True))
     return {
         "pending": pending_n,
         "paired": len(devices.get("paired") or []),
@@ -854,7 +874,7 @@ def admin_openclaw_devices():
             DEVICES_PAGE,
             style=STYLE,
             user=sess,
-            pending_rows=_device_display_rows(devices.get("pending")),
+            pending_rows=_device_display_rows(devices.get("pending"), pending=True),
             paired_rows=_device_display_rows(devices.get("paired")),
             list_source=devices.get("source") or "none",
             error=devices.get("error") or "",

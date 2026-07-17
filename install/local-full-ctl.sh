@@ -322,6 +322,7 @@ start_aux_services() {
 
 cmd_start() {
   log "Starting local-full stack"
+  clawlab_local_full_ensure_hosts_inventory "$REPO"
   start_claw_auth
   start_defenseclaw_webgui
   start_openclaw_gateway
@@ -329,6 +330,7 @@ cmd_start() {
   start_mcp_identity_proxy
   start_aux_services
   start_nginx || die "nginx required for local-full portal — fix errors above and retry"
+  clawlab_local_full_ensure_guardrails "$REPO" || true
   cmd_status
 }
 
@@ -382,9 +384,11 @@ case "$ACTION" in
   start) cmd_start ;;
   stop) cmd_stop ;;
   restart) cmd_stop; sleep 1; cmd_start ;;
+  doctor) clawlab_local_full_doctor "$REPO" ;;
   status) cmd_status ;;
   -h|--help)
     sed -n '1,12p' "$0" | sed 's/^# \{0,1\}//'
+    echo "  doctor  Mac policy prerequisites (SSH inventory, revshell rules, MCP)"
     ;;
-  *) die "Unknown action: $ACTION (try start|stop|status|restart)" ;;
+  *) die "Unknown action: $ACTION (try start|stop|status|restart|doctor)" ;;
 esac

@@ -110,6 +110,11 @@ else
 fi
 
 echo
+if [[ "$(uname -s)" == Darwin ]]; then
+  clawlab_local_full_doctor "$REPO" || true
+fi
+
+echo
 if [[ "$FAIL" -eq 0 ]]; then
   echo "All required checks passed ($PASS ok)."
   exit 0

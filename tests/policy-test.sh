@@ -26,8 +26,16 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib-mcp-harness.sh
 . "$REPO/tests/lib-mcp-harness.sh"
 
+if [ -z "${CLAWLAB_HOST:-}" ] && [ -f "$HOME/.claw-portals/config.env" ]; then
+  CLAWLAB_HOST="$(grep -E '^CLAWLAB_HOST=' "$HOME/.claw-portals/config.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
+  export CLAWLAB_HOST
+fi
+
 HOST="${CLAWLAB_HOST:-}"
 [ -z "$HOST" ] && HOST=$(mcp_discover_linux_host || true)
+if [ -z "$HOST" ] && [ "$(uname -s)" = Darwin ]; then
+  HOST="${LOCAL_FULL_POLICY_HOST:-mac-local}"
+fi
 [ -z "$HOST" ] && HOST="icecream"
 MODEL="${CLAWLAB_MODEL:-anthropic/claude-sonnet-5}"
 SIDECAR="http://127.0.0.1:18970"
@@ -124,20 +132,27 @@ if [ "$SKIP_MCP" = 1 ]; then
   echo "  SKIP MCP live probes (--skip-mcp)"
 elif [ -n "$MCP_AUTH" ] && [ -n "$MCP_URL" ]; then
   if mcp_inventory_ready; then MCP_HOSTS=1; else
-    echo "  WARN: no hosts in ssh-ops inventory (~/.clawlab/ssh-ops/data/hosts.yaml)"
+    echo "  WARN: no linux host in ssh-ops inventory (~/.clawlab/ssh-ops/data/hosts.yaml)"
     echo "        Add hosts via MCP Admin tab or see config-templates/hosts.local-full.sample.yaml"
+    if [ "$(uname -s)" = Darwin ]; then
+      echo "        Mac: cp config-templates/hosts.local-full.sample.yaml ~/.clawlab/ssh-ops/data/hosts.yaml"
+      echo "        edit username, enable Remote Login, then CLAWLAB_HOST=mac-local ./policy-test.sh"
+    fi
   fi
   if [ "$MCP_HOSTS" = 1 ] && mcp_probe_ready >/dev/null 2>&1; then
     if mcp_host_reachable "$HOST"; then
       MCP_READY=1
     else
-      echo "  WARN: host '$HOST' in inventory is not reachable via SSH (placeholder or wrong creds?)"
-      echo "        Edit ~/.clawlab/ssh-ops/data/hosts.yaml or MCP Admin → Hosts, or use --skip-mcp"
+      echo "  WARN: host '$HOST' not in inventory or not reachable via SSH"
+      echo "        Set CLAWLAB_HOST to a name from hosts.yaml, or use --skip-mcp"
     fi
   elif [ "$MCP_HOSTS" = 1 ]; then
     echo "  WARN: $(mcp_probe_ready 2>&1 || true)"
     echo "        Fix: CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --recreate"
   fi
+fi
+if [ "$MCP_READY" != 1 ] && [ "$SKIP_MCP" != 1 ]; then
+  echo "  Tip: ./policy-test.sh --no-agent --skip-mcp  # DefenseClaw-only without SSH inventory"
 fi
 
 hdr "1) DefenseClaw C2 / exfil rules (inspect-tool API)"

@@ -35,20 +35,34 @@ Layers covered:
 ### ssh-ops host inventory (required for sections 2+)
 
 Live MCP probes need at least one **reachable** host in
-`~/.clawlab/ssh-ops/data/hosts.yaml`. A fresh install copies placeholder
-`web1` / `10.0.0.x` entries that will fail until you replace them.
+`~/.clawlab/ssh-ops/data/hosts.yaml`. Mac **local-full** auto-seeds **mac-local**
+(127.0.0.1 loopback SSH). Linux lab installs may still use placeholder `10.0.0.x`
+entries until you replace them.
 
-**Mac local-full (loopback SSH):**
+**Mac local-full (recommended for beta testers):**
+
+```bash
+cd ~/clawlab && git pull
+bash install/local-full-ctl.sh restart   # migrates hosts + reloads guardrails
+bash install/local-full-ctl.sh doctor    # loopback SSH + revshell rules + MCP
+cd tests && ./policy-test.sh --no-agent
+```
+
+Prerequisites on Mac:
+1. **Remote Login** enabled (System Settings → General → Sharing)
+2. `~/.clawlab/ssh-ops/data/hosts.yaml` contains **mac-local** (auto-seeded on install/restart)
+3. Guardrail rules installed (`install-clawlab-guardrail-rules.sh` runs on install/restart)
+
+Manual inventory setup (if doctor fails):
 
 ```bash
 cp config-templates/hosts.local-full.sample.yaml ~/.clawlab/ssh-ops/data/hosts.yaml
 # edit username; enable Remote Login on the Mac
 CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --recreate
-CLAWLAB_HOST=mac-local ./policy-test.sh --no-agent
+./policy-test.sh --no-agent
 ```
 
-Or add hosts in the portal **MCP Admin** tab. Until then, use `--skip-mcp` —
-sections **1**, **1b**, **1c**, **1d**, and **3** still validate DefenseClaw.
+Until loopback SSH works, use `--skip-mcp` — sections **1**, **1b**, **1c**, **1d**, and **3** still validate DefenseClaw.
 
 ### On icecream (full stack)
 
@@ -69,7 +83,8 @@ in-memory rules — re-run the refresh script and restart `openclaw-gateway`.
 
 ### Offline (dev laptop)
 
-Env: `CLAWLAB_HOST` (default `icecream`), `CLAWLAB_SWITCH` (network device for RBAC
+Env: `CLAWLAB_HOST` (Mac local-full default: `mac-local` from `~/.claw-portals/config.env`;
+Linux lab default: first linux host in `hosts.yaml`, else `icecream`), `CLAWLAB_SWITCH` (network device for RBAC
 show probes; auto-discovered from `hosts.yaml` if unset), `RBAC_OPERATOR_USER`
 (default `alice`), `CLAWLAB_MODEL` (default `anthropic/claude-sonnet-5` — must be a
 tool-capable model). Credentials are auto-discovered locally and never printed.

