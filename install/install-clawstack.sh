@@ -57,10 +57,10 @@ ask() {
   local p="$1" d="${2:-}" a
   if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
     if [[ -n "$d" ]]; then
-      info "$p → $d"
+      printf '    %s → %s\n' "$p" "$d" >&2
       echo "$d"
     else
-      info "$p → (blank)"
+      printf '    %s → (blank)\n' "$p" >&2
       echo ""
     fi
     return
@@ -70,7 +70,7 @@ ask() {
 ask_secret() {
   local p="$1" a=""
   if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
-    info "$p → (skipped in default mode)"
+    printf '    %s → (skipped in default mode)\n' "$p" >&2
     printf '%s' ""
     return
   fi
@@ -79,7 +79,7 @@ ask_secret() {
 yesno() {
   local p="$1" d="${2:-y}" a
   if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
-    info "$p → ${d} (default)"
+    printf '    %s → %s (default)\n' "$p" "$d" >&2
     [[ "$d" =~ ^[Yy] ]]
     return
   fi
