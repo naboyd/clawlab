@@ -111,6 +111,40 @@ clawlab_local_full_hosts_is_placeholder() {
     && ! grep -q 'mac-local:' "$hosts" 2>/dev/null
 }
 
+# Mac local-full: ensure ~/.ssh key is authorized for MCP Podman → Mac SSH probes.
+clawlab_local_full_ensure_mac_ssh_access() {
+  [[ "$(uname -s)" == Darwin ]] || return 0
+  local ssh_dir="$HOME/.ssh"
+  local key="$ssh_dir/id_ed25519"
+  local pub="${key}.pub"
+  mkdir -p "$ssh_dir"
+  chmod 700 "$ssh_dir" 2>/dev/null || true
+  if [[ ! -f "$key" ]]; then
+    if command -v ssh-keygen >/dev/null 2>&1; then
+      ssh-keygen -t ed25519 -N "" -f "$key" -q
+      info "Created $key for MCP Podman → Mac SSH"
+    else
+      warn "ssh-keygen not found — create $key for mac-local MCP probes"
+      return 1
+    fi
+  fi
+  touch "$ssh_dir/authorized_keys"
+  chmod 600 "$ssh_dir/authorized_keys" 2>/dev/null || true
+  if [[ -f "$pub" ]] && ! grep -qF "$(cat "$pub")" "$ssh_dir/authorized_keys" 2>/dev/null; then
+    cat "$pub" >>"$ssh_dir/authorized_keys"
+    info "Added ${pub} to authorized_keys (MCP container auth to Mac)"
+  fi
+}
+
+clawlab_local_full_mcp_container_ssh_ok() {
+  local user="${1:-$USER}"
+  command -v podman >/dev/null 2>&1 || return 1
+  podman container exists ssh-ops-mcp 2>/dev/null || return 1
+  podman exec ssh-ops-mcp ssh -o BatchMode=yes -o ConnectTimeout=5 \
+    -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+    -i /root/.ssh/id_ed25519 "${user}@host.containers.internal" true >/dev/null 2>&1
+}
+
 # Mac local-full: ssh-ops inventory for Podman MCP → Mac host SSH. Returns 0 if file changed.
 clawlab_local_full_ensure_hosts_inventory() {
   local repo="$1"
@@ -129,6 +163,8 @@ clawlab_local_full_ensure_hosts_inventory() {
 
   [[ -f "$repo/config-templates/hosts.local-full.sample.yaml" ]] \
     || { warn "missing hosts.local-full.sample.yaml"; return 1; }
+
+  clawlab_local_full_ensure_mac_ssh_access || true
 
   if [[ ! -f "$hosts" ]]; then
     clawlab_local_full_mac_hosts_yaml "$repo" >"$hosts"
@@ -163,6 +199,8 @@ hosts[name] = {
     "hostname": "host.containers.internal",
     "port": 22,
     "username": os.environ.get("CLAWLAB_POLICY_USER", os.environ.get("USER", "root")),
+    "key_path": "/root/.ssh/id_ed25519",
+    "host_key_policy": "auto",
     "allow_write": False,
 }
 path.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False))
@@ -174,7 +212,7 @@ PY
   fi
 
   if [[ "$(uname -s)" == Darwin ]] && [[ -f "$hosts" ]] \
-    && SSH_OPS_CONFIG="$hosts" CLAWLAB_POLICY_HOST="$LOCAL_FULL_POLICY_HOST" python3 - <<'PY'; then
+    && SSH_OPS_CONFIG="$hosts" CLAWLAB_POLICY_HOST="$LOCAL_FULL_POLICY_HOST" CLAWLAB_POLICY_USER="$USER" python3 - <<'PY'; then
 import os
 from pathlib import Path
 try:
@@ -185,19 +223,31 @@ path = Path(os.environ["SSH_OPS_CONFIG"]).expanduser()
 cfg = yaml.safe_load(path.read_text()) or {}
 hosts = cfg.get("hosts") or {}
 name = os.environ.get("CLAWLAB_POLICY_HOST", "mac-local")
+user = os.environ.get("CLAWLAB_POLICY_USER", "").strip()
 entry = hosts.get(name)
 if not isinstance(entry, dict):
     raise SystemExit(1)
-host = str(entry.get("hostname", "")).strip()
-if host in ("127.0.0.1", "localhost", "::1"):
-    entry["hostname"] = "host.containers.internal"
+want = {
+    "hostname": "host.containers.internal",
+    "key_path": "/root/.ssh/id_ed25519",
+    "host_key_policy": "auto",
+}
+changed = False
+if user and str(entry.get("username", "")).strip() != user:
+    entry["username"] = user
+    changed = True
+for key, val in want.items():
+    if str(entry.get(key, "")).strip() != val:
+        entry[key] = val
+        changed = True
+if changed:
     path.write_text(yaml.safe_dump(cfg, sort_keys=False, default_flow_style=False))
-    print(f"Updated {name} hostname for Podman MCP SSH")
+    print(f"Normalized {name} for Podman MCP SSH")
     raise SystemExit(0)
 raise SystemExit(1)
 PY
     changed=1
-    info "Updated ${LOCAL_FULL_POLICY_HOST} hostname -> host.containers.internal (MCP Podman → Mac SSH)"
+    info "Normalized ${LOCAL_FULL_POLICY_HOST} for MCP Podman SSH (host.containers.internal + key_path)"
   fi
 
   if [[ "$changed" -eq 0 ]] && [[ "$(uname -s)" == Darwin ]] \
@@ -287,6 +337,13 @@ clawlab_local_full_doctor() {
     else
       echo "  FAIL loopback SSH — enable Remote Login:"
       echo "        System Settings → General → Sharing → Remote Login"
+      issues=$((issues + 1))
+    fi
+    if clawlab_local_full_mcp_container_ssh_ok; then
+      echo "  OK   MCP Podman SSH (${USER}@host.containers.internal)"
+    else
+      echo "  FAIL MCP Podman SSH — run: bash $repo/install/local-full-ctl.sh restart"
+      echo "        (installs id_ed25519 in authorized_keys + normalizes mac-local in hosts.yaml)"
       issues=$((issues + 1))
     fi
   fi

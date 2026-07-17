@@ -55,6 +55,17 @@ else
 fi
 
 step "5) Linux host probe (optional)"
+hosts_file="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}/hosts.yaml"
+if [ -f "$hosts_file" ]; then
+  mac_meta="$(python3 -c "
+import yaml
+from pathlib import Path
+p=Path('$hosts_file')
+h=(yaml.safe_load(p.read_text()) or {}).get('hosts', {}).get('mac-local', {})
+print(h.get('hostname','?'), h.get('username','?'), h.get('key_path','(default keys)'))
+" 2>/dev/null || true)"
+  [ -n "$mac_meta" ] && ok "mac-local inventory: $mac_meta"
+fi
 linux="$(mcp_pick_linux_host "${CLAWLAB_HOST:-mac-local}" || true)"
 if [ -n "$linux" ]; then
   ok "reachable linux host: $linux"
@@ -63,10 +74,27 @@ else
   mcp_session_start >/dev/null 2>&1 || true
   probe="$(mcp_tool_call run_command "$(jq -n --arg h mac-local --arg c true '{host:$h,command:$c}')" 2>/dev/null || true)"
   if [ -n "$probe" ]; then
-    err="$(MCP_JSON="$probe" python3 -c 'import json,os; d=json.loads(os.environ["MCP_JSON"]); r=d.get("result") or {}; print(r.get("stderr") or r.get("error") or "")' 2>/dev/null || true)"
-    [ -n "$err" ] && printf '  hint: %s\n' "$(printf '%s' "$err" | head -c 200)"
+    payload="$(mcp_tool_payload_json "$probe" 2>/dev/null || true)"
+    err="$(MCP_JSON="${payload:-$probe}" python3 -c 'import json,os
+raw=os.environ.get("MCP_JSON","")
+try: d=json.loads(raw)
+except: raise SystemExit(0)
+if isinstance(d,dict):
+  print(d.get("stderr") or d.get("error") or "")
+' 2>/dev/null || true)"
+    [ -n "$err" ] && printf '  SSH error: %s\n' "$(printf '%s' "$err" | head -c 240)"
   fi
-  warn "after git pull run: bash install/local-full-ctl.sh restart  (fixes mac-local -> host.containers.internal)"
+  if command -v podman >/dev/null 2>&1 && podman container exists ssh-ops-mcp 2>/dev/null; then
+    pod_err="$(podman exec ssh-ops-mcp ssh -o BatchMode=yes -o ConnectTimeout=4 \
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+      -i /root/.ssh/id_ed25519 "${USER}@host.containers.internal" true 2>&1 || true)"
+    if [ -z "$pod_err" ]; then
+      ok "Podman direct SSH to Mac OK"
+    else
+      printf '  podman ssh: %s\n' "$(printf '%s' "$pod_err" | head -1)"
+      warn "run: bash install/local-full-ctl.sh restart  (authorized_keys + mac-local key_path)"
+    fi
+  fi
 fi
 
 step "6) Network host (optional)"

@@ -17,6 +17,8 @@ hosts:
     hostname: host.containers.internal
     port: 22
     username: YOUR_MAC_USERNAME
+    key_path: /root/.ssh/id_ed25519
+    host_key_policy: auto
     allow_write: false
 
   # Optional: IOS-XE switch for sections 2b/2c (set CLAWLAB_SWITCH=sw1)

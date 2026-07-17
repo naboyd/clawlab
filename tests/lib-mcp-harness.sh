@@ -150,6 +150,39 @@ for name, kind in hosts:
 PY
 }
 
+# Extract inner JSON payload from an MCP tools/call JSON-RPC line.
+mcp_tool_payload_json() {
+  local r="${1:-}"
+  [[ -n "$r" ]] || return 1
+  MCP_JSON="$r" python3 - <<'PY'
+import json, os
+raw = os.environ.get("MCP_JSON", "")
+try:
+    d = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(1)
+result = d.get("result") or {}
+if isinstance(result, list):
+    print(json.dumps(result))
+    raise SystemExit(0)
+sc = result.get("structuredContent")
+if isinstance(sc, dict):
+    inner = sc.get("result", sc)
+    print(json.dumps(inner))
+    raise SystemExit(0)
+if isinstance(sc, list):
+    print(json.dumps(sc))
+    raise SystemExit(0)
+for block in result.get("content") or []:
+    if isinstance(block, dict) and block.get("type") == "text":
+        text = (block.get("text") or "").strip()
+        if text:
+            print(text)
+            raise SystemExit(0)
+print(json.dumps(result))
+PY
+}
+
 mcp_list_host_names() {
   mcp_session_start
   local r
