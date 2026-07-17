@@ -102,6 +102,8 @@ def _normalize_entries(items: Any) -> list[dict[str, Any]]:
 
 
 def _normalize_device_payload(payload: Any) -> dict[str, Any]:
+    if isinstance(payload, list):
+        return {"pending": _normalize_entries(payload), "paired": []}
     if not isinstance(payload, dict):
         return {"pending": [], "paired": [], "raw": payload}
 
@@ -110,6 +112,10 @@ def _normalize_device_payload(payload: Any) -> dict[str, Any]:
     if pending is None and paired is None:
         pending = payload.get("pendingRequests") or payload.get("requests")
         paired = payload.get("pairedDevices") or payload.get("devices")
+        if pending is None and paired is None and any(
+            k in payload for k in ("requestId", "deviceId", "id", "role")
+        ):
+            pending = [payload]
 
     return {
         "pending": _normalize_entries(pending),
@@ -187,22 +193,32 @@ def list_devices() -> dict[str, Any]:
 
     ok, cli_payload = _cli_json(["devices", "list"])
     if ok:
-        if isinstance(cli_payload, dict):
-            data = _normalize_device_payload(cli_payload)
+        if isinstance(cli_payload, list):
+            data = {"pending": _normalize_entries(cli_payload), "paired": []}
+        elif isinstance(cli_payload, dict):
+            if "text" in cli_payload and not any(
+                k in cli_payload for k in ("pending", "paired", "pendingRequests", "devices")
+            ):
+                data = _cli_parse_list_text(str(cli_payload.get("text", "")))
+            else:
+                data = _normalize_device_payload(cli_payload)
         else:
-            data = _cli_parse_list_text(str(cli_payload.get("text", "")))
+            data = {"pending": [], "paired": []}
         data["source"] = "cli"
         if status and status != 200:
             data["http_note"] = f"HTTP /api/devices returned {status}"
         return data
 
+    err_msg = ""
+    if isinstance(cli_payload, dict):
+        err_msg = str(cli_payload.get("error") or "")
+    if not err_msg and isinstance(payload, dict):
+        err_msg = str(payload.get("error") or "")
     return {
         "pending": [],
         "paired": [],
         "source": "none",
-        "error": (cli_payload or {}).get("error")
-        or (payload or {}).get("error")
-        or f"HTTP status {status}",
+        "error": err_msg or f"HTTP status {status}",
     }
 
 

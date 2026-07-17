@@ -14,8 +14,10 @@ Run:
 from __future__ import annotations
 
 import logging
+import json
 import os
 import secrets
+import sys
 from pathlib import Path
 from urllib.parse import quote, urlparse
 
@@ -29,6 +31,10 @@ from flask import (
 )
 
 import store
+
+_AUTHD_DIR = Path(__file__).resolve().parent
+if str(_AUTHD_DIR) not in sys.path:
+    sys.path.insert(0, str(_AUTHD_DIR))
 
 try:
     import openclaw_devices
@@ -321,19 +327,19 @@ DEVICES_PAGE = """
   request appears here. Approve it before the Control UI can connect.</p>
   {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
   {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
-  <h2>Pending ({{ pending|length }})</h2>
-  {% if pending %}
+  <h2>Pending ({{ pending_rows|length }})</h2>
+  {% if pending_rows %}
   <table>
     <tr><th>Request</th><th>Role</th><th>Details</th><th></th></tr>
-    {% for d in pending %}
+    {% for row in pending_rows %}
     <tr class="pending">
-      <td><code>{{ d.requestId or d.id or '?' }}</code></td>
-      <td>{{ d.role or d.requestedRole or '—' }}</td>
-      <td class="hint">{{ d.summary or d.client or d.userAgent or d.publicKey or '—' }}</td>
+      <td><code>{{ row.id }}</code></td>
+      <td>{{ row.role }}</td>
+      <td class="hint">{{ row.detail }}</td>
       <td>
         <form method="post" style="display:inline" onsubmit="return confirm('Approve this device?')">
           <input type="hidden" name="action" value="approve">
-          <input type="hidden" name="request_id" value="{{ d.requestId or d.id }}">
+          <input type="hidden" name="request_id" value="{{ row.request_id }}">
           <button type="submit" class="btn-sm">Approve</button>
         </form>
       </td>
@@ -342,24 +348,24 @@ DEVICES_PAGE = """
   </table>
   {% else %}
   <p class="hint">No pending requests. Open the <strong>OpenClaw</strong> tab and click
-  <em>Open OpenClaw ↗</em>, then refresh this page.</p>
+  <em>Open OpenClaw</em>, then refresh this page.</p>
   {% endif %}
-  <h2>Paired ({{ paired|length }})</h2>
-  {% if paired %}
+  <h2>Paired ({{ paired_rows|length }})</h2>
+  {% if paired_rows %}
   <table>
     <tr><th>Device</th><th>Role</th><th>Details</th></tr>
-    {% for d in paired %}
+    {% for row in paired_rows %}
     <tr>
-      <td><code>{{ d.deviceId or d.id or d.requestId or '?' }}</code></td>
-      <td>{{ d.role or d.approvedRole or '—' }}</td>
-      <td class="hint">{{ d.summary or d.client or '—' }}</td>
+      <td><code>{{ row.id }}</code></td>
+      <td>{{ row.role }}</td>
+      <td class="hint">{{ row.detail }}</td>
     </tr>
     {% endfor %}
   </table>
   {% else %}
   <p class="hint">No paired devices yet.</p>
   {% endif %}
-  <p class="hint" style="margin-top:1.2rem">Source: {{ source }}. Gateway: {{ gateway_url }}</p>
+  <p class="hint" style="margin-top:1.2rem">Source: {{ list_source }}. Gateway: {{ gateway_url }}</p>
   <p><a href="">Refresh</a></p>
 </div>
 </body></html>
@@ -508,7 +514,40 @@ def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
 def _device_snapshot() -> dict:
     if openclaw_devices is None:
         return {"pending": [], "paired": [], "source": "unavailable", "error": "module missing"}
-    return openclaw_devices.list_devices()
+    try:
+        return openclaw_devices.list_devices()
+    except Exception as exc:  # noqa: BLE001
+        log.exception("device_list_failed")
+        return {"pending": [], "paired": [], "source": "error", "error": str(exc)}
+
+
+def _device_display_rows(items: list | None) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for raw in items or []:
+        if not isinstance(raw, dict):
+            continue
+        rid = str(raw.get("requestId") or raw.get("deviceId") or raw.get("id") or "").strip()
+        role = str(
+            raw.get("role")
+            or raw.get("requestedRole")
+            or raw.get("approvedRole")
+            or ""
+        ).strip()
+        detail = raw.get("summary") or raw.get("client") or raw.get("userAgent") or raw.get("publicKey")
+        if isinstance(detail, (dict, list)):
+            detail = json.dumps(detail, sort_keys=True)
+        detail = str(detail or "").strip() or "-"
+        if len(detail) > 240:
+            detail = detail[:237] + "..."
+        rows.append(
+            {
+                "id": rid or "?",
+                "role": role or "-",
+                "detail": detail,
+                "request_id": rid,
+            }
+        )
+    return rows
 
 
 def _pending_banner_html(pending_n: int, *, is_admin: bool) -> str:
@@ -546,7 +585,7 @@ def _portal_tabs(
             {
                 "id": "openclaw-devices",
                 "label": "OpenClaw devices",
-                "src": _external_path("/admin/openclaw-devices"),
+                "src": "/admin/openclaw-devices",
                 "badge": str(pending_n) if pending_n > 0 else "",
             }
         )
@@ -775,19 +814,26 @@ def admin_openclaw_devices():
                 )
 
     devices = _device_snapshot()
-    gw_url = openclaw_devices.gateway_base_url() if openclaw_devices else "—"
-    return render_template_string(
-        DEVICES_PAGE,
-        style=STYLE,
-        user=sess,
-        pending=devices.get("pending") or [],
-        paired=devices.get("paired") or [],
-        source=devices.get("source") or "none",
-        error=devices.get("error") or "",
-        gateway_url=gw_url,
-        msg=msg,
-        msg_err=msg_err,
-    )
+    gw_url = openclaw_devices.gateway_base_url() if openclaw_devices else "-"
+    try:
+        return render_template_string(
+            DEVICES_PAGE,
+            style=STYLE,
+            user=sess,
+            pending_rows=_device_display_rows(devices.get("pending")),
+            paired_rows=_device_display_rows(devices.get("paired")),
+            list_source=devices.get("source") or "none",
+            error=devices.get("error") or "",
+            gateway_url=gw_url,
+            msg=msg,
+            msg_err=msg_err,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.exception("openclaw_devices_page_render_failed")
+        return (
+            f"<h1>OpenClaw devices</h1><p class='err'>Failed to render page: {exc}</p>",
+            500,
+        )
 
 
 @app.route("/admin/users", methods=["GET", "POST"])
