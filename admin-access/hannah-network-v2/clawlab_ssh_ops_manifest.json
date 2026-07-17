@@ -1,0 +1,21 @@
+{
+  "source": "/Users/naboyd/AI/clawlab/ssh-ops-mcp/server.py",
+  "tools_discovered": [
+    "apply_change",
+    "check_health",
+    "download_file",
+    "get_change",
+    "get_journal",
+    "list_changes",
+    "list_hosts",
+    "propose_change",
+    "restart_service",
+    "rollback_change",
+    "run_command",
+    "run_write_command",
+    "tail_log",
+    "upload_file"
+  ],
+  "examples_written": 10,
+  "output": "/Users/naboyd/AI/clawlab/admin-access/hannah-network-v2/clawlab_ssh_ops_training.jsonl"
+}
