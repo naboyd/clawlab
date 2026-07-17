@@ -80,7 +80,7 @@ clawlab_local_full_write_nginx() {
 worker_processes  1;
 error_log logs/error.log warn;
 pid logs/nginx.pid;
-events { worker_connections 1024; }
+events { worker_connections 256; }
 http {
   include       mime.types;
   default_type  application/octet-stream;
@@ -189,6 +189,7 @@ domain = os.environ.get("DOMAIN", "127.0.0.1")
 with open(p) as f:
     d = json.load(f)
 gw = d.setdefault("gateway", {})
+gw["mode"] = "local"
 ui = gw.setdefault("controlUi", {})
 ui["basePath"] = "/openclaw"
 origins = set(ui.get("allowedOrigins") or [])

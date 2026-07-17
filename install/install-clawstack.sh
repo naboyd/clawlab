@@ -393,9 +393,10 @@ if [[ "$MODE" == local || "$MODE" == local-full ]]; then
 import json,sys
 p=sys.argv[1]; d=json.load(open(p))
 g=d.setdefault("gateway",{})
+g["mode"]="local"
 g["bind"]="loopback"; g["host"]="127.0.0.1"; g["port"]=18789
 g.setdefault("auth",{})["mode"]="token"; g["auth"]["token"]="OPENCLAW_GATEWAY_TOKEN"
-json.dump(d,open(p,"w"),indent=1); print("  gateway bound to 127.0.0.1:18789 (token auth)")
+json.dump(d,open(p,"w"),indent=1); print("  gateway mode=local, bound to 127.0.0.1:18789 (token auth)")
 PY
 else
   oc_json "$FQDN" "$LAN_IP" <<'PY'

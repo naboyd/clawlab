@@ -78,6 +78,7 @@ stop_bg() {
 stop_openclaw_gateway() {
   stop_bg openclaw-gateway
   if port_open "${OPENCLAW_GATEWAY_PORT:-18789}"; then
+    pkill -f "dist/index.js gateway run --bind loopback --port ${OPENCLAW_GATEWAY_PORT:-18789}" 2>/dev/null || true
     pkill -f "dist/index.js gateway --port ${OPENCLAW_GATEWAY_PORT:-18789}" 2>/dev/null || true
     pkill -f "openclaw gateway run --port ${OPENCLAW_GATEWAY_PORT:-18789}" 2>/dev/null || true
   fi
@@ -113,6 +114,23 @@ load_openclaw_env() {
     set +a
   fi
   export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}"
+}
+
+ensure_openclaw_gateway_mode() {
+  local oc="$HOME/.openclaw/openclaw.json"
+  [[ -f "$oc" ]] || return 0
+  python3 - "$oc" <<'PY'
+import json, sys
+p = sys.argv[1]
+with open(p) as f:
+    d = json.load(f)
+gw = d.setdefault("gateway", {})
+if gw.get("mode") != "local":
+    gw["mode"] = "local"
+    with open(p, "w") as f:
+        json.dump(d, f, indent=1)
+    print("patched gateway.mode=local")
+PY
 }
 
 openclaw_gateway_js() {
@@ -185,16 +203,17 @@ start_openclaw_gateway() {
     return 0
   fi
   load_openclaw_env
-  local js
+  ensure_openclaw_gateway_mode
+  local js port="${OPENCLAW_GATEWAY_PORT:-18789}"
   if js="$(openclaw_gateway_js 2>/dev/null)" && [[ -f "$js" ]]; then
-    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}" \
-      node "$js" gateway --port "${OPENCLAW_GATEWAY_PORT:-18789}" \
+    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="$port" \
+      node "$js" gateway run --bind loopback --port "$port" --force \
       || warn "failed to start openclaw gateway — see $RUN/openclaw-gateway.log"
     return 0
   fi
   if command -v openclaw >/dev/null 2>&1; then
-    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}" \
-      openclaw gateway run --port "${OPENCLAW_GATEWAY_PORT:-18789}" --bind 127.0.0.1 \
+    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="$port" \
+      openclaw gateway run --bind loopback --port "$port" --force \
       || warn "failed to start openclaw gateway — see $RUN/openclaw-gateway.log"
     return 0
   fi
@@ -288,7 +307,9 @@ cmd_status() {
       printf '  OK   %-22s listening :%s\n' "$s" "${LOCAL_FULL_PORT:-8083}"
     else
       printf '  --   %-22s not running\n' "$s"
-      [[ -f "$RUN/$s.log" ]] && tail -1 "$RUN/$s.log" 2>/dev/null | sed 's/^/         log: /' || true
+      if [[ -f "$RUN/$s.log" ]]; then
+        tail -3 "$RUN/$s.log" 2>/dev/null | sed 's/^/         log: /' || true
+      fi
     fi
   done
   if command -v podman >/dev/null 2>&1; then
