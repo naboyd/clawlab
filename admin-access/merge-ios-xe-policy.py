@@ -23,6 +23,29 @@ def _dump(path: Path, data: dict) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False, default_flow_style=False))
 
 
+def defenseclaw_pattern(pat: str) -> str:
+    """Adapt IOS-XE line patterns for DefenseClaw tool-arg JSON scanning.
+
+    ``inspectToolPolicy`` scans ``string(req.Args)`` (e.g.
+    ``{"command":"reload"}``), not bare config lines. Line-anchored ``^``
+    patterns never match inside JSON; use word boundaries like clawlab CMD-* rules.
+    """
+    raw = str(pat)
+    flags = ""
+    body = raw
+    if body.startswith("(?i)"):
+        flags = "(?i)"
+        body = body[4:]
+    if body.startswith("^"):
+        body = body[1:]
+        if body.endswith("$"):
+            body = body[:-1]
+        body = body.removeprefix("\\b")
+        if not body.startswith("\\b"):
+            body = "\\b" + body
+    return flags + body
+
+
 def merge_command_rules(commands_path: Path, rules: list[dict]) -> int:
     data = _load(commands_path)
     if not data:
@@ -56,7 +79,7 @@ def build_rules(policy: dict) -> list[dict]:
             continue
         out.append({
             "id": str(rid),
-            "pattern": str(pat),
+            "pattern": defenseclaw_pattern(str(pat)),
             "title": entry.get("title") or str(rid),
             "severity": str(entry.get("severity") or "CRITICAL").upper(),
             "confidence": float(entry.get("confidence") or 0.9),
@@ -80,7 +103,7 @@ def build_rules(policy: dict) -> list[dict]:
             for i, pat in enumerate(grp.get("patterns") or []):
                 out.append({
                     "id": f"IOS-DENY-{safe}-{i + 1:02d}",
-                    "pattern": str(pat),
+                    "pattern": defenseclaw_pattern(str(pat)),
                     "title": f"IOS-XE config ({gname}): group denied",
                     "severity": "CRITICAL",
                     "confidence": 0.92,

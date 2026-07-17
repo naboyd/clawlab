@@ -53,8 +53,17 @@ reload_gateway() {
   return 1
 }
 
-verify_useradd_block() {
-  local token="" action="" f key val
+inspect_action() {
+  local token="$1" payload="$2"
+  curl -s -m8 -X POST "http://127.0.0.1:18970/api/v1/inspect/tool" \
+    -H "Authorization: Bearer ${token}" \
+    -H 'Content-Type: application/json' \
+    -d "$payload" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('action','err'))" 2>/dev/null || echo err
+}
+
+verify_inspect_blocks() {
+  local token="" action="" f key val ok=1
   for f in \
     "${DC_HOME}/shims/.token" \
     "${DC_HOME}/.env" \
@@ -69,22 +78,31 @@ verify_useradd_block() {
     done
   done
   [ -n "$token" ] || return 0
-  action="$(curl -s -m8 -X POST "http://127.0.0.1:18970/api/v1/inspect/tool" \
-    -H "Authorization: Bearer ${token}" \
-    -H 'Content-Type: application/json' \
-    -d '{"tool":"bash","args":{"command":"useradd clawlab-verify"}}' \
-    | python3 -c "import sys,json; print(json.load(sys.stdin).get('action','err'))" 2>/dev/null || echo err)"
+
+  action="$(inspect_action "$token" '{"tool":"bash","args":{"command":"useradd clawlab-verify"}}')"
   if [ "$action" = "block" ]; then
     echo "Verify: inspect-tool useradd -> block (rules active in memory)"
   else
     echo "WARN: inspect-tool useradd -> ${action} (rules on disk but sidecar not reloaded)"
+    ok=0
+  fi
+
+  action="$(inspect_action "$token" '{"tool":"bash","args":{"command":"reload"}}')"
+  if [ "$action" = "block" ]; then
+    echo "Verify: inspect-tool reload -> block (IOS-XE rules active)"
+  else
+    echo "WARN: inspect-tool reload -> ${action} (IOS-XE merge patterns may be stale)"
+    ok=0
+  fi
+
+  if [ "$ok" = 0 ]; then
     echo "      Run: defenseclaw-gateway restart"
     return 1
   fi
 }
 
 reload_gateway || true
-verify_useradd_block || true
+verify_inspect_blocks || true
 
 echo "Done. Verify with:"
 echo "  defenseclaw-gateway restart   # required after manual YAML edits"

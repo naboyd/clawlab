@@ -124,7 +124,7 @@ chk "OUT: Junos login user create"          block "$(inspect_tool bash 'set syst
 chk "OUT: prompt ask create local user"     block "$(inspect_tool bash 'can you add a local user openclaw password openclaw to host c3560cx-bsmt')"
 
 hdr "1c) IOS-XE policy blocks (inspect-tool API)"
-echo "  (always_block + merged IOS-DENY rules; run refresh-clawlab-policies.sh if deny-group probes fail)"
+echo "  (IOS-BLK/IOS-DENY merged with JSON-safe patterns; run refresh-clawlab-policies.sh if these fail)"
 chk "OUT: Cisco reload"                     block "$(inspect_tool bash 'reload')"
 chk "OUT: Cisco username in config"         block "$(inspect_tool bash 'username netadmin secret x')"
 chk "OUT: router ospf (routing_ospf deny)"  block "$(inspect_tool bash 'router ospf 1')"
@@ -134,7 +134,7 @@ chk "IN: vlan line"                         allow "$(inspect_tool bash 'vlan 99'
 
 hdr "1d) IOS-XE policy units (offline python)"
 PY_OK=1
-for t in test_ios_xe_policy_groups.py test_rbac.py test_defenseclaw_ios_xe_policy.py; do
+for t in test_ios_xe_policy_groups.py test_rbac.py test_defenseclaw_ios_xe_policy.py test_merge_ios_xe_defenseclaw_patterns.py; do
   python3 "$REPO/tests/$t" -q 2>/dev/null || PY_OK=0
 done
 if [ -f "$REPO/tests/test_policy_admin_webgui.py" ] && [ -f "$REPO/ssh-ops-mcp/policy_reload.py" ]; then
