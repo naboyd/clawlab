@@ -119,24 +119,24 @@ else
 fi
 echo
 
-echo "--- node / pnpm (need >= $NEED_NODE) ---"
+echo "--- node / pnpm (OpenClaw: Node 24.15+ LTS recommended) ---"
 if command -v node >/dev/null 2>&1; then
-  maj="$(clawlab_node_major)"
-  if [[ -n "$maj" && "$maj" -ge "$NEED_NODE" ]]; then
-    pass "node >= v${NEED_NODE} ($(node -v))"
+  clawlab_prepend_openclaw_node_path
+  if clawlab_node_openclaw_ok; then
+    pass "node OpenClaw-compatible ($(node -v))"
   else
-    fail "node $(node -v) — need >= v${NEED_NODE}"
-    need_item "Node.js >= v${NEED_NODE}"
+    fail "node $(node -v) — not supported by OpenClaw ($(clawlab_openclaw_node_requirement_msg))"
+    need_item "Node.js (OpenClaw-compatible)"
     case "$CLAWLAB_PKG" in
       apt) rec "curl -fsSL https://deb.nodesource.com/setup_${NEED_NODE}.x | sudo -E bash - && sudo apt-get install -y nodejs" ;;
-      brew) rec "brew install node@${NEED_NODE}" ;;
+      brew) rec "brew install node@${NEED_NODE} && brew link --overwrite --force node@${NEED_NODE}" ;;
     esac
     [[ "$FIX" -eq 1 ]] && clawlab_install_node "$NEED_NODE" || true
   fi
 else
   fail "node not found"
-  need_item "Node.js >= v${NEED_NODE}"
-  [[ "$FIX" -eq 1 ]] && clawlab_install_node "$NEED_NODE" || rec "install Node.js >= $NEED_NODE"
+  need_item "Node.js (OpenClaw-compatible, recommend v${NEED_NODE}.15+)"
+  [[ "$FIX" -eq 1 ]] && clawlab_install_node "$NEED_NODE" || rec "install Node.js ($(clawlab_openclaw_node_requirement_msg))"
 fi
 
 if command -v pnpm >/dev/null 2>&1; then

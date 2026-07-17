@@ -55,6 +55,66 @@ clawlab_node_major() {
   node -v 2>/dev/null | sed 's/^v//; s/\..*//'
 }
 
+clawlab_node_version() {
+  node -v 2>/dev/null | sed 's/^v//'
+}
+
+# OpenClaw engine: >=22.22.3 <23 || >=24.15.0 <25 || >=25.9.0
+CLAWLAB_OPENCLAW_NODE_MAJOR="${CLAWLAB_OPENCLAW_NODE_MAJOR:-24}"
+
+clawlab_node_openclaw_ok() {
+  local ver
+  ver="$(clawlab_node_version)" || return 1
+  [[ -n "$ver" ]] || return 1
+  python3 - "$ver" <<'PY'
+import sys
+
+def pv(s):
+    parts = s.split(".")
+    out = []
+    for i in range(3):
+        chunk = parts[i] if i < len(parts) else "0"
+        out.append(int(chunk.split("-")[0]))
+    return tuple(out)
+
+v = pv(sys.argv[1])
+ok = (
+    pv("22.22.3") <= v < pv("23.0.0")
+    or pv("24.15.0") <= v < pv("25.0.0")
+    or v >= pv("25.9.0")
+)
+sys.exit(0 if ok else 1)
+PY
+}
+
+clawlab_openclaw_node_bin_dir() {
+  local prefix=""
+  case "$CLAWLAB_PKG" in
+    brew)
+      prefix="$(brew --prefix "node@${CLAWLAB_OPENCLAW_NODE_MAJOR}" 2>/dev/null)" || return 1
+      [[ -x "$prefix/bin/node" ]] || return 1
+      printf '%s/bin' "$prefix"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+clawlab_prepend_openclaw_node_path() {
+  local dir
+  dir="$(clawlab_openclaw_node_bin_dir 2>/dev/null)" || return 0
+  case ":$PATH:" in
+    *":$dir:"*) return 0 ;;
+  esac
+  export PATH="$dir:$PATH"
+  hash -r 2>/dev/null || true
+}
+
+clawlab_openclaw_node_requirement_msg() {
+  printf '%s' "Node >=22.22.3 <23, >=24.15.0 <25, or >=25.9.0 (recommend brew install node@24)"
+}
+
 clawlab_podman_ready() {
   command -v podman >/dev/null 2>&1 || return 1
   if [[ "$CLAWLAB_PLATFORM" == "macos" ]]; then
@@ -105,25 +165,33 @@ clawlab_install_prereqs() {
 }
 
 clawlab_install_node() {
-  local need_node="${1:-24}"
-  local have
-  have="$(clawlab_node_major)"
-  if [[ -n "$have" && "$have" -ge "$need_node" ]]; then
+  local want_major="${1:-$CLAWLAB_OPENCLAW_NODE_MAJOR}"
+
+  clawlab_prepend_openclaw_node_path
+  if clawlab_node_openclaw_ok; then
     return 0
   fi
+
   case "$CLAWLAB_PKG" in
     apt)
-      curl -fsSL "https://deb.nodesource.com/setup_${need_node}.x" | sudo -E bash -
+      curl -fsSL "https://deb.nodesource.com/setup_${want_major}.x" | sudo -E bash -
       sudo apt-get install -y -qq nodejs
       ;;
     brew)
-      brew install "node@${need_node}" || brew install node
-      brew link --overwrite --force "node@${need_node}" 2>/dev/null || true
+      brew install "node@${want_major}" || die "brew install node@${want_major} failed"
+      brew link --overwrite --force "node@${want_major}" 2>/dev/null || true
+      clawlab_prepend_openclaw_node_path
       ;;
     *)
-      die "Install Node.js >= ${need_node} manually (https://nodejs.org), then re-run."
+      die "Install OpenClaw-compatible Node.js manually ($(clawlab_openclaw_node_requirement_msg)), then re-run."
       ;;
   esac
+
+  clawlab_prepend_openclaw_node_path
+  if clawlab_node_openclaw_ok; then
+    return 0
+  fi
+  die "Node $(node -v 2>/dev/null || echo missing) is not supported by OpenClaw ($(clawlab_openclaw_node_requirement_msg))"
 }
 
 clawlab_install_pnpm() {

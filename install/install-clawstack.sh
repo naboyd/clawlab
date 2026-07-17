@@ -79,6 +79,7 @@ SRC="$HOME/src"; mkdir -p "$SRC"
 OC_ENV="$OC_HOME/.env"
 DC_ENV="$DC_HOME/.env"
 export PATH="$BIN:$HOME/.npm-global/bin:$PATH"
+clawlab_prepend_openclaw_node_path || true
 
 # python helper: merge a JSON fragment into openclaw.json (deep-ish for our keys)
 oc_json() { python3 - "$OC_HOME/openclaw.json" "$@"; }
@@ -127,8 +128,8 @@ fi
 log "Installing prerequisites ($CLAWLAB_PKG)"
 clawlab_install_prereqs "$MODE"
 
-log "Ensuring Node.js >= 24"
-clawlab_install_node 24
+log "Ensuring OpenClaw-compatible Node.js (recommend node@${CLAWLAB_OPENCLAW_NODE_MAJOR})"
+clawlab_install_node "$CLAWLAB_OPENCLAW_NODE_MAJOR"
 info "node $(node -v)  npm $(npm -v)"
 clawlab_install_pnpm || die "pnpm not available — run: bash install/preinstall-check.sh --fix"
 info "pnpm $(pnpm -v)"
