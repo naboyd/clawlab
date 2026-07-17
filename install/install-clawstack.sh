@@ -3,26 +3,46 @@
 # install-clawstack.sh  —  Governed OpenClaw + Cisco DefenseClaw AI-ops stack
 # -----------------------------------------------------------------------------
 # Interactive installer. Prompts for:
-#   • install MODE:  server (LAN + Let's Encrypt TLS + PAM + npx MCP bridge)
-#                    local  (everything bound to 127.0.0.1)
+#   • install MODE:  server (Linux/apt only — LAN + LE TLS + PAM + nginx :8444)
+#                    local  (127.0.0.1 gateway; works on macOS and Linux)
 #   • model PROVIDERS  — iterative (name, api type, key, models)
 #   • MCP servers      — iterative (name, url, bearer token)
+#   • DefenseClaw scan — local Ollama judge / Cisco AI Defense API / both
 #   • secrets          — API keys / tokens, written to per-app .env (never echoed)
 #
-# Bakes in the fixes learned in production:
-#   • anthropic (and every manually-added) provider gets a `models: [...]` array
-#     + `api: "anthropic-messages"` — WITHOUT this the gateway crashes in model
-#     failover with "Cannot read properties of undefined (reading 'find')".
-#   • DefenseClaw guardrail on the `strict` rule pack in `action` mode.
-#   • DefenseClaw exec-shim hardening (full-command inspection) + self-heal.
-#   • audit -> Webex bridge.
-#   • Node >= 24.15 via NodeSource (nvm-only breaks the systemd services).
-#   • openclaw.mjs symlinked into ~/.local/bin (pnpm link --global is removed).
+# Category map (vs install-portals.sh / icecream production path):
+#   KEEP here     — OpenClaw/DefenseClaw build, provider+MCP loops, gateway bind,
+#                   guardrail rules, Webex webhook, shim-heal + dc-webex-bridge assets
+#   REPLACE       — server nginx :8444 PAM → claw-portals/install-portals.sh (:8443)
+#   MERGE later   — MCP identity proxy, refresh-clawlab-policies, ssh-ops quadlets
+#   macOS         — local mode + source builds; server TLS/nginx → use Linux lab host
+#
+# Usage:
+#   bash install/install-clawstack.sh
+#   bash install/install-clawstack.sh --skip-precheck
+#   bash install/preinstall-check.sh [--fix]
 #
 # Safe to re-run; steps are guarded. Run as the user that will own the stack
-# (NOT root). sudo is used only for apt / nginx / systemd-system bits.
+# (NOT root). sudo is used only for apt/nginx on Linux.
 # =============================================================================
 set -Eeuo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=lib/clawlab-platform.sh
+source "$SCRIPT_DIR/lib/clawlab-platform.sh"
+
+CLAWLAB_REPO="$(clawlab_repo_root "$0")"
+export CLAWSTACK_ASSETS="${CLAWSTACK_ASSETS:-$CLAWLAB_REPO}"
+
+SKIP_PRECHECK=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-precheck) SKIP_PRECHECK=1 ;;
+    -h|--help) sed -n '1,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "Unknown option: $1 (try --help)" ;;
+  esac
+  shift
+done
 
 # ---------------------------------------------------------------- ui helpers --
 c_b=$'\e[1m'; c_g=$'\e[32m'; c_y=$'\e[33m'; c_r=$'\e[31m'; c_d=$'\e[2m'; c_0=$'\e[0m'
@@ -35,7 +55,9 @@ ask_secret() { local p="$1" a; read -r -s -p "  $p: " a; echo >&2; printf '%s' "
 yesno() { local p="$1" d="${2:-y}" a; read -r -p "  $p [$( [ "$d" = y ] && echo 'Y/n' || echo 'y/N' )]: " a; a="${a:-$d}"; [[ "$a" =~ ^[Yy] ]]; }
 
 [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root (sudo is used where needed)."
-command -v sudo >/dev/null || die "sudo is required."
+if [[ "$CLAWLAB_PLATFORM" == "linux" ]]; then
+  command -v sudo >/dev/null || die "sudo is required on Linux."
+fi
 
 OC_HOME="$HOME/.openclaw"
 DC_HOME="$HOME/.defenseclaw"
@@ -43,52 +65,62 @@ BIN="$HOME/.local/bin"; mkdir -p "$BIN"
 SRC="$HOME/src"; mkdir -p "$SRC"
 OC_ENV="$OC_HOME/.env"
 DC_ENV="$DC_HOME/.env"
-export PATH="$BIN:$PATH"
+export PATH="$BIN:$HOME/.npm-global/bin:$PATH"
 
 # python helper: merge a JSON fragment into openclaw.json (deep-ish for our keys)
 oc_json() { python3 - "$OC_HOME/openclaw.json" "$@"; }
 
+# ============================================================ 0. PRECHECK ====
+if [[ "$SKIP_PRECHECK" -eq 0 ]]; then
+  log "Running pre-install check (use --skip-precheck to bypass)"
+  bash "$SCRIPT_DIR/preinstall-check.sh" || {
+    warn "Pre-install check reported issues — review recommendations above."
+    yesno "Continue anyway?" n || die "Aborted. Fix issues or pass --skip-precheck."
+  }
+  echo
+fi
+
 # ================================================================ 0. MODE ====
 echo
-log "ClawStack installer"
-info "Modes:  server = LAN access, Let's Encrypt TLS, PAM login, npx MCP bridge"
-info "        local  = everything bound to 127.0.0.1 (governance still on)"
-MODE="$(ask 'Install mode (server/local)' 'local')"
+log "ClawStack installer ($CLAWLAB_PLATFORM)"
+info "Modes:  server = Linux lab host — LE TLS, PAM nginx :8444 (legacy; prefer install-portals.sh)"
+info "        local  = gateway on 127.0.0.1 (macOS + Linux)"
+DEFAULT_MODE="local"
+[[ "$CLAWLAB_PLATFORM" == "linux" ]] && DEFAULT_MODE="local"
+MODE="$(ask 'Install mode (server/local)' "$DEFAULT_MODE")"
 [[ "$MODE" =~ ^(server|local)$ ]] || die "mode must be 'server' or 'local'"
+
+if [[ "$MODE" == "server" ]] && ! clawlab_server_mode_supported; then
+  warn "Server mode (nginx + PAM + :8444) requires Linux with apt."
+  info "On macOS, use local mode here and run claw-portals/install-portals.sh on the lab server."
+  info "  bash $CLAWLAB_REPO/claw-portals/install-portals.sh"
+  yesno "Switch to local mode?" y && MODE=local || die "Use install-portals.sh on a Linux lab host for HTTPS ingress."
+fi
+
 if [ "$MODE" = server ]; then
   FQDN="$(ask 'Public FQDN for this host (for the LE cert + UIs)')"
-  LAN_IP="$(ask 'LAN IP to bind services to' "$(hostname -I 2>/dev/null | awk '{print $1}')")"
+  LAN_IP="$(ask 'LAN IP to bind services to' "$(clawlab_default_lan_ip)")"
   [ -n "$FQDN" ] || die "server mode needs an FQDN"
 fi
 
 # ========================================================= 1. PREREQUISITES ==
-log "Installing prerequisites"
-sudo apt-get update -qq
-sudo apt-get install -y -qq git curl jq python3 python3-yaml build-essential ca-certificates >/dev/null
+log "Installing prerequisites ($CLAWLAB_PKG)"
+clawlab_install_prereqs "$MODE"
+
+log "Ensuring Node.js >= 24"
+clawlab_install_node 24
+info "node $(node -v)  npm $(npm -v)"
+corepack enable >/dev/null 2>&1 || npm install -g pnpm >/dev/null 2>&1 || true
+command -v pnpm >/dev/null || die "pnpm not available — run: corepack enable"
+
 if [ "$MODE" = server ]; then
-  sudo apt-get install -y -qq nginx libnginx-mod-http-auth-pam openssl >/dev/null
+  clawlab_install_lego || warn "install lego manually (brew install lego / go install …)"
 fi
 
-# Node >= 24.15 (system install via NodeSource; nvm-only would break systemd units)
-need_node=24
-have_node="$(node -v 2>/dev/null | sed 's/^v//; s/\..*//')"
-if [ -z "$have_node" ] || [ "$have_node" -lt "$need_node" ]; then
-  log "Installing Node.js $need_node.x (system-wide via NodeSource)"
-  curl -fsSL "https://deb.nodesource.com/setup_${need_node}.x" | sudo -E bash - >/dev/null
-  sudo apt-get install -y -qq nodejs >/dev/null
-fi
-info "node $(node -v)  npm $(npm -v)"
-# pnpm via corepack
-corepack enable >/dev/null 2>&1 || sudo npm install -g pnpm >/dev/null 2>&1 || true
-command -v pnpm >/dev/null || die "pnpm not available after corepack/npm"
-# lego (ACME) for server mode
-if [ "$MODE" = server ] && ! command -v lego >/dev/null; then
-  log "Installing lego (ACME client)"
-  go_ver=""; command -v go >/dev/null && go install github.com/go-acme/lego/v4/cmd/lego@latest 2>/dev/null && go_ver=1 || true
-  if [ -z "$go_ver" ]; then
-    LEGO_URL="$(curl -fsSL https://api.github.com/repos/go-acme/lego/releases/latest | jq -r '.assets[]|select(.name|test("linux_amd64.tar.gz$")).browser_download_url')"
-    curl -fsSL "$LEGO_URL" | tar -xz -C "$BIN" lego 2>/dev/null || warn "install lego manually into $BIN"
-  fi
+if ! clawlab_podman_ready 2>/dev/null; then
+  warn "podman not ready — ssh-ops containers will need setup after install"
+  info "Recommended:"
+  clawlab_podman_recommend | sed 's/^/    /'
 fi
 
 # ============================================================== 2. OPENCLAW ==
@@ -96,7 +128,6 @@ if ! command -v openclaw >/dev/null; then
   log "Building OpenClaw from source"
   [ -d "$SRC/openclaw" ] || git clone --depth 1 https://github.com/openclaw/openclaw "$SRC/openclaw"
   ( cd "$SRC/openclaw" && pnpm install --frozen-lockfile && pnpm build )
-  # symlink the CLI entrypoint (pnpm link --global is deprecated / breaks here)
   ln -sf "$SRC/openclaw/dist/index.js" "$BIN/openclaw"
   chmod +x "$BIN/openclaw" 2>/dev/null || true
 fi
@@ -106,14 +137,12 @@ info "openclaw $(openclaw --version 2>/dev/null | head -1)"
 if ! command -v defenseclaw >/dev/null; then
   log "Installing Cisco DefenseClaw"
   [ -d "$SRC/defenseclaw" ] || git clone --depth 1 https://github.com/cisco-ai-defense/defenseclaw "$SRC/defenseclaw"
-  # clear any release-managed markers that block a source install
   rm -f "$BIN/.defenseclaw-source-root" 2>/dev/null || true
   ( cd "$SRC/defenseclaw" && ./scripts/install.sh --replace-defenseclaw --connector openclaw 2>/dev/null \
       || make install CONNECTOR=openclaw )
 fi
 info "defenseclaw $(defenseclaw --version 2>/dev/null | head -1)"
 
-# base onboarding so ~/.openclaw/openclaw.json exists
 mkdir -p "$OC_HOME" "$DC_HOME"
 [ -f "$OC_HOME/openclaw.json" ] || echo '{}' > "$OC_HOME/openclaw.json"
 touch "$OC_ENV" "$DC_ENV"; chmod 600 "$OC_ENV" "$DC_ENV"
@@ -138,14 +167,15 @@ while true; do
   else
     PKEY="$(ask_secret "  API key for $PNAME (stored in $OC_ENV, not echoed)")"
   fi
-  # write the secret to ~/.openclaw/.env (env var NAME is what openclaw.json references)
-  grep -q "^${ENVVAR}=" "$OC_ENV" 2>/dev/null && sed -i "s|^${ENVVAR}=.*|${ENVVAR}=${PKEY}|" "$OC_ENV" \
-      || echo "${ENVVAR}=${PKEY}" >> "$OC_ENV"
+  if grep -q "^${ENVVAR}=" "$OC_ENV" 2>/dev/null; then
+    clawlab_sed_inplace "s|^${ENVVAR}=.*|${ENVVAR}=${PKEY}|" "$OC_ENV"
+  else
+    echo "${ENVVAR}=${PKEY}" >> "$OC_ENV"
+  fi
 
   MODELS="$(ask '  Model ids for this provider (comma-separated)' "$( [ "$PNAME" = anthropic ] && echo 'claude-sonnet-5,claude-haiku-4-5' || echo '' )")"
   CTX="$(ask '  Context window for these models' '200000')"
 
-  # merge provider + a models[] array into openclaw.json  (THE anthropic .find() fix)
   oc_json "$PNAME" "$PAPI" "$PBASE" "$ENVVAR" "$MODELS" "$CTX" "$def_img" <<'PY'
 import json,sys
 p, name, api, base, envvar, models_csv, ctx, imgcsv = sys.argv[1:]
@@ -163,7 +193,7 @@ for mid in [m.strip() for m in models_csv.split(",") if m.strip()]:
         "compat":{"supportsTools":True,"supportsUsageInStreaming":True},
         "cost":{"cacheRead":0,"cacheWrite":0,"input":0,"output":0},
     })
-if mlist: prov["models"]=mlist          # <-- REQUIRED or the gateway crashes in failover
+if mlist: prov["models"]=mlist
 d["models"]["providers"][name]=prov
 d.setdefault("models",{}).setdefault("mode","merge")
 json.dump(d,open(p,"w"),indent=1)
@@ -226,7 +256,6 @@ g.setdefault("auth",{})["mode"]="token"; g["auth"]["token"]="OPENCLAW_GATEWAY_TO
 json.dump(d,open(p,"w"),indent=1); print("  gateway bound to 127.0.0.1:18789 (token auth)")
 PY
 else
-  # server: gateway stays on loopback; nginx (PAM+LE) is the only ingress (trusted-proxy)
   oc_json "$FQDN" "$LAN_IP" <<'PY'
 import json,sys
 p,fqdn,lan=sys.argv[1:]; d=json.load(open(p))
@@ -243,11 +272,78 @@ fi
 # ================================================ 8. DEFENSECLAW GOVERNANCE ===
 echo
 log "DefenseClaw guardrail (strict rule pack, action mode)"
-defenseclaw setup guardrail --connector openclaw --mode action \
-  --rule-pack strict --detection-strategy regex_judge >/dev/null 2>&1 \
+info "Semantic inspection backend (separate from OpenClaw agent model above):"
+info "  local — Ollama Foundation-Sec LLM judge (air-gapped default)"
+info "  cisco — Cisco AI Defense cloud API only (no local judge model)"
+info "  both  — local judge + Cisco cloud (strictest)"
+SCAN_BACKEND="$(ask 'DefenseClaw scan backend (local/cisco/both)' 'local')"
+case "$SCAN_BACKEND" in
+  local|cisco|both) ;;
+  *) die "scan backend must be local, cisco, or both" ;;
+esac
+
+DC_SETUP=(
+  setup guardrail --connector openclaw --mode action
+  --rule-pack strict --detection-strategy regex_judge --non-interactive
+)
+JUDGE_ENABLED=true
+case "$SCAN_BACKEND" in
+  local)
+    DC_SETUP+=(--scanner-mode local)
+    ;;
+  cisco)
+    DC_SETUP+=(--scanner-mode remote
+      --cisco-endpoint "$CLAWLAB_CISCO_AID_ENDPOINT"
+      --cisco-api-key-env "$CLAWLAB_CISCO_AID_KEY_ENV"
+      --cisco-timeout-ms 3000)
+    JUDGE_ENABLED=false
+    ;;
+  both)
+    DC_SETUP+=(--scanner-mode both
+      --cisco-endpoint "$CLAWLAB_CISCO_AID_ENDPOINT"
+      --cisco-api-key-env "$CLAWLAB_CISCO_AID_KEY_ENV"
+      --cisco-timeout-ms 3000)
+    ;;
+esac
+
+if [[ "$SCAN_BACKEND" == cisco || "$SCAN_BACKEND" == both ]]; then
+  if grep -q "^${CLAWLAB_CISCO_AID_KEY_ENV}=" "$DC_ENV" 2>/dev/null \
+     && yesno "  ${CLAWLAB_CISCO_AID_KEY_ENV} already in $DC_ENV — keep it?" y; then
+    info "  using existing ${CLAWLAB_CISCO_AID_KEY_ENV}"
+  else
+    CISCO_KEY="$(ask_secret "  Cisco AI Defense API key (${CLAWLAB_CISCO_AID_KEY_ENV})")"
+    if grep -q "^${CLAWLAB_CISCO_AID_KEY_ENV}=" "$DC_ENV" 2>/dev/null; then
+      clawlab_sed_inplace "s|^${CLAWLAB_CISCO_AID_KEY_ENV}=.*|${CLAWLAB_CISCO_AID_KEY_ENV}=${CISCO_KEY}|" "$DC_ENV"
+    else
+      echo "${CLAWLAB_CISCO_AID_KEY_ENV}=${CISCO_KEY}" >> "$DC_ENV"
+    fi
+  fi
+fi
+
+if [[ "$JUDGE_ENABLED" == true ]]; then
+  if ! command -v ollama >/dev/null 2>&1; then
+    warn "ollama not on PATH — install from https://ollama.com then run:"
+    info "  ollama pull $CLAWLAB_JUDGE_OLLAMA_TAG"
+  else
+    log "Pulling DefenseClaw judge model ($CLAWLAB_JUDGE_OLLAMA_TAG)"
+    clawlab_ensure_ollama_model "$CLAWLAB_JUDGE_OLLAMA_TAG" \
+      || warn "ollama pull failed — judge may be unavailable until model is present"
+  fi
+fi
+
+defenseclaw "${DC_SETUP[@]}" >/dev/null 2>&1 \
   || warn "guardrail setup returned non-zero (check 'defenseclaw guardrail status')"
 
-CLAWLAB_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCANNER_MODE="$SCAN_BACKEND"
+[[ "$SCAN_BACKEND" == local ]] && SCANNER_MODE="local"
+[[ "$SCAN_BACKEND" == cisco ]] && SCANNER_MODE="remote"
+[[ "$SCAN_BACKEND" == both ]] && SCANNER_MODE="both"
+if clawlab_patch_defenseclaw_config "$SCANNER_MODE" "$JUDGE_ENABLED" "$CLAWLAB_JUDGE_DC_MODEL"; then
+  info "  guardrail config: scanner_mode=$SCANNER_MODE judge=$JUDGE_ENABLED"
+else
+  warn "could not patch ~/.defenseclaw/config.yaml (install python3-yaml or edit via DefenseClaw web GUI)"
+fi
+
 if [ -f "$CLAWLAB_REPO/admin-access/install-clawlab-guardrail-rules.sh" ]; then
   bash "$CLAWLAB_REPO/admin-access/install-clawlab-guardrail-rules.sh" \
     || warn "clawlab guardrail rules install failed"
@@ -267,23 +363,21 @@ fi
 echo
 log "Installing audit->Webex bridge, shim hardening + self-heal"
 UNIT_DIR="$HOME/.config/systemd/user"; mkdir -p "$UNIT_DIR"
-ASSET_BASE="${CLAWSTACK_ASSETS:-}"   # optional local dir with the repo assets
+ASSET_BASE="${CLAWSTACK_ASSETS}"
 
-install_asset() { # src-relative-path  dest
+install_asset() {
   local rel="$1" dest="$2"
-  if [ -n "$ASSET_BASE" ] && [ -f "$ASSET_BASE/$rel" ]; then install -m "${3:-644}" "$ASSET_BASE/$rel" "$dest"; return; fi
-  warn "asset $rel not found (set CLAWSTACK_ASSETS to the clawlab repo); skipping $dest"
+  if [ -f "$ASSET_BASE/$rel" ]; then install -m "${3:-644}" "$ASSET_BASE/$rel" "$dest"; return; fi
+  warn "asset $rel not found under $ASSET_BASE; skipping $dest"
   return 1
 }
 
-# shim hardening (full-command inspection) + path-unit self-heal
 mkdir -p "$DC_HOME/shims-heal"
 if install_asset shim-hardening/patch-shims.sh "$DC_HOME/shims-heal/patch-shims.sh" 755; then
   "$DC_HOME/shims-heal/patch-shims.sh" || true
   install_asset shim-hardening/defenseclaw-shim-heal.service "$UNIT_DIR/defenseclaw-shim-heal.service"
   install_asset shim-hardening/defenseclaw-shim-heal.path    "$UNIT_DIR/defenseclaw-shim-heal.path"
 fi
-# audit -> Webex bridge
 mkdir -p "$DC_HOME/webex-bridge"
 if install_asset defenseclaw-webex-bridge/dc-webex-bridge.py "$DC_HOME/webex-bridge/dc-webex-bridge.py" 755; then
   install_asset defenseclaw-webex-bridge/dc-webex-bridge.service "$UNIT_DIR/dc-webex-bridge.service"
@@ -293,6 +387,7 @@ fi
 if [ "$MODE" = server ]; then
   echo
   log "Server mode: Let's Encrypt cert + nginx (PAM) reverse proxy"
+  warn "For new deployments prefer: bash $CLAWLAB_REPO/claw-portals/install-portals.sh"
   info "DNS-01 is recommended (works behind NAT / split-horizon DNS)."
   DNSPROV="$(ask '  lego DNS provider (e.g. godaddy, cloudflare, route53)' 'godaddy')"
   ACME_EMAIL="$(ask '  ACME account email')"
@@ -307,7 +402,6 @@ EOF
   chmod +x "$HOME/mcp/acme/issue.sh"
   info "  Issue the cert with:  ~/mcp/acme/issue.sh"
 
-  # PAM service + nginx site (Control UI on :8444)
   sudo tee /etc/pam.d/openclaw-admin >/dev/null <<'EOF'
 @include common-auth
 @include common-account
@@ -343,7 +437,6 @@ EOF
   if [ -f "$CERT" ]; then sudo nginx -t && sudo systemctl reload nginx; else
     warn "cert not present yet — issue it (~/mcp/acme/issue.sh) then: sudo nginx -t && sudo systemctl reload nginx"; fi
 
-  # npx MCP bridge hint for external Claude Desktop clients
   cat > "$HOME/clawstack-mcp-client.json" <<EOF
 {
   "mcpServers": {
@@ -361,24 +454,31 @@ fi
 # ==================================================== 11. START + SUMMARY =====
 echo
 log "Enabling services"
-loginctl enable-linger "$USER" >/dev/null 2>&1 || true
-systemctl --user daemon-reload || true
-for u in openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path; do
-  systemctl --user enable --now "$u" >/dev/null 2>&1 || warn "could not enable $u (may not exist yet)"
-done
+clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
 
 echo
 python3 -c "import json;d=json.load(open('$OC_HOME/openclaw.json'));print('config valid, providers:',list(d.get('models',{}).get('providers',{}).keys()),'| mcp:',list(d.get('mcp',{}).get('servers',{}).keys()))" \
   || warn "openclaw.json failed to parse — run: openclaw config validate"
 
+MAC_NOTE=""
+if [[ "$CLAWLAB_PLATFORM" == "macos" ]]; then
+  MAC_NOTE="
+  macOS:  Gateway runs locally; use podman for ssh-ops:
+          bash $CLAWLAB_REPO/ssh-ops-mcp/podctl.sh
+          Deploy HTTPS portal on Linux: bash $CLAWLAB_REPO/claw-portals/install-portals.sh"
+fi
+
 cat <<EOF
 
-${c_g}${c_b}ClawStack install complete (${MODE} mode).${c_0}
+${c_g}${c_b}ClawStack install complete (${MODE} mode on ${CLAWLAB_PLATFORM}).${c_0}
   Config:    $OC_HOME/openclaw.json   (secrets in $OC_ENV / $DC_ENV, chmod 600)
   Validate:  openclaw config validate   ·   defenseclaw guardrail status
+  DC scan:   ${SCAN_BACKEND} (scanner_mode=${SCANNER_MODE}, judge=${JUDGE_ENABLED})
   Gateway:   http://127.0.0.1:18789$( [ "$MODE" = server ] && echo "  (public: https://$FQDN:8444 — PAM login)" )
+  Precheck:  bash $SCRIPT_DIR/preinstall-check.sh
   Test:      openclaw agent --model <provider/model> -m "say pong"
 $( [ "$MODE" = server ] && echo "  Cert:      run ~/mcp/acme/issue.sh, then reload nginx" )
+${MAC_NOTE}
 
   Reminder: each model provider has a models[] array + api type — required, or the
   gateway crashes in failover. Re-run this script any time to add providers/MCPs.
