@@ -69,7 +69,7 @@ python3 tests/test_defenseclaw_ios_xe_policy.py -v
 Regenerate architecture diagram:
 
 ```bash
-bash admin-access/render-architecture-diagram.sh
+python3 admin-access/render-policy-flow-diagram.py
 ```
 
 ## Scenario: approved but blocked at execution

@@ -74,7 +74,8 @@ Requirements per auto-update host:
 - `allow_write: true` (needed for `systemctl start claw-sysupdate.service`)
 - `claw-sysupdate` installed on the target with scoped passwordless sudo
 
-See `claw-sysupdate/` and `skills/fleet-update/SKILL.md` in the clawlab repo.
+See `claw-sysupdate/` (systemd units) and `skills/fleet-update/SKILL.md`. The shell
+installer was moved to local `_archive/`; fleet hosts need the updater script installed manually or restored from archive.
 
 ## Security model
 

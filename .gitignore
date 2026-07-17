@@ -26,8 +26,11 @@ __pycache__/
 *.bak.*
 .DS_Store
 
-# Large vendor PDFs (fetch via admin-access/fetch-ios-xe-command-reference.sh)
+# Large vendor PDFs (optional; maintainer fetch script lives in _archive/)
 docs/reference/*.pdf
+
+# Local maintainer archive (not shipped to beta testers)
+_archive/
 
 # ---- local certs / lego ----
 acme/lego/

@@ -32,7 +32,7 @@ bad tool/prompt patterns → ssh-ops validates IOS-XE allow groups → human app
 Regenerate the diagram after edits:
 
 ```bash
-bash admin-access/render-architecture-diagram.sh
+python3 admin-access/render-policy-flow-diagram.py
 ```
 
 ---
@@ -68,6 +68,9 @@ bash claw-portals/install-portals.sh
 **Linux lab server (icecream):** steps **1 → 2 (`local` or `local-full`) → 3** for `:8443` HTTPS + Let's Encrypt
 
 **DefenseClaw scan backend** (step 2 prompt): **local** (Ollama Foundation-Sec judge), **cisco** (AI Defense API), or **both**.
+
+For install checks, portal diagnostics, and policy refresh helpers, see
+**[docs/Troubleshooting scripts.md](docs/Troubleshooting%20scripts.md)**.
 
 ---
 
@@ -236,3 +239,4 @@ ollama pull hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
 - IOS-XE changes use **60 granular `allow_groups`** — see `config-templates/ios-xe-policy.yaml`.
 - After policy edits: `bash admin-access/refresh-clawlab-policies.sh --preserve-access`
   or Policy tab → Reload policy & restart gateways.
+- **Troubleshooting:** [docs/Troubleshooting scripts.md](docs/Troubleshooting%20scripts.md) — script index with flags.

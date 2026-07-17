@@ -247,7 +247,7 @@ see `docs/ios-xe-command-reference-index.yaml`).
 
 ![Policy enforcement flow](clawlab-policy-enforcement-flow.png)
 
-Regenerate after layout edits: `bash admin-access/render-architecture-diagram.sh`
+Regenerate after layout edits: `python3 admin-access/render-policy-flow-diagram.py`
 (source: `docs/clawlab-policy-enforcement-flow.mmd`, renderer: `admin-access/render-policy-flow-diagram.py`).
 
 Merge DefenseClaw rules after policy edits:
@@ -326,8 +326,9 @@ by the DefenseClaw CLI into `~/.defenseclaw/policies/`.
 ## Operations
 
 ```bash
-# Phase 1 portal health check
-SKIP_GIT_PULL=1 SKIP_PODMAN=1 bash admin-access/reset-icecream-portal.sh
+# Portal + auth health (lab host)
+bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=claw-auth
+bash claw-auth/doctor.sh
 
 # OpenClaw Control UI URL (with #token=)
 bash admin-access/print-gateway-url.sh
@@ -335,12 +336,11 @@ bash admin-access/print-gateway-url.sh
 # DefenseClaw guardrail status
 defenseclaw guardrail status
 
-# Portal auth health
-bash claw-auth/doctor.sh
-
 # Policy enforcement test (fast, no agent)
 bash tests/policy-test.sh --no-agent
 ```
+
+See **[Troubleshooting scripts.md](Troubleshooting%20scripts.md)** for the full script index.
 
 ---
 
