@@ -258,10 +258,10 @@ clawlab_install_local_full() {
   if ! command -v nginx >/dev/null 2>&1; then
     warn "nginx not on PATH — portal hub needs reverse proxy"
     if [[ "$CLAWLAB_PKG" == "brew" ]]; then
+      info "  installing nginx via brew..."
+      brew install nginx || warn "brew install nginx failed — run manually: brew install nginx"
+    else
       info "  brew install nginx"
-      if [[ "${CLAWLAB_LOCAL_FULL_AUTO_BREW:-0}" == "1" ]]; then
-        brew install nginx || true
-      fi
     fi
   fi
 

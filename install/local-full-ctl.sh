@@ -18,6 +18,9 @@ REPO="$(clawlab_repo_root "$0")"
 RUN="$CLAWLAB_RUN"
 mkdir -p "$RUN"
 
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+clawlab_prepend_openclaw_node_path || true
+
 log()  { printf '==> %s\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
@@ -54,7 +57,7 @@ start_bg() {
   : >"$logfile"
   nohup "$@" >>"$logfile" 2>&1 &
   echo $! >"$pidfile"
-  sleep 1
+  sleep 2
   if pid_alive "$pidfile"; then
     info "started $name (pid $(cat "$pidfile"), log $logfile)"
   else
@@ -70,6 +73,84 @@ stop_bg() {
     rm -f "$pidfile"
     info "stopped $name"
   fi
+}
+
+stop_openclaw_gateway() {
+  stop_bg openclaw-gateway
+  if port_open "${OPENCLAW_GATEWAY_PORT:-18789}"; then
+    pkill -f "dist/index.js gateway --port ${OPENCLAW_GATEWAY_PORT:-18789}" 2>/dev/null || true
+    pkill -f "openclaw gateway run --port ${OPENCLAW_GATEWAY_PORT:-18789}" 2>/dev/null || true
+  fi
+}
+
+port_open() {
+  local port="$1"
+  python3 - "$port" <<'PY'
+import socket, sys
+s = socket.socket()
+s.settimeout(0.3)
+try:
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+    sys.exit(0)
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+PY
+}
+
+load_openclaw_env() {
+  if [[ -f "$HOME/.openclaw/.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$HOME/.openclaw/.env"
+    set +a
+  fi
+  if [[ -f "$HOME/.openclaw/gateway.systemd.env" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$HOME/.openclaw/gateway.systemd.env"
+    set +a
+  fi
+  export OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}"
+}
+
+openclaw_gateway_js() {
+  local candidate oc="$HOME/.local/bin/openclaw"
+  for candidate in \
+    "$HOME/src/openclaw/dist/index.js" \
+    "$HOME/src/openclaw/openclaw.mjs"; do
+    [[ -f "$candidate" ]] && { printf '%s' "$candidate"; return 0; }
+  done
+  if [[ -e "$oc" ]]; then
+    python3 - "$oc" <<'PY'
+import os, sys
+print(os.path.realpath(sys.argv[1]))
+PY
+    return 0
+  fi
+  return 1
+}
+
+ensure_nginx_mime_types() {
+  local mt="$CLAWLAB_NGINX/mime.types"
+  [[ -f "$mt" ]] && return 0
+  for src in /opt/homebrew/etc/nginx/mime.types /usr/local/etc/nginx/mime.types /etc/nginx/mime.types; do
+    if [[ -f "$src" ]]; then cp "$src" "$mt"; return 0; fi
+  done
+  cat >"$mt" <<'MIME'
+types {
+    text/html                             html htm;
+    text/css                              css;
+    application/javascript              js;
+    application/json                      json;
+    image/png                             png;
+    image/jpeg                            jpeg jpg;
+    image/svg+xml                         svg svgz;
+    font/woff                             woff;
+    font/woff2                            woff2;
+}
+MIME
 }
 
 start_claw_auth() {
@@ -99,30 +180,62 @@ start_openclaw_gateway() {
     info "openclaw-gateway systemd unit already active"
     return 0
   fi
-  if command -v openclaw >/dev/null 2>&1; then
-    start_bg openclaw-gateway openclaw gateway start || \
-      start_bg openclaw-gateway openclaw gateway run --bind 127.0.0.1 --port 18789
-  else
-    warn "openclaw CLI not found"
+  if port_open "${OPENCLAW_GATEWAY_PORT:-18789}"; then
+    info "openclaw gateway already listening on :${OPENCLAW_GATEWAY_PORT:-18789}"
+    return 0
   fi
+  load_openclaw_env
+  local js
+  if js="$(openclaw_gateway_js 2>/dev/null)" && [[ -f "$js" ]]; then
+    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}" \
+      node "$js" gateway --port "${OPENCLAW_GATEWAY_PORT:-18789}" \
+      || warn "failed to start openclaw gateway — see $RUN/openclaw-gateway.log"
+    return 0
+  fi
+  if command -v openclaw >/dev/null 2>&1; then
+    start_bg openclaw-gateway env HOME="$HOME" OPENCLAW_GATEWAY_PORT="${OPENCLAW_GATEWAY_PORT:-18789}" \
+      openclaw gateway run --port "${OPENCLAW_GATEWAY_PORT:-18789}" --bind 127.0.0.1 \
+      || warn "failed to start openclaw gateway — see $RUN/openclaw-gateway.log"
+    return 0
+  fi
+  warn "openclaw not found — build via install-clawstack.sh"
 }
 
 start_nginx() {
-  command -v nginx >/dev/null 2>&1 || { warn "nginx not installed"; return 1; }
-  [[ -f "$CLAWLAB_NGINX/nginx.conf" ]] || { warn "missing $CLAWLAB_NGINX/nginx.conf — run install-clawstack.sh local-full first"; return 1; }
-  if pid_alive "$RUN/nginx.pid"; then
+  if ! command -v nginx >/dev/null 2>&1; then
+    if [[ "$CLAWLAB_PKG" == "brew" ]]; then
+      warn "nginx not installed — running: brew install nginx"
+      brew install nginx || { warn "brew install nginx failed"; return 1; }
+    else
+      warn "nginx not installed (brew install nginx)"
+      return 1
+    fi
+  fi
+  [[ -f "$CLAWLAB_NGINX/nginx.conf" ]] || {
+    warn "missing $CLAWLAB_NGINX/nginx.conf — re-run: bash install/install-clawstack.sh --local-full"
+    return 1
+  }
+  ensure_nginx_mime_types
+  if pid_alive "$RUN/nginx.pid" || port_open "${LOCAL_FULL_PORT:-8083}"; then
     info "nginx already running"
     return 0
   fi
-  nginx -t -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX" 2>/dev/null || {
-    warn "nginx config test failed"
+  if ! nginx -t -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX" 2>"$RUN/nginx-test.log"; then
+    warn "nginx config test failed — see $RUN/nginx-test.log"
+    tail -3 "$RUN/nginx-test.log" >&2 || true
     return 1
-  }
+  fi
   nginx -c "$CLAWLAB_NGINX/nginx.conf" -p "$CLAWLAB_NGINX"
   if [[ -f "$CLAWLAB_NGINX/logs/nginx.pid" ]]; then
     cp "$CLAWLAB_NGINX/logs/nginx.pid" "$RUN/nginx.pid"
   fi
-  info "started nginx on http://127.0.0.1:${LOCAL_FULL_PORT:-8083}"
+  sleep 1
+  if port_open "${LOCAL_FULL_PORT:-8083}"; then
+    info "started nginx on http://127.0.0.1:${LOCAL_FULL_PORT:-8083}"
+  else
+    warn "nginx started but :${LOCAL_FULL_PORT:-8083} not reachable — see $CLAWLAB_NGINX/logs/error.log"
+    return 1
+  fi
 }
 
 stop_nginx() {
@@ -157,7 +270,7 @@ cmd_stop() {
   stop_nginx
   stop_bg claw-auth
   stop_bg defenseclaw-webgui
-  stop_bg openclaw-gateway
+  stop_openclaw_gateway
   if command -v podman >/dev/null 2>&1; then
     podman rm -f ssh-ops-gui ssh-ops-mcp 2>/dev/null || true
     info "stopped ssh-ops podman containers"
@@ -169,15 +282,26 @@ cmd_status() {
   for s in claw-auth defenseclaw-webgui openclaw-gateway nginx; do
     if pid_alive "$RUN/$s.pid"; then
       printf '  OK   %-22s pid %s\n' "$s" "$(cat "$RUN/$s.pid")"
+    elif [[ "$s" == "openclaw-gateway" ]] && port_open "${OPENCLAW_GATEWAY_PORT:-18789}"; then
+      printf '  OK   %-22s listening :%s\n' "$s" "${OPENCLAW_GATEWAY_PORT:-18789}"
+    elif [[ "$s" == "nginx" ]] && port_open "${LOCAL_FULL_PORT:-8083}"; then
+      printf '  OK   %-22s listening :%s\n' "$s" "${LOCAL_FULL_PORT:-8083}"
     else
       printf '  --   %-22s not running\n' "$s"
+      [[ -f "$RUN/$s.log" ]] && tail -1 "$RUN/$s.log" 2>/dev/null | sed 's/^/         log: /' || true
     fi
   done
   if command -v podman >/dev/null 2>&1; then
     CLAWLAB_MANAGE_MCP=1 SSH_OPS_DIR="$REPO/ssh-ops-mcp" bash "$REPO/ssh-ops-mcp/podctl.sh" --status 2>/dev/null || true
   fi
   curl -fsS "http://127.0.0.1:8780/healthz" >/dev/null 2>&1 && echo "  OK   claw-auth healthz" || echo "  --   claw-auth healthz"
-  curl -fsS "http://127.0.0.1:${LOCAL_FULL_PORT:-8083}/" -o /dev/null 2>&1 && echo "  OK   portal :${LOCAL_FULL_PORT:-8083}" || echo "  --   portal :${LOCAL_FULL_PORT:-8083} (login required or nginx down)"
+  if curl -fsS "http://127.0.0.1:${LOCAL_FULL_PORT:-8083}/" -o /dev/null 2>/dev/null; then
+    echo "  OK   portal :${LOCAL_FULL_PORT:-8083}"
+  elif port_open "${LOCAL_FULL_PORT:-8083}"; then
+    echo "  OK   portal :${LOCAL_FULL_PORT:-8083} (auth redirect expected without login)"
+  else
+    echo "  --   portal :${LOCAL_FULL_PORT:-8083} (nginx down — brew install nginx; bash install/local-full-ctl.sh restart)"
+  fi
 }
 
 ACTION="${1:-status}"
