@@ -20,7 +20,8 @@
 #
 # Usage:
 #   bash install/install-clawstack.sh
-#   bash install/install-clawstack.sh --local-full
+#   bash install/install-clawstack.sh --local-full   # non-interactive defaults
+#   bash install/install-clawstack.sh --yes          # accept all defaults (any mode)
 #   bash install/install-clawstack.sh --local | --server
 #   bash install/install-clawstack.sh --skip-precheck
 #   bash install/preinstall-check.sh [--fix]
@@ -45,19 +46,57 @@ log()  { printf '%s==>%s %s\n' "$c_g$c_b" "$c_0" "$*"; }
 info() { printf '    %s\n' "$*"; }
 warn() { printf '%sWARN:%s %s\n' "$c_y" "$c_0" "$*" >&2; }
 die()  { printf '%sERROR:%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
-ask()  { local p="$1" d="${2:-}" a; if [ -n "$d" ]; then read -r -p "  $p [$d]: " a; echo "${a:-$d}"; else read -r -p "  $p: " a; echo "$a"; fi; }
-ask_secret() { local p="$1" a; read -r -s -p "  $p: " a; echo >&2; printf '%s' "$a"; }
-yesno() { local p="$1" d="${2:-y}" a; read -r -p "  $p [$( [ "$d" = y ] && echo 'Y/n' || echo 'y/N' )]: " a; a="${a:-$d}"; [[ "$a" =~ ^[Yy] ]]; }
+
+AUTO_DEFAULTS=0
+clawlab_refresh_auto_defaults() {
+  AUTO_DEFAULTS=0
+  [[ "${NONINTERACTIVE:-0}" -eq 1 || "$MODE" == "local-full" ]] && AUTO_DEFAULTS=1
+}
+
+ask() {
+  local p="$1" d="${2:-}" a
+  if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+    if [[ -n "$d" ]]; then
+      info "$p → $d"
+      echo "$d"
+    else
+      info "$p → (blank)"
+      echo ""
+    fi
+    return
+  fi
+  if [ -n "$d" ]; then read -r -p "  $p [$d]: " a; echo "${a:-$d}"; else read -r -p "  $p: " a; echo "$a"; fi
+}
+ask_secret() {
+  local p="$1" a=""
+  if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+    info "$p → (skipped in default mode)"
+    printf '%s' ""
+    return
+  fi
+  read -r -s -p "  $p: " a; echo >&2; printf '%s' "$a"
+}
+yesno() {
+  local p="$1" d="${2:-y}" a
+  if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+    info "$p → ${d} (default)"
+    [[ "$d" =~ ^[Yy] ]]
+    return
+  fi
+  read -r -p "  $p [$( [ "$d" = y ] && echo 'Y/n' || echo 'y/N' )]: " a; a="${a:-$d}"; [[ "$a" =~ ^[Yy] ]]
+}
 
 SKIP_PRECHECK=0
+NONINTERACTIVE=0
 MODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --skip-precheck) SKIP_PRECHECK=1 ;;
     --local) MODE=local ;;
-    --local-full) MODE=local-full ;;
+    --local-full) MODE=local-full; NONINTERACTIVE=1 ;;
     --server) MODE=server ;;
     --mode=*) MODE="${1#*=}" ;;
+    --yes|-y|--non-interactive) NONINTERACTIVE=1 ;;
     -h|--help) sed -n '1,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option: $1 (try --help)" ;;
   esac
@@ -66,6 +105,8 @@ done
 
 [[ -z "$MODE" || "$MODE" =~ ^(local|local-full|server)$ ]] \
   || die "mode must be local, local-full, or server (got: $MODE)"
+
+clawlab_refresh_auto_defaults
 
 [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root (sudo is used where needed)."
 if [[ "$CLAWLAB_PLATFORM" == "linux" ]]; then
@@ -85,12 +126,56 @@ clawlab_prepend_uv_path
 # python helper: merge a JSON fragment into openclaw.json (deep-ish for our keys)
 oc_json() { python3 - "$OC_HOME/openclaw.json" "$@"; }
 
+configure_ollama_provider() {
+  local models="${1:-llama3.1:8b}"
+  grep -q '^OLLAMA_API_KEY=' "$OC_ENV" 2>/dev/null || echo "OLLAMA_API_KEY=ollama" >> "$OC_ENV"
+  oc_json ollama ollama "http://127.0.0.1:11434" OLLAMA_API_KEY "$models" 200000 text <<'PY'
+import json,sys
+p, name, api, base, envvar, models_csv, ctx, imgcsv = sys.argv[1:]
+d=json.load(open(p))
+d.setdefault("models",{}).setdefault("providers",{})
+prov={"api":api,"apiKey":envvar,"baseUrl":base}
+inputs=[x for x in imgcsv.split(",") if x]
+mlist=[]
+for mid in [m.strip() for m in models_csv.split(",") if m.strip()]:
+    mlist.append({
+        "id":mid,"name":mid,"input":inputs,
+        "contextWindow":int(ctx or 200000),"maxTokens":8192,
+        "reasoning":True,
+        "compat":{"supportsTools":True,"supportsUsageInStreaming":True},
+        "cost":{"cacheRead":0,"cacheWrite":0,"input":0,"output":0},
+    })
+prov["models"]=mlist
+d["models"]["providers"][name]=prov
+d.setdefault("models",{}).setdefault("mode","merge")
+json.dump(d,open(p,"w"),indent=1)
+print("  provider",name,"->",len(mlist),"model(s), api="+api)
+PY
+  if command -v ollama >/dev/null 2>&1; then
+    clawlab_ensure_ollama_model "$CLAWLAB_AGENT_OLLAMA_TAG" \
+      || warn "ollama pull $CLAWLAB_AGENT_OLLAMA_TAG failed — pull manually before agent tests"
+  fi
+}
+
+openclaw_has_provider() {
+  local name="$1"
+  python3 - "$OC_HOME/openclaw.json" "$name" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+print("yes" if sys.argv[2] in d.get("models", {}).get("providers", {}) else "no")
+PY
+}
+
 # ============================================================ 0. PRECHECK ====
 if [[ "$SKIP_PRECHECK" -eq 0 ]]; then
   log "Running pre-install check (use --skip-precheck to bypass)"
   bash "$SCRIPT_DIR/preinstall-check.sh" || {
     warn "Pre-install check reported issues — review recommendations above."
-    yesno "Continue anyway?" n || die "Aborted. Fix issues or pass --skip-precheck."
+    if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+      warn "Continuing with defaults (local-full / --yes mode)."
+    else
+      yesno "Continue anyway?" n || die "Aborted. Fix issues or pass --skip-precheck."
+    fi
   }
   echo
 fi
@@ -107,6 +192,11 @@ if [[ -z "$MODE" ]]; then
   MODE="$(ask 'Install mode (local/local-full/server)' "$DEFAULT_MODE")"
 fi
 [[ "$MODE" =~ ^(local|local-full|server)$ ]] || die "mode must be local, local-full, or server"
+clawlab_refresh_auto_defaults
+
+if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+  info "Non-interactive defaults enabled (local-full or --yes)"
+fi
 
 if [[ "$MODE" == "local-full" ]] && ! clawlab_local_full_supported; then
   die "local-full mode requires macOS or Linux"
@@ -175,35 +265,43 @@ mkdir -p "$OC_HOME" "$DC_HOME"
 touch "$OC_ENV" "$DC_ENV"; chmod 600 "$OC_ENV" "$DC_ENV"
 
 # =================================================== 4. MODEL PROVIDERS (loop)
-log "Model providers (add one or more; blank name to finish)"
-while true; do
-  echo
-  PNAME="$(ask 'Provider id (anthropic / ollama / openai / …; blank = done)')"
-  [ -z "$PNAME" ] && break
-  case "$PNAME" in
-    anthropic) def_api="anthropic-messages"; def_base=""; def_img="text,image";;
-    ollama)    def_api="ollama";             def_base="http://127.0.0.1:11434"; def_img="text";;
-    openai)    def_api="openai-responses";   def_base=""; def_img="text,image";;
-    *)         def_api="openai-completions"; def_base=""; def_img="text";;
-  esac
-  PAPI="$(ask "  API type for $PNAME" "$def_api")"
-  PBASE="$(ask "  Base URL (blank = provider default)" "$def_base")"
-  ENVVAR="$(ask "  Env var name that will hold the API key" "$(echo "$PNAME" | tr a-z A-Z)_API_KEY")"
-  if [ "$PNAME" = ollama ]; then
-    info "  (local ollama ignores the key; a placeholder is fine)"; PKEY="ollama"
+if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+  log "Model providers (defaults: ollama / llama3.1:8b)"
+  if [[ "$(openclaw_has_provider ollama)" == yes ]]; then
+    info "  ollama provider already configured — keeping existing"
   else
-    PKEY="$(ask_secret "  API key for $PNAME (stored in $OC_ENV, not echoed)")"
+    configure_ollama_provider "llama3.1:8b"
   fi
-  if grep -q "^${ENVVAR}=" "$OC_ENV" 2>/dev/null; then
-    clawlab_sed_inplace "s|^${ENVVAR}=.*|${ENVVAR}=${PKEY}|" "$OC_ENV"
-  else
-    echo "${ENVVAR}=${PKEY}" >> "$OC_ENV"
-  fi
+else
+  log "Model providers (add one or more; blank name to finish)"
+  while true; do
+    echo
+    PNAME="$(ask 'Provider id (anthropic / ollama / openai / …; blank = done)')"
+    [ -z "$PNAME" ] && break
+    case "$PNAME" in
+      anthropic) def_api="anthropic-messages"; def_base=""; def_img="text,image";;
+      ollama)    def_api="ollama";             def_base="http://127.0.0.1:11434"; def_img="text";;
+      openai)    def_api="openai-responses";   def_base=""; def_img="text,image";;
+      *)         def_api="openai-completions"; def_base=""; def_img="text";;
+    esac
+    PAPI="$(ask "  API type for $PNAME" "$def_api")"
+    PBASE="$(ask "  Base URL (blank = provider default)" "$def_base")"
+    ENVVAR="$(ask "  Env var name that will hold the API key" "$(echo "$PNAME" | tr a-z A-Z)_API_KEY")"
+    if [ "$PNAME" = ollama ]; then
+      info "  (local ollama ignores the key; a placeholder is fine)"; PKEY="ollama"
+    else
+      PKEY="$(ask_secret "  API key for $PNAME (stored in $OC_ENV, not echoed)")"
+    fi
+    if grep -q "^${ENVVAR}=" "$OC_ENV" 2>/dev/null; then
+      clawlab_sed_inplace "s|^${ENVVAR}=.*|${ENVVAR}=${PKEY}|" "$OC_ENV"
+    else
+      echo "${ENVVAR}=${PKEY}" >> "$OC_ENV"
+    fi
 
-  MODELS="$(ask '  Model ids for this provider (comma-separated)' "$( [ "$PNAME" = anthropic ] && echo 'claude-sonnet-5,claude-haiku-4-5' || echo '' )")"
-  CTX="$(ask '  Context window for these models' '200000')"
+    MODELS="$(ask '  Model ids for this provider (comma-separated)' "$( [ "$PNAME" = anthropic ] && echo 'claude-sonnet-5,claude-haiku-4-5' || echo '' )")"
+    CTX="$(ask '  Context window for these models' '200000')"
 
-  oc_json "$PNAME" "$PAPI" "$PBASE" "$ENVVAR" "$MODELS" "$CTX" "$def_img" <<'PY'
+    oc_json "$PNAME" "$PAPI" "$PBASE" "$ENVVAR" "$MODELS" "$CTX" "$def_img" <<'PY'
 import json,sys
 p, name, api, base, envvar, models_csv, ctx, imgcsv = sys.argv[1:]
 d=json.load(open(p))
@@ -226,14 +324,21 @@ d.setdefault("models",{}).setdefault("mode","merge")
 json.dump(d,open(p,"w"),indent=1)
 print("  provider",name,"->",len(mlist),"model(s), api="+api)
 PY
-  yesno "Add another provider?" y || break
-done
+    yesno "Add another provider?" y || break
+  done
+fi
 
 # ============================================ 5. MODEL TIERING (primary/fallback)
 echo
 log "Default model tiering"
-PRIMARY="$(ask 'Primary model (provider/model)' 'ollama/llama3.1:8b')"
-FALLBACKS="$(ask 'Fallback model(s), comma-separated' 'anthropic/claude-sonnet-5')"
+if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+  PRIMARY="ollama/llama3.1:8b"
+  FALLBACKS=""
+  info "  primary → $PRIMARY (no cloud fallbacks in default local-full profile)"
+else
+  PRIMARY="$(ask 'Primary model (provider/model)' 'ollama/llama3.1:8b')"
+  FALLBACKS="$(ask 'Fallback model(s), comma-separated' 'anthropic/claude-sonnet-5')"
+fi
 oc_json "$PRIMARY" "$FALLBACKS" <<'PY'
 import json,sys
 p,primary,fb=sys.argv[1:]
@@ -245,19 +350,24 @@ PY
 
 # ================================================= 6. MCP SERVERS (iterative) =
 echo
-if [[ "$MODE" == "local-full" ]]; then
-  log "MCP servers (local-full will auto-register ssh-ops at http://127.0.0.1:8766/mcp)"
-  info "  Skip manual MCP entry unless you need extra servers (blank name at prompt to continue)"
-fi
-log "MCP servers (register existing endpoints; blank name to finish)"
-while true; do
-  echo
-  MNAME="$(ask 'MCP name (blank = done)')"
-  [ -z "$MNAME" ] && break
-  MURL="$(ask "  URL for $MNAME (e.g. https://host:8766/mcp)")"
-  MTRANS="$(ask "  Transport" 'streamable-http')"
-  MTOK="$(ask_secret "  Bearer token for $MNAME (blank if none)")"
-  oc_json "$MNAME" "$MURL" "$MTRANS" "$MTOK" <<'PY'
+if [[ "$AUTO_DEFAULTS" -eq 1 && "$MODE" == "local-full" ]]; then
+  log "MCP servers (local-full auto-registers ssh-ops at http://127.0.0.1:8766/mcp)"
+elif [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+  log "MCP servers (skipped in default mode — re-run without --yes to add)"
+else
+  if [[ "$MODE" == "local-full" ]]; then
+    log "MCP servers (local-full will auto-register ssh-ops at http://127.0.0.1:8766/mcp)"
+    info "  Skip manual MCP entry unless you need extra servers (blank name at prompt to continue)"
+  fi
+  log "MCP servers (register existing endpoints; blank name to finish)"
+  while true; do
+    echo
+    MNAME="$(ask 'MCP name (blank = done)')"
+    [ -z "$MNAME" ] && break
+    MURL="$(ask "  URL for $MNAME (e.g. https://host:8766/mcp)")"
+    MTRANS="$(ask "  Transport" 'streamable-http')"
+    MTOK="$(ask_secret "  Bearer token for $MNAME (blank if none)")"
+    oc_json "$MNAME" "$MURL" "$MTRANS" "$MTOK" <<'PY'
 import json,sys
 p,name,url,trans,tok=sys.argv[1:]
 d=json.load(open(p))
@@ -267,8 +377,9 @@ if tok: entry["headers"]={"Authorization":"Bearer "+tok}
 srv[name]=entry
 json.dump(d,open(p,"w"),indent=1); print("  registered MCP",name)
 PY
-  yesno "Add another MCP?" y || break
-done
+    yesno "Add another MCP?" y || break
+  done
+fi
 
 # ============================================ 7. GATEWAY BIND + ACCESS (mode) =
 echo
@@ -380,7 +491,18 @@ if [ -f "$CLAWLAB_REPO/admin-access/install-clawlab-guardrail-rules.sh" ]; then
     || warn "clawlab guardrail rules install failed"
 fi
 
-if yesno "Configure a Cisco Webex webhook for alerts?" y; then
+if [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
+  if [[ -n "${DEFENSECLAW_WEBEX_TOKEN:-}" && -n "${DEFENSECLAW_WEBEX_ROOM_ID:-}" ]]; then
+    log "Webex webhook (from environment)"
+    grep -q '^DEFENSECLAW_WEBEX_TOKEN=' "$DC_ENV" || echo "DEFENSECLAW_WEBEX_TOKEN=${DEFENSECLAW_WEBEX_TOKEN}" >> "$DC_ENV"
+    defenseclaw setup webhook add --type webex --name webex \
+      --url https://webexapis.com/v1/messages --room-id "$DEFENSECLAW_WEBEX_ROOM_ID" \
+      --secret-env DEFENSECLAW_WEBEX_TOKEN --min-severity HIGH >/dev/null 2>&1 \
+      || warn "webhook add returned non-zero; add it manually"
+  else
+    info "Webex alerts skipped (set DEFENSECLAW_WEBEX_TOKEN + DEFENSECLAW_WEBEX_ROOM_ID to enable)"
+  fi
+elif yesno "Configure a Cisco Webex webhook for alerts?" y; then
   WEBEX_TOKEN="$(ask_secret '  Webex bot token')"
   WEBEX_ROOM="$(ask '  Webex room id')"
   grep -q '^DEFENSECLAW_WEBEX_TOKEN=' "$DC_ENV" || echo "DEFENSECLAW_WEBEX_TOKEN=$WEBEX_TOKEN" >> "$DC_ENV"

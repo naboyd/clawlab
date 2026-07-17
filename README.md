@@ -54,9 +54,9 @@ cd ~/clawlab
 # 1 — prerequisites (optional --fix)
 bash install/preinstall-check.sh --fix
 
-# 2 — full desktop stack on Mac (portal + MCP + Claw); use local for agent-only
-bash install/install-clawstack.sh
-# at prompt: local-full   (default on macOS)
+# 2 — full desktop stack on Mac (non-interactive defaults with --local-full)
+bash install/install-clawstack.sh --local-full
+# or interactive: bash install/install-clawstack.sh  (default mode local-full on macOS)
 
 # 3 — production HTTPS portal on Linux lab host (skip on Mac local-full)
 bash claw-portals/install-portals.sh
