@@ -1,0 +1,38 @@
+{
+  "default": "alice:latest",
+  "router": {
+    "model": "tool-selector-v5:latest",
+    "min_confidence": 0.6,
+    "enabled": false
+  },
+  "entries": [
+    {
+      "domain": "network",
+      "model": "alice:latest",
+      "enabled": true,
+      "notes": "ssh-ops IOS-XE baseline — Phase 0 fixed primary"
+    },
+    {
+      "domain": "splunk",
+      "model": "alice-splunk:latest",
+      "enabled": false,
+      "notes": "Future specialist"
+    },
+    {
+      "domain": "config",
+      "model": "alice-config:latest",
+      "enabled": false,
+      "notes": "Future specialist"
+    },
+    {
+      "domain": "general",
+      "model": "llama3.1:8b",
+      "enabled": false,
+      "notes": "Fallback when router confidence low"
+    }
+  ],
+  "fallbacks": [
+    "llama3.1:8b",
+    "anthropic/claude-sonnet-5"
+  ]
+}
