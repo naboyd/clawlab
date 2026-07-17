@@ -16,9 +16,59 @@ run_timeout() {
   fi
 }
 
-# Load MCP auth/url from openclaw.json; fall back to direct :8766 when identity proxy is down.
+mcp_ssh_ops_data_dir() {
+  printf '%s\n' "${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
+}
+
+# Source of truth for MCP bearer auth (matches ssh-ops MCP server + Admin UI).
+mcp_load_ssh_ops_token() {
+  local repo="${REPO:-}" data token
+  data="$(mcp_ssh_ops_data_dir)"
+  [[ -f "$data/.env" && -f "$data/master.key" ]] || return 1
+  token="$(
+    SSH_OPS_CONFIG="$data/hosts.yaml" \
+    SSH_OPS_ENV="$data/.env" \
+    SSH_OPS_KEYFILE="$data/master.key" \
+    PYTHONPATH="${repo}/ssh-ops-mcp" \
+    python3 -c 'import secrets_store; print(secrets_store.ensure_mcp_token())' 2>/dev/null \
+    || true
+  )"
+  [[ -n "$token" ]] || return 1
+  printf 'Bearer %s' "$token"
+}
+
+mcp_sync_openclaw_auth() {
+  local auth="${1:-}"
+  [[ -n "$auth" ]] || return 1
+  python3 - "$auth" <<'PY' 2>/dev/null || return 1
+import json, os, sys
+auth = sys.argv[1]
+p = os.path.expanduser("~/.openclaw/openclaw.json")
+if not os.path.isfile(p):
+    raise SystemExit(1)
+d = json.load(open(p))
+entry = d.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
+entry.setdefault("url", "http://127.0.0.1:8766/mcp")
+entry.setdefault("transport", "streamable-http")
+entry["headers"] = {"Authorization": auth}
+json.dump(d, open(p, "w"), indent=1)
+print("synced openclaw.json ssh-ops MCP auth")
+PY
+}
+
+# Load MCP auth/url from ssh-ops secrets (preferred) then openclaw.json.
 mcp_load_config() {
-  MCP_AUTH=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization'])" 2>/dev/null || true)
+  local oc_auth="" file_auth=""
+  oc_auth=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization'])" 2>/dev/null || true)
+  file_auth=$(mcp_load_ssh_ops_token || true)
+  if [[ -n "$file_auth" ]]; then
+    MCP_AUTH="$file_auth"
+    if [[ -n "$oc_auth" && "$oc_auth" != "$file_auth" ]]; then
+      mcp_sync_openclaw_auth "$file_auth" >/dev/null || true
+    fi
+  else
+    MCP_AUTH="$oc_auth"
+  fi
   MCP_URL=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['url'])" 2>/dev/null || true)
   if [ -n "$MCP_URL" ] && echo "$MCP_URL" | grep -q ':8767'; then
     local code
@@ -35,6 +85,92 @@ mcp_load_config() {
   if [ -z "$MCP_URL" ]; then
     MCP_URL="${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"
   fi
+}
+
+# Parse list_hosts MCP JSON -> newline "name<TAB>kind" (linux|network).
+mcp_list_hosts_rows() {
+  local r="${1:-}"
+  [[ -n "$r" ]] || return 1
+  echo "$r" | python3 - <<'PY'
+import json, sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+except json.JSONDecodeError:
+    raise SystemExit(1)
+hosts = []
+
+def ingest(rows):
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        if not name:
+            continue
+        kind = str(row.get("kind") or "").strip().lower()
+        if not kind:
+            plat = str(row.get("platform") or "linux").strip().lower()
+            kind = "network" if plat not in ("linux", "unix", "") else "linux"
+        hosts.append((name, kind))
+
+result = d.get("result") or {}
+for block in result.get("content") or []:
+    if isinstance(block, dict) and block.get("type") == "text":
+        try:
+            ingest(json.loads(block.get("text") or "[]"))
+        except json.JSONDecodeError:
+            pass
+        break
+sc = result.get("structuredContent")
+if isinstance(sc, list):
+    ingest(sc)
+elif isinstance(sc, dict):
+    ingest(sc.get("hosts") or [])
+if not hosts and isinstance(d.get("result"), list):
+    ingest(d.get("result"))
+for name, kind in hosts:
+    print(f"{name}\t{kind}")
+PY
+}
+
+mcp_list_host_names() {
+  mcp_session_start
+  local r
+  r=$(mcp_tool_call list_hosts '{}')
+  mcp_list_hosts_rows "$r" | cut -f1
+}
+
+mcp_pick_linux_host() {
+  local prefer="${1:-}"
+  mcp_session_start
+  local r row name kind
+  r=$(mcp_tool_call list_hosts '{}')
+  if [[ -n "$prefer" ]] && mcp_list_hosts_rows "$r" | awk -F '\t' -v p="$prefer" '$1==p && $2=="linux"{found=1} END{exit !found}'; then
+    echo "$prefer"
+    return 0
+  fi
+  while IFS=$'\t' read -r name kind; do
+    [[ "$kind" == linux ]] || continue
+    if [[ "$(mcp_run_command_verdict "$name" "true")" == allow ]]; then
+      echo "$name"
+      return 0
+    fi
+  done < <(mcp_list_hosts_rows "$r" || true)
+  return 1
+}
+
+mcp_pick_network_host() {
+  local prefer="${1:-}"
+  mcp_session_start
+  local r
+  r=$(mcp_tool_call list_hosts '{}')
+  if [[ -n "$prefer" ]] && mcp_list_hosts_rows "$r" | awk -F '\t' -v p="$prefer" '$1==p && $2=="network"{found=1} END{exit !found}'; then
+    echo "$prefer"
+    return 0
+  fi
+  mcp_list_hosts_rows "$r" | awk -F '\t' '$2=="network"{print $1; exit}'
 }
 
 _mcp_inventory_paths() {
@@ -75,7 +211,7 @@ PY
 mcp_inventory_ready() {
   local paths
   paths=$(_mcp_inventory_paths)
-  SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" MCP_INVENTORY_PATHS="$paths" python3 - <<'PY' 2>/dev/null
+  if SSH_OPS_CONFIG="${SSH_OPS_CONFIG:-}" MCP_INVENTORY_PATHS="$paths" python3 - <<'PY' 2>/dev/null
 import os, sys
 from pathlib import Path
 try:
@@ -88,14 +224,20 @@ for raw in (os.environ.get("MCP_INVENTORY_PATHS") or "").splitlines():
         continue
     cfg = yaml.safe_load(path.read_text()) or {}
     hosts = cfg.get("hosts") or {}
-    if not isinstance(hosts, dict):
-        continue
-    for host in hosts.values():
-        plat = str(host.get("platform", "linux") or "linux").strip().lower()
-        if plat in ("linux", "unix", ""):
-            raise SystemExit(0)
+    if isinstance(hosts, dict) and len(hosts) > 0:
+        raise SystemExit(0)
 raise SystemExit(1)
 PY
+  then
+    return 0
+  fi
+  # Fall back to live MCP inventory (discovery may have imported network-only hosts).
+  [[ -n "${MCP_AUTH:-}" && -n "${MCP_URL:-}" ]] || return 1
+  mcp_session_start
+  local r
+  r=$(mcp_tool_call list_hosts '{}')
+  [[ -n "$r" ]] || return 1
+  mcp_list_hosts_rows "$r" | grep -q .
 }
 
 mcp_discover_net_host() {
@@ -127,27 +269,7 @@ mcp_host_known() {
   mcp_session_start
   local r
   r=$(mcp_tool_call list_hosts '{}')
-  echo "$r" | python3 -c "
-import json, sys
-want = sys.argv[1]
-d = json.load(sys.stdin)
-names = []
-for block in (d.get('result') or {}).get('content') or []:
-    if isinstance(block, dict) and block.get('type') == 'text':
-        try:
-            rows = json.loads(block.get('text') or '[]')
-        except json.JSONDecodeError:
-            rows = []
-        if isinstance(rows, list):
-            names.extend(r.get('name') for r in rows if isinstance(r, dict) and r.get('name'))
-        break
-sc = (d.get('result') or {}).get('structuredContent') or {}
-if isinstance(sc, list):
-    names.extend(x.get('name') for x in sc if isinstance(x, dict) and x.get('name'))
-elif isinstance(sc, dict):
-    names.extend(x.get('name') for x in (sc.get('hosts') or []) if isinstance(x, dict) and x.get('name'))
-raise SystemExit(0 if want in names else 1)
-" "$host" 2>/dev/null
+  mcp_list_hosts_rows "$r" | awk -F '\t' -v h="$host" '$1==h{found=1} END{exit !found}'
 }
 
 # Last JSON object from MCP streamable-http (SSE data: lines) or plain JSON body.
@@ -225,9 +347,17 @@ mcp_probe_ready() {
     return 1
   fi
   if echo "$r" | grep -qiE '"error"|"message".*not found|connection refused|unauthorized|401|403'; then
-    echo "MCP error: $(echo "$r" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',{}).get('message',d))" 2>/dev/null || echo "$r" | head -c 120)"
+    if echo "$r" | grep -qi unauthorized; then
+      echo "MCP auth failed (stale openclaw.json token?) — re-run: bash install/local-full-ctl.sh restart"
+    else
+      echo "MCP error: $(echo "$r" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('error',{}).get('message',d))" 2>/dev/null || echo "$r" | head -c 120)"
+    fi
     return 1
   fi
+  mcp_list_hosts_rows "$r" | grep -q . || {
+    echo "MCP list_hosts returned no inventory (empty hosts.yaml?)"
+    return 1
+  }
   return 0
 }
 

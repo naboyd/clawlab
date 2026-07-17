@@ -327,6 +327,7 @@ cmd_start() {
   start_defenseclaw_webgui
   start_openclaw_gateway
   start_ssh_ops
+  clawlab_local_full_register_mcp "$REPO" || true
   start_mcp_identity_proxy
   start_aux_services
   start_nginx || die "nginx required for local-full portal — fix errors above and retry"
