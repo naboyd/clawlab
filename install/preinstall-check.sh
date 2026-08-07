@@ -441,9 +441,21 @@ if [[ "$MODE" == "local-full" ]]; then
     pass "nginx (portal hub reverse proxy on :8083)"
   else
     warn "nginx not found (required for local-full portal hub)"
-    need_item "nginx (brew install nginx)"
-    rec "brew install nginx"
-    maybe_fix "brew install nginx"
+    need_item "nginx"
+    case "$CLAWLAB_PKG" in
+      apt) rec "sudo apt-get install -y nginx"; maybe_fix "sudo apt-get install -y nginx" ;;
+      brew) rec "brew install nginx"; maybe_fix "brew install nginx" ;;
+      *) rec "install nginx via your OS package manager" ;;
+    esac
+  fi
+  if [[ "$CLAWLAB_PLATFORM" == "linux" ]] && command -v podman >/dev/null 2>&1; then
+    if clawlab_podman_ready; then
+      pass "podman runtime ready (local-full MCP)"
+    else
+      fail "podman installed but not running"
+      need_item "podman.socket (systemctl --user enable --now podman.socket)"
+      rec "systemctl --user enable --now podman.socket"
+    fi
   fi
   if clawlab_local_full_supported; then
     pass "local-full supported on $CLAWLAB_PLATFORM"

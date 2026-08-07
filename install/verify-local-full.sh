@@ -141,7 +141,7 @@ else
 fi
 
 echo
-if [[ "$(uname -s)" == Darwin ]]; then
+if clawlab_local_full_supported; then
   if clawlab_local_full_doctor "$REPO"; then
     ok "local-full doctor"
   else
