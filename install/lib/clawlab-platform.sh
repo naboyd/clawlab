@@ -287,6 +287,39 @@ clawlab_ollama_has_model() {
   ollama list 2>/dev/null | awk 'NR>1 {print $1}' | grep -Fxq "$tag"
 }
 
+# Approximate pull sizes (GiB) for greenfield disk planning (agent + judge + buffer).
+CLAWLAB_OLLAMA_AGENT_SIZE_GIB="${CLAWLAB_OLLAMA_AGENT_SIZE_GIB:-5}"
+CLAWLAB_OLLAMA_JUDGE_SIZE_GIB="${CLAWLAB_OLLAMA_JUDGE_SIZE_GIB:-9}"
+CLAWLAB_OLLAMA_DISK_BUFFER_GIB="${CLAWLAB_OLLAMA_DISK_BUFFER_GIB:-5}"
+
+clawlab_disk_free_gib() {
+  local path="${1:-$HOME}"
+  df -g "$path" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+clawlab_ollama_data_dir_gib() {
+  local dir="${1:-$HOME/.ollama}"
+  [[ -d "$dir" ]] || return 1
+  du -sg "$dir" 2>/dev/null | awk '{print $1}'
+}
+
+clawlab_ollama_missing_pull_gib() {
+  local need=0
+  if ! clawlab_ollama_has_model "$CLAWLAB_AGENT_OLLAMA_TAG" 2>/dev/null; then
+    need=$((need + CLAWLAB_OLLAMA_AGENT_SIZE_GIB))
+  fi
+  if ! clawlab_ollama_has_model "$CLAWLAB_JUDGE_OLLAMA_TAG" 2>/dev/null; then
+    need=$((need + CLAWLAB_OLLAMA_JUDGE_SIZE_GIB))
+  fi
+  echo "$need"
+}
+
+clawlab_ollama_required_disk_gib() {
+  local missing
+  missing="$(clawlab_ollama_missing_pull_gib)"
+  echo $((missing + CLAWLAB_OLLAMA_DISK_BUFFER_GIB))
+}
+
 clawlab_ensure_ollama_model() {
   local tag="$1"
   command -v ollama >/dev/null 2>&1 || return 1

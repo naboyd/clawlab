@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 # verify-local-full.sh — post-install checks for macOS/Linux local-full stack
+#
+# Usage:
+#   bash install/verify-local-full.sh
+#   bash install/verify-local-full.sh --mcp-ping   # also run tests/mcp-ping.sh
+#
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -8,8 +13,21 @@ REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
 
 PORT="${LOCAL_FULL_PORT:-8083}"
+MCP_PING=0
 PASS=0
 FAIL=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mcp-ping) MCP_PING=1 ;;
+    -h|--help)
+      sed -n '1,7p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
 warn() { printf 'WARN: %s\n' "$*" >&2; }
 ok() { printf '  OK   %s\n' "$*"; PASS=$((PASS + 1)); }
 bad() { printf '  FAIL %s\n' "$*"; FAIL=$((FAIL + 1)); }
@@ -44,7 +62,20 @@ check_port openclaw-gateway 18789
 check_port ssh-ops-gui 8765
 check_port ssh-ops-mcp 8766
 check_port mcp-identity-proxy 8767
+check_port defenseclaw-sidecar 18970
 check_port portal-nginx "$PORT"
+
+if clawlab_local_full_sidecar_ok; then
+  ok "DefenseClaw sidecar :18970 listening"
+else
+  bad "DefenseClaw sidecar :18970 not listening (defenseclaw-gateway restart)"
+fi
+
+if clawlab_local_full_guardrails_ok; then
+  ok "DefenseClaw revshell + user CRUD rules blocking"
+else
+  bad "DefenseClaw revshell rules not blocking (install-clawlab-guardrail-rules.sh + gateway restart)"
+fi
 
 curl -fsS "http://127.0.0.1:8780/healthz" >/dev/null 2>&1 && ok "claw-auth /healthz" || bad "claw-auth /healthz"
 
@@ -111,7 +142,21 @@ fi
 
 echo
 if [[ "$(uname -s)" == Darwin ]]; then
-  clawlab_local_full_doctor "$REPO" || true
+  if clawlab_local_full_doctor "$REPO"; then
+    ok "local-full doctor"
+  else
+    bad "local-full doctor (fix items above)"
+  fi
+fi
+
+if [[ "$MCP_PING" -eq 1 && -x "$REPO/tests/mcp-ping.sh" ]]; then
+  echo
+  echo "--- mcp-ping ---"
+  if bash "$REPO/tests/mcp-ping.sh"; then
+    ok "mcp-ping"
+  else
+    bad "mcp-ping (see output above)"
+  fi
 fi
 
 echo

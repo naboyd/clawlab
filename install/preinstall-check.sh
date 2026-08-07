@@ -6,7 +6,8 @@
 # Usage:
 #   bash install/preinstall-check.sh
 #   bash install/preinstall-check.sh --fix          # apt/brew only, conservative
-#   bash install/preinstall-check.sh --mode=server  # include server/TLS checks
+#   bash install/preinstall-check.sh --mode=server      # include server/TLS checks
+#   bash install/preinstall-check.sh --mode=local-full  # Mac/desktop loopback stack
 #
 set -Eeuo pipefail
 
@@ -218,6 +219,28 @@ else
   need_item "ollama (https://ollama.com) for local agent/judge models"
   rec "install ollama, then: ollama pull $CLAWLAB_AGENT_OLLAMA_TAG"
 fi
+
+free_gib="$(clawlab_disk_free_gib "$HOME" 2>/dev/null || true)"
+need_gib="$(clawlab_ollama_required_disk_gib 2>/dev/null || echo 0)"
+missing_pull="$(clawlab_ollama_missing_pull_gib 2>/dev/null || echo 0)"
+if ollama_used="$(clawlab_ollama_data_dir_gib 2>/dev/null)" && [[ -n "$ollama_used" ]]; then
+  pass "ollama data dir ~${ollama_used} GiB (~/.ollama)"
+fi
+if [[ -n "$free_gib" ]]; then
+  if [[ "${missing_pull:-0}" -eq 0 ]]; then
+    pass "disk ${free_gib} GiB free (agent + judge models present; ~${need_gib} GiB buffer recommended)"
+  elif [[ "$free_gib" -ge "$need_gib" ]]; then
+    pass "disk ${free_gib} GiB free (need ~${need_gib} GiB for pulls: ~${missing_pull} GiB models + ${CLAWLAB_OLLAMA_DISK_BUFFER_GIB} GiB buffer)"
+  else
+    fail "disk ${free_gib} GiB free — need ~${need_gib} GiB to pull missing models"
+    need_item "~${need_gib} GiB free disk (~${missing_pull} GiB for agent/judge pulls + ${CLAWLAB_OLLAMA_DISK_BUFFER_GIB} GiB buffer)"
+    rec "Free space or remove unused ollama models: ollama list && ollama rm <name>"
+    rec "Required: ollama pull $CLAWLAB_AGENT_OLLAMA_TAG (~${CLAWLAB_OLLAMA_AGENT_SIZE_GIB} GiB)"
+    rec "Required: ollama pull $CLAWLAB_JUDGE_OLLAMA_TAG (~${CLAWLAB_OLLAMA_JUDGE_SIZE_GIB} GiB)"
+  fi
+else
+  warn "could not read disk free space for $HOME"
+fi
 echo
 
 echo "--- openclaw / defenseclaw ---"
@@ -398,6 +421,34 @@ if [[ "$MODE" == "server" ]]; then
     need_item "Linux lab host for HTTPS ingress (claw-portals/install-portals.sh)"
     rec "Use $REPO/claw-portals/install-portals.sh on the lab server (unified :8443 + claw-auth)"
     rec "On macOS dev: run local mode + podman; deploy portals on icecream"
+  fi
+  echo
+fi
+
+if [[ "$MODE" == "local-full" ]]; then
+  echo "--- local-full (Mac/desktop loopback stack) ---"
+  # shellcheck source=lib/clawlab-local-full.sh
+  source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
+  if [[ "$CLAWLAB_PLATFORM" == "macos" ]]; then
+    if clawlab_local_full_ssh_loopback_ok; then
+      pass "Remote Login / loopback SSH (${USER}@127.0.0.1)"
+    else
+      fail "Remote Login disabled — System Settings → General → Sharing → Remote Login"
+      need_item "Enable Remote Login (MCP Podman → Mac SSH probes for policy-test.sh)"
+    fi
+  fi
+  if command -v nginx >/dev/null 2>&1; then
+    pass "nginx (portal hub reverse proxy on :8083)"
+  else
+    warn "nginx not found (required for local-full portal hub)"
+    need_item "nginx (brew install nginx)"
+    rec "brew install nginx"
+    maybe_fix "brew install nginx"
+  fi
+  if clawlab_local_full_supported; then
+    pass "local-full supported on $CLAWLAB_PLATFORM"
+  else
+    fail "local-full requires macOS or Linux"
   fi
   echo
 fi
