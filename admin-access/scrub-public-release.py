@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parents[1]
 # Order matters: longer / more specific patterns first.
 REPLACEMENTS: list[tuple[str, str]] = [
     ("icecream.naboydciscolab.com", "lab.example.com"),
-    ("github.com/nabboyd/clawlab", "github.com/cisco/clawlab"),
+    ("github.com/nabboyd/clawlab", "github.com/naboyd/clawlab"),
     ("192.168.128.93", "192.168.1.10"),
     ("192.168.128.42", "192.168.1.42"),
     ("192.168.128.10", "192.168.1.10"),

@@ -56,7 +56,7 @@ Run these in order on a **new host**. Each step is idempotent (safe to re-run).
 | **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, portal tabs, LE TLS (optional) | **Linux lab host** after step 2 (Linux HTTPS production path) |
 
 ```bash
-git clone https://github.com/cisco/clawlab.git ~/clawlab
+git clone https://github.com/naboyd/clawlab.git ~/clawlab
 cd ~/clawlab
 
 # 1 — prerequisites (optional --fix)
