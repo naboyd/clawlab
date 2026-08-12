@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-CLAWLAB_REPO_DEFAULT = SCRIPT_DIR.parent.parent  # admin-access/hannah-network-v2 -> clawlab root
+CLAWLAB_REPO_DEFAULT = SCRIPT_DIR.parent.parent  # admin-access/training-network-specialist -> clawlab root
 
 
 def resolve_clawlab_repo(explicit: str | None) -> Path:
@@ -64,7 +64,7 @@ def discover_ssh_ops_tools(server_py: Path) -> list[str]:
 
 
 CLAWLAB_SYSTEM = (
-    "You are Hannah, an AI network engineer using the clawlab ssh-ops MCP from OpenClaw. "
+    "You are a network operations agent, an AI network engineer using the clawlab ssh-ops MCP from OpenClaw. "
     "Always invoke tools via tool_calls (never print fake syntax like ssh-ops__run_command in prose). "
     "Host names must come from list_hosts — use the configured name (e.g. C9300-24P), not invented labels. "
     "On Cisco IOS/IOS-XE use read-only show/dir/ping/traceroute via run_command unless the user explicitly "
@@ -95,7 +95,7 @@ def build_examples() -> list[dict[str, Any]]:
     hosts_sample = [
         {"name": "C9300-24P", "kind": "network", "platform": "cisco_ios", "allow_write": True},
         {"name": "Nuc03", "kind": "linux", "platform": "linux", "allow_write": False},
-        {"name": "icecream.naboydciscolab.com", "kind": "linux", "auto_update": True},
+        {"name": "lab.example.com", "kind": "linux", "auto_update": True},
         {"name": "c9800l", "kind": "network", "platform": "cisco_ios"},
     ]
 
@@ -124,7 +124,7 @@ def build_examples() -> list[dict[str, Any]]:
                 {"role": "tool", "content": json.dumps(hosts_sample)},
                 {
                     "role": "assistant",
-                    "content": "Configured hosts: C9300-24P, Nuc03, icecream.naboydciscolab.com, c9800l.",
+                    "content": "Configured hosts: C9300-24P, Nuc03, lab.example.com, c9800l.",
                 },
             ]
         )
@@ -243,14 +243,14 @@ def build_examples() -> list[dict[str, Any]]:
                         {
                             "host": "c9300-24-office",
                             "command": "show ip interface brief",
-                            "stdout": "Interface              IP-Address      OK? Method Status                Protocol\nVlan1                  192.168.128.10  YES NVRAM  up                    up",
+                            "stdout": "Interface              IP-Address      OK? Method Status                Protocol\nVlan1                  192.168.1.10  YES NVRAM  up                    up",
                             "exit_code": 0,
                         }
                     ),
                 },
                 {
                     "role": "assistant",
-                    "content": "Vlan1 is up/up with IP 192.168.128.10 on c9300-24-office (from show ip interface brief).",
+                    "content": "Vlan1 is up/up with IP 192.168.1.10 on c9300-24-office (from show ip interface brief).",
                 },
             ]
         )
@@ -276,14 +276,14 @@ def build_examples() -> list[dict[str, Any]]:
                         {
                             "host": "C9300-24P",
                             "command": "show run | include ntp",
-                            "stdout": "ntp server 192.168.128.4",
+                            "stdout": "ntp server 192.168.1.4",
                             "exit_code": 0,
                         }
                     ),
                 },
                 {
                     "role": "assistant",
-                    "content": "NTP config on C9300-24P: ntp server 192.168.128.4",
+                    "content": "NTP config on C9300-24P: ntp server 192.168.1.4",
                 },
             ]
         )
@@ -294,7 +294,7 @@ def build_examples() -> list[dict[str, Any]]:
             [
                 {
                     "role": "user",
-                    "content": "Check openclaw-gateway status on icecream.naboydciscolab.com (read only).",
+                    "content": "Check openclaw-gateway status on lab.example.com (read only).",
                 },
                 {
                     "role": "assistant",
@@ -303,7 +303,7 @@ def build_examples() -> list[dict[str, Any]]:
                         tc(
                             "run_command",
                             {
-                                "host": "icecream.naboydciscolab.com",
+                                "host": "lab.example.com",
                                 "command": "systemctl --user is-active openclaw-gateway",
                             },
                         )
@@ -313,7 +313,7 @@ def build_examples() -> list[dict[str, Any]]:
                     "role": "tool",
                     "content": json.dumps(
                         {
-                            "host": "icecream.naboydciscolab.com",
+                            "host": "lab.example.com",
                             "command": "systemctl --user is-active openclaw-gateway",
                             "stdout": "active",
                             "exit_code": 0,
@@ -322,7 +322,7 @@ def build_examples() -> list[dict[str, Any]]:
                 },
                 {
                     "role": "assistant",
-                    "content": "openclaw-gateway is **active** on icecream.naboydciscolab.com.",
+                    "content": "openclaw-gateway is **active** on lab.example.com.",
                 },
             ]
         )

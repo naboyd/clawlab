@@ -35,8 +35,8 @@ ALICE_SYSTEM = (
 
 # Optional map from collected device id -> ssh-ops hosts.yaml name
 HOST_ALIASES = {
-    "192.168.128.42": "c9300-24-office",
-    "192.168.128.93": "icecream.naboydciscolab.com",
+    "192.168.1.42": "c9300-24-office",
+    "192.168.1.10": "lab.example.com",
 }
 
 

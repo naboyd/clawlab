@@ -1,7 +1,7 @@
 # clawlab architecture
 
-Self-hosted AI-ops lab on host **icecream** (`icecream.naboydciscolab.com`, LAN
-`192.168.128.93`). Governed OpenClaw agent, Cisco DefenseClaw policy enforcement,
+Self-hosted AI-ops lab on a **Linux lab host** (`lab.example.com`, LAN
+`192.168.1.10`). Governed OpenClaw agent, Cisco DefenseClaw policy enforcement,
 hardened ssh-ops MCP, and a unified HTTPS admin portal.
 
 > **Secrets never live in git.** Tokens, API keys, Fernet keys, and LE private keys
@@ -10,6 +10,17 @@ hardened ssh-ops MCP, and a unified HTTPS admin portal.
 ---
 
 ## High-level view
+
+**System component diagram:** [clawlab-architecture-overview.png](clawlab-architecture-overview.png)
+(whiteboard layout). **Command flow (pass vs judge deny):**
+[clawlab-command-flow-pass-deny.png](clawlab-command-flow-pass-deny.png).
+**Demo & policy-test matrix:**
+[clawlab-demo-test-matrix.png](clawlab-demo-test-matrix.png).
+Regenerate: `python3 admin-access/render-architecture-overview-diagram.py`,
+`python3 admin-access/render-command-flow-diagram.py`, and
+`python3 admin-access/render-demo-test-matrix-diagram.py`.
+Detailed enforcement steps: [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) or
+[clawlab-policy-enforcement-flow.html](clawlab-policy-enforcement-flow.html).
 
 ```text
                          Internet / LAN
@@ -52,7 +63,7 @@ loopback only.
 
 ## Unified portal
 
-**Bookmark:** `https://icecream.naboydciscolab.com:8443/`
+**Bookmark:** `https://lab.example.com:8443/`
 
 | Path | Backend | Auth |
 |------|---------|------|
@@ -247,8 +258,13 @@ see `docs/ios-xe-command-reference-index.yaml`).
 
 ![Policy enforcement flow](clawlab-policy-enforcement-flow.png)
 
-Regenerate after layout edits: `python3 admin-access/render-policy-flow-diagram.py`
+**Interactive whiteboard (recommended):** open
+[docs/clawlab-policy-enforcement-flow.html](clawlab-policy-enforcement-flow.html) in a browser —
+pan/zoom, click any box for details, optional focus path.
+
+Regenerate static PNG after layout edits: `python3 admin-access/render-policy-flow-diagram.py`
 (source: `docs/clawlab-policy-enforcement-flow.mmd`, renderer: `admin-access/render-policy-flow-diagram.py`).
+Interactive HTML source: `docs/clawlab-policy-enforcement-flow.html`.
 
 Merge DefenseClaw rules after policy edits:
 
@@ -294,7 +310,7 @@ by the DefenseClaw CLI into `~/.defenseclaw/policies/`.
 
 ---
 
-## Key paths on icecream
+## Key paths on the lab host
 
 | Path | Purpose |
 |------|---------|
@@ -358,7 +374,7 @@ See **[Troubleshooting scripts.md](Troubleshooting%20scripts.md)** for the full 
 
 ## Demo one-pager
 
-**URL:** `https://icecream.naboydciscolab.com:8443/`
+**URL:** `https://lab.example.com:8443/`
 
 1. Sign in (claw-auth).
 2. **MCP Admin** — ssh-ops host inventory and tokens (iframe).
@@ -371,4 +387,7 @@ deny/approve/allow modes), four-eyes change approval, OPA admission actions.
 
 **What alerts:** Webex bridge on HIGH/CRITICAL audit events and change apply/self-approval blocks.
 
-**Diagram:** [docs/clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png)
+**Diagrams:** [System overview PNG](clawlab-architecture-overview.png) ·
+[Command flow pass/deny PNG](clawlab-command-flow-pass-deny.png) ·
+[Demo & policy-test matrix PNG](clawlab-demo-test-matrix.png) ·
+[Policy flow HTML](clawlab-policy-enforcement-flow.html) · [Policy flow PNG](clawlab-policy-enforcement-flow.png)

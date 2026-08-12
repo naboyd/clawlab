@@ -491,7 +491,7 @@ def _openclaw_hub_url(host_header: str = "", *, mcp_bind: str = "") -> str:
     """OpenClaw URL with explicit gatewayUrl + #token (Control UI WS target).
 
     gatewayUrl must use the same host:port the browser used to load the portal
-    (e.g. 192.168.128.93:8443 vs icecream.naboydciscolab.com:8443). A mismatch
+    (e.g. 192.168.1.10:8443 vs lab.example.com:8443). A mismatch
     often prevents WSS from reaching the gateway (no Mozilla lines in logs).
     """
     page_path = os.environ.get("CLAW_PORTAL_OPENCLAW_PATH", "/openclaw/").strip()

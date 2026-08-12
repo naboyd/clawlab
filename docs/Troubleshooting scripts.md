@@ -3,7 +3,7 @@
 Shell helpers for **pre-beta testers** — install checks, portal/OpenClaw diagnostics,
 policy refresh, and stack control. Run from the repo root unless noted.
 
-Maintainer-only scripts (legacy icecream redeploy, Alice/Hannah training benches,
+Maintainer-only scripts (legacy lab redeploy and maintainer training benches,
 diagram render wrapper, fleet `claw-sysupdate` installer) were moved to **`_archive/`**
 (local, gitignored). Restore from there if you need them.
 
@@ -235,7 +235,7 @@ Layered enforcement matrix (DefenseClaw, ssh-ops, optional agent E2E).
 |------------|-------------|
 | *(none)* | Full run including slow agent cases |
 | `--no-agent` | Fast deterministic probes only |
-| `CLAWLAB_HOST` | Hostname label (default `icecream`) |
+| `CLAWLAB_HOST` | Hostname label (default `lab-host`) |
 | `CLAWLAB_MODEL` | Agent model for E2E section |
 
 ```bash
@@ -276,7 +276,7 @@ Operator RBAC: blocked from sensitive reads; admin allowed.
 
 ## Lab portal reinstall
 
-For HTTPS portal issues on a Linux lab host, re-run the unified installer (replaces legacy `reset-icecream-portal.sh`):
+For HTTPS portal issues on a Linux lab host, re-run the unified installer (replaces legacy `reset-lab-portal.sh`):
 
 ```bash
 bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=claw-auth
@@ -293,9 +293,9 @@ These paths are copied to **`_archive/`** (gitignored) and removed from the beta
 | Path | Why archived |
 |------|----------------|
 | `admin-access/setup-admin-access.sh` | Superseded by `claw-portals/install-portals.sh` + claw-auth |
-| `admin-access/reset-icecream-portal.sh` | Icecream-specific; use portal installer + doctor instead |
+| `admin-access/reset-lab-portal.sh` | Lab-host-specific; use portal installer + doctor instead |
 | `admin-access/fetch-ios-xe-command-reference.sh` | Large PDF fetch for policy authors |
 | `admin-access/render-architecture-diagram.sh` | Wrapper; use `python3 admin-access/render-policy-flow-diagram.py` |
 | `admin-access/alice/**` (selected `.sh`/`.md`) | Alice v1 training/benchmark tooling |
-| `admin-access/hannah-network-v2/**` (selected `.sh`/`.md`) | Legacy Hannah training tooling |
+| `admin-access/training-network-specialist/**` (selected `.sh`/`.md`) | Maintainer network-specialist training tooling |
 | `claw-sysupdate/*.sh` | Fleet host updater install (optional; units remain in repo) |

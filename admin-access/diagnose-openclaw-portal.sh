@@ -5,8 +5,8 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OC_JSON="${OPENCLAW_CONFIG:-$HOME/.openclaw/openclaw.json}"
 PORT="${PORT_PORTAL:-8443}"
-DOMAIN="${DOMAIN:-icecream.naboydciscolab.com}"
-LAN_IP="${LAN_IP:-192.168.128.93}"
+DOMAIN="${DOMAIN:-lab.example.com}"
+LAN_IP="${LAN_IP:-192.168.1.10}"
 
 echo "=== OpenClaw portal diagnostics ==="
 echo

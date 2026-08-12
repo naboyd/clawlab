@@ -6,7 +6,7 @@ StartLimitBurst=5
 StartLimitIntervalSec=60
 
 [Service]
-ExecStart=/usr/bin/node /home/naboyd/src/openclaw/dist/index.js gateway --port 18789
+ExecStart=/usr/bin/node /home/clawlab/src/openclaw/dist/index.js gateway --port 18789
 Restart=always
 RestartSec=5
 RestartPreventExitStatus=78
@@ -15,11 +15,11 @@ TimeoutStartSec=30
 SuccessExitStatus=0 143
 OOMPolicy=continue
 KillMode=control-group
-EnvironmentFile=-/home/naboyd/.openclaw/gateway.systemd.env
+EnvironmentFile=-/home/clawlab/.openclaw/gateway.systemd.env
 Environment=OPENCLAW_SERVICE_MANAGED_ENV_KEYS=OPENCLAW_GATEWAY_PASSWORD
-Environment=HOME=/home/naboyd
+Environment=HOME=/home/clawlab
 Environment=TMPDIR=/tmp
-Environment=PATH=/usr/bin:/home/naboyd/.local/bin:/usr/local/bin:/bin:/home/naboyd/.npm-global/bin:/home/naboyd/bin:/home/naboyd/.nix-profile/bin:/home/naboyd/.local/share/pnpm/bin:/home/naboyd/.local/share/pnpm
+Environment=PATH=/usr/bin:/home/clawlab/.local/bin:/usr/local/bin:/bin:/home/clawlab/.npm-global/bin:/home/clawlab/bin:/home/clawlab/.nix-profile/bin:/home/clawlab/.local/share/pnpm/bin:/home/clawlab/.local/share/pnpm
 Environment=OPENCLAW_GATEWAY_PORT=18789
 Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service
 Environment="OPENCLAW_WINDOWS_TASK_NAME=OpenClaw Gateway"

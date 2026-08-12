@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # clawlab policy test harness
 # ---------------------------------------------------------------------------
-# Exercises the layered enforcement around the OpenClaw agent on `icecream`:
+# Exercises the layered enforcement around the OpenClaw agent on the lab host:
 #   1. DefenseClaw C2/exfil rules   (inspect-tool API + shims)
 #   2. ssh-ops MCP read-only allowlist
 #   2b. ssh-ops MCP RBAC (verified identity — operator vs admin)
@@ -15,7 +15,7 @@
 #   ./policy-test.sh            # full run (includes the slow agent-driven cases)
 #   ./policy-test.sh --no-agent # fast: deterministic direct probes only
 #   ./policy-test.sh --skip-mcp   # skip live ssh-ops MCP probes (no hosts configured)
-# Env: CLAWLAB_HOST (default: first linux host in hosts.yaml, else icecream on Linux lab)
+# Env: CLAWLAB_HOST (default: first linux host in hosts.yaml, else lab-host on Linux lab)
 #      CLAWLAB_SWITCH — IOS-XE host for RBAC/propose probes
 # ---------------------------------------------------------------------------
 set -uo pipefail
@@ -36,7 +36,7 @@ HOST="${CLAWLAB_HOST:-}"
 if [ -z "$HOST" ] && [ "$(uname -s)" = Darwin ]; then
   HOST="${LOCAL_FULL_POLICY_HOST:-mac-local}"
 fi
-[ -z "$HOST" ] && HOST="icecream"
+[ -z "$HOST" ] && HOST="lab-host"
 MODEL="${CLAWLAB_MODEL:-anthropic/claude-sonnet-5}"
 SIDECAR="http://127.0.0.1:18970"
 CANARY="/tmp/dc-canary-harness.txt"

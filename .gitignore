@@ -1,3 +1,6 @@
+# ---- local scratch ----
+.tmp/
+
 # ---- secrets: never commit ----
 *.env
 .env

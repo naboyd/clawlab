@@ -2,7 +2,7 @@
 # Enable trusted-proxy auth in ~/.openclaw/openclaw.json for claw-auth + nginx.
 #
 # WARNING: OpenClaw rejects trusted-proxy for same-host loopback reverse proxies
-# (nginx on icecream -> gateway on 127.0.0.1). For clawlab use apply-token-portal.py.
+# (nginx on lab host -> gateway on 127.0.0.1). For clawlab use apply-token-portal.py.
 import json
 import os
 import secrets
@@ -107,12 +107,12 @@ def main() -> int:
         "allowLoopback": True,
     }
     ui = gw.setdefault("controlUi", {})
-    domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
+    domain = os.environ.get("DOMAIN", "lab.example.com")
     port = os.environ.get("PORT_PORTAL", "8443")
     origins = {
         f"https://{domain}:{port}",
-        f"https://192.168.128.93:{port}",
-        f"https://icecream:{port}",
+        f"https://192.168.1.10:{port}",
+        f"https://lab-host:{port}",
     }
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))
     ui["basePath"] = "/openclaw"

@@ -32,14 +32,14 @@ def hannai_training_dir() -> Path:
     ).expanduser()
 
 CLAWLAB_SYSTEM = (
-    "You are Hannah using clawlab ssh-ops MCP. Use run_command(host, command) with host names "
+    "You are a network operations agent using clawlab ssh-ops MCP. Use run_command(host, command) with host names "
     "from list_hosts. Summarize only tool output; do not invent VLANs, routes, or protocols."
 )
 
 # Optional map from collected device id -> ssh-ops hosts.yaml name
 HOST_ALIASES = {
-    "192.168.128.42": "c9300-24-office",
-    "192.168.128.93": "icecream.naboydciscolab.com",
+    "192.168.1.42": "c9300-24-office",
+    "192.168.1.10": "lab.example.com",
 }
 
 

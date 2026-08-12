@@ -1,5 +1,8 @@
 # Policy test harness
 
+Visual catalog of all cases (demo + harness): [../docs/clawlab-demo-test-matrix.png](../docs/clawlab-demo-test-matrix.png)
+(open [../docs/clawlab-demo-test-matrix.html](../docs/clawlab-demo-test-matrix.html) in a browser).
+
 `policy-test.sh` exercises every enforcement layer around the OpenClaw agent with
 paired in-policy (expect **allow**) and out-of-policy (expect **block**) cases, and
 asserts on the outcome (exit non-zero on any failure).
@@ -64,7 +67,7 @@ CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --recreate
 
 Until loopback SSH works, use `--skip-mcp` — sections **1**, **1b**, **1c**, **1d**, and **3** still validate DefenseClaw.
 
-### On icecream (full stack)
+### On the Linux lab host (full stack)
 
 ```bash
 cd ~/clawlab && git pull
@@ -84,7 +87,7 @@ in-memory rules — re-run the refresh script and restart `openclaw-gateway`.
 ### Offline (dev laptop)
 
 Env: `CLAWLAB_HOST` (Mac local-full default: `mac-local` from `~/.claw-portals/config.env`;
-Linux lab default: first linux host in `hosts.yaml`, else `icecream`), `CLAWLAB_SWITCH` (network device for RBAC
+Linux lab default: first linux host in `hosts.yaml`, else `lab-host`), `CLAWLAB_SWITCH` (network device for RBAC
 show probes; auto-discovered from `hosts.yaml` if unset), `RBAC_OPERATOR_USER`
 (default `alice`), `CLAWLAB_MODEL` (default `anthropic/claude-sonnet-5` — must be a
 tool-capable model). Credentials are auto-discovered locally and never printed.

@@ -420,7 +420,7 @@ if [[ "$MODE" == "server" ]]; then
     warn "install-clawstack server mode (PAM nginx :8444) is Linux/apt only"
     need_item "Linux lab host for HTTPS ingress (claw-portals/install-portals.sh)"
     rec "Use $REPO/claw-portals/install-portals.sh on the lab server (unified :8443 + claw-auth)"
-    rec "On macOS dev: run local mode + podman; deploy portals on icecream"
+    rec "On macOS dev: run local mode + podman; deploy portals on your Linux lab host"
   fi
   echo
 fi
@@ -430,11 +430,22 @@ if [[ "$MODE" == "local-full" ]]; then
   # shellcheck source=lib/clawlab-local-full.sh
   source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
   if [[ "$CLAWLAB_PLATFORM" == "macos" ]]; then
-    if clawlab_local_full_ssh_loopback_ok; then
-      pass "Remote Login / loopback SSH (${USER}@127.0.0.1)"
+    clawlab_local_full_ensure_mac_ssh_access || true
+    clawlab_local_full_mac_ssh_diagnose
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+      pass "loopback SSH key auth (${USER}@127.0.0.1)"
     else
-      fail "Remote Login disabled — System Settings → General → Sharing → Remote Login"
-      need_item "Enable Remote Login (MCP Podman → Mac SSH probes for policy-test.sh)"
+      if [[ "$rc" -eq 1 ]]; then
+        fail "sshd not listening on 127.0.0.1:22 — enable Remote Login (Sharing)"
+        need_item "Remote Login (System Settings → General → Sharing)"
+      else
+        fail "loopback SSH key auth failed (${USER}@127.0.0.1) — not the Sharing toggle"
+        need_item "id_ed25519 in ~/.ssh/authorized_keys (install adds this on local-full-ctl restart)"
+        rec "cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys"
+        rec "test: ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 ${USER}@127.0.0.1 true"
+        rec "or: bash $REPO/install/local-full-ctl.sh restart"
+      fi
     fi
   fi
   if command -v nginx >/dev/null 2>&1; then

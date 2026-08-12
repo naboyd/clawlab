@@ -122,7 +122,7 @@ def main() -> int:
     gw.setdefault("remote", {}).pop("token", None)
 
     ui = gw.setdefault("controlUi", {})
-    domain = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
+    domain = os.environ.get("DOMAIN", "lab.example.com")
     port = os.environ.get("PORT_PORTAL", "8443")
     scheme = os.environ.get("SCHEME", "https").strip().lower()
     origins = {
@@ -141,8 +141,8 @@ def main() -> int:
         origins.update(
             {
                 f"https://{domain}:{port}",
-                f"https://192.168.128.93:{port}",
-                f"https://icecream:{port}",
+                f"https://192.168.1.10:{port}",
+                f"https://lab-host:{port}",
             }
         )
     ui["allowedOrigins"] = sorted(origins | set(ui.get("allowedOrigins") or []))

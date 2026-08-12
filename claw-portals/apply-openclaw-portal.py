@@ -8,7 +8,7 @@ import shutil
 import sys
 
 PORT = os.environ.get("PORT_PORTAL", "8443")
-DOMAIN = os.environ.get("DOMAIN", "icecream.naboydciscolab.com")
+DOMAIN = os.environ.get("DOMAIN", "lab.example.com")
 
 p = os.path.expanduser("~/.openclaw/openclaw.json")
 if not os.path.isfile(p):
@@ -23,8 +23,8 @@ ui["basePath"] = "/openclaw"
 
 origins = {
     f"https://{DOMAIN}:{PORT}",
-    f"https://192.168.128.93:{PORT}",
-    f"https://icecream:{PORT}",
+    f"https://192.168.1.10:{PORT}",
+    f"https://lab-host:{PORT}",
 }
 existing = set(ui.get("allowedOrigins") or [])
 ui["allowedOrigins"] = sorted(origins | existing)

@@ -2,8 +2,8 @@
 # issue-cert.sh — obtain Let's Encrypt cert via lego + GoDaddy DNS-01
 set -Eeuo pipefail
 
-DOMAIN="${DOMAIN:-icecream.naboydciscolab.com}"
-EMAIL="${LE_EMAIL:-boydn@me.com}"
+DOMAIN="${DOMAIN:-lab.example.com}"
+EMAIL="${LE_EMAIL:-admin@example.com}"
 LEGO_PATH="${LEGO_PATH:-$HOME/mcp/acme/lego}"
 ENV_FILE="${GODADDY_ENV:-$HOME/mcp/acme/godaddy.env}"
 LEGO_BIN="${LEGO_BIN:-$HOME/go/bin/lego}"

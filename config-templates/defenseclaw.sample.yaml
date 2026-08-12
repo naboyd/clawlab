@@ -1,4 +1,4 @@
-data_dir: /home/naboyd/.defenseclaw
+data_dir: /home/clawlab/.defenseclaw
 llm:
   model: ollama/hf.co/fdtn-ai/Foundation-Sec-8B-Q8_0-GGUF:Q8_0
   provider: ollama
@@ -11,10 +11,10 @@ llm:
   instance_name: ''
 default_llm_api_key_env: ''
 default_llm_model: ''
-audit_db: /home/naboyd/.defenseclaw/audit.db
-quarantine_dir: /home/naboyd/.defenseclaw/quarantine
-plugin_dir: /home/naboyd/.defenseclaw/plugins
-policy_dir: /home/naboyd/.defenseclaw/policies
+audit_db: /home/clawlab/.defenseclaw/audit.db
+quarantine_dir: /home/clawlab/.defenseclaw/quarantine
+plugin_dir: /home/clawlab/.defenseclaw/plugins
+policy_dir: /home/clawlab/.defenseclaw/policies
 environment: linux
 tenant_id: ''
 workspace_id: ''
@@ -60,7 +60,7 @@ scanners:
     scan_prompts: false
     scan_resources: false
     scan_instructions: false
-  codeguard: /home/naboyd/.defenseclaw/codeguard-rules
+  codeguard: /home/clawlab/.defenseclaw/codeguard-rules
 openshell:
   binary: openshell
   policy_dir: /etc/openshell/policies
@@ -76,8 +76,8 @@ watch:
   rescan_enabled: true
   rescan_interval_min: 60
 firewall:
-  config_file: /home/naboyd/.defenseclaw/firewall.yaml
-  rules_file: /home/naboyd/.defenseclaw/firewall.pf.conf
+  config_file: /home/clawlab/.defenseclaw/firewall.yaml
+  rules_file: /home/clawlab/.defenseclaw/firewall.pf.conf
   anchor_name: com.defenseclaw
 guardrail:
   enabled: true
@@ -122,7 +122,7 @@ guardrail:
   detection_strategy_completion: regex_judge
   detection_strategy_tool_call: ''
   judge_sweep: true
-  rule_pack_dir: /home/naboyd/.defenseclaw/policies/guardrail/strict
+  rule_pack_dir: /home/clawlab/.defenseclaw/policies/guardrail/strict
   connector: openclaw
   hilt:
     enabled: false
@@ -151,7 +151,7 @@ gateway:
   port: 18789
   api_bind: ''
   token_env: OPENCLAW_GATEWAY_TOKEN
-  device_key_file: /home/naboyd/.defenseclaw/device.key
+  device_key_file: /home/clawlab/.defenseclaw/device.key
   auto_approve_safe: false
   reconnect_ms: 800
   max_reconnect_ms: 15000

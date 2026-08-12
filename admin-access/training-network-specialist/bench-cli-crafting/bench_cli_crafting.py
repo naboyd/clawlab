@@ -180,7 +180,7 @@ def main() -> int:
     parser.add_argument(
         "--models",
         nargs="*",
-        default=["llama3.1:8b", "alice:latest"],
+        default=["llama3.1:8b", "network-specialist:latest"],
         help="Ollama model tags to test",
     )
     parser.add_argument(

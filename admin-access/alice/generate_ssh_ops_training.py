@@ -96,7 +96,7 @@ def build_examples() -> list[dict[str, Any]]:
     hosts_sample = [
         {"name": "C9300-24P", "kind": "network", "platform": "cisco_ios", "allow_write": True},
         {"name": "Nuc03", "kind": "linux", "platform": "linux", "allow_write": False},
-        {"name": "icecream.naboydciscolab.com", "kind": "linux", "auto_update": True},
+        {"name": "lab.example.com", "kind": "linux", "auto_update": True},
         {"name": "c9800l", "kind": "network", "platform": "cisco_ios"},
     ]
 
@@ -125,7 +125,7 @@ def build_examples() -> list[dict[str, Any]]:
                 {"role": "tool", "content": json.dumps(hosts_sample)},
                 {
                     "role": "assistant",
-                    "content": "Configured hosts: C9300-24P, Nuc03, icecream.naboydciscolab.com, c9800l.",
+                    "content": "Configured hosts: C9300-24P, Nuc03, lab.example.com, c9800l.",
                 },
             ]
         )
@@ -244,14 +244,14 @@ def build_examples() -> list[dict[str, Any]]:
                         {
                             "host": "c9300-24-office",
                             "command": "show ip interface brief",
-                            "stdout": "Interface              IP-Address      OK? Method Status                Protocol\nVlan1                  192.168.128.10  YES NVRAM  up                    up",
+                            "stdout": "Interface              IP-Address      OK? Method Status                Protocol\nVlan1                  192.168.1.10  YES NVRAM  up                    up",
                             "exit_code": 0,
                         }
                     ),
                 },
                 {
                     "role": "assistant",
-                    "content": "Vlan1 is up/up with IP 192.168.128.10 on c9300-24-office (from show ip interface brief).",
+                    "content": "Vlan1 is up/up with IP 192.168.1.10 on c9300-24-office (from show ip interface brief).",
                 },
             ]
         )
@@ -277,14 +277,14 @@ def build_examples() -> list[dict[str, Any]]:
                         {
                             "host": "C9300-24P",
                             "command": "show run | include ntp",
-                            "stdout": "ntp server 192.168.128.4",
+                            "stdout": "ntp server 192.168.1.4",
                             "exit_code": 0,
                         }
                     ),
                 },
                 {
                     "role": "assistant",
-                    "content": "NTP config on C9300-24P: ntp server 192.168.128.4",
+                    "content": "NTP config on C9300-24P: ntp server 192.168.1.4",
                 },
             ]
         )
@@ -295,7 +295,7 @@ def build_examples() -> list[dict[str, Any]]:
             [
                 {
                     "role": "user",
-                    "content": "Check openclaw-gateway status on icecream.naboydciscolab.com (read only).",
+                    "content": "Check openclaw-gateway status on lab.example.com (read only).",
                 },
                 {
                     "role": "assistant",
@@ -304,7 +304,7 @@ def build_examples() -> list[dict[str, Any]]:
                         tc(
                             "run_command",
                             {
-                                "host": "icecream.naboydciscolab.com",
+                                "host": "lab.example.com",
                                 "command": "systemctl --user is-active openclaw-gateway",
                             },
                         )
@@ -314,7 +314,7 @@ def build_examples() -> list[dict[str, Any]]:
                     "role": "tool",
                     "content": json.dumps(
                         {
-                            "host": "icecream.naboydciscolab.com",
+                            "host": "lab.example.com",
                             "command": "systemctl --user is-active openclaw-gateway",
                             "stdout": "active",
                             "exit_code": 0,
@@ -323,7 +323,7 @@ def build_examples() -> list[dict[str, Any]]:
                 },
                 {
                     "role": "assistant",
-                    "content": "openclaw-gateway is **active** on icecream.naboydciscolab.com.",
+                    "content": "openclaw-gateway is **active** on lab.example.com.",
                 },
             ]
         )
@@ -496,7 +496,7 @@ def build_examples() -> list[dict[str, Any]]:
                 {
                     "role": "assistant",
                     "content": (
-                        "Configured ssh-ops hosts: C9300-24P, Nuc03, icecream.naboydciscolab.com, c9800l. "
+                        "Configured ssh-ops hosts: C9300-24P, Nuc03, lab.example.com, c9800l. "
                         "I will not use sw-1, switch1, or other names not in this list."
                     ),
                 },

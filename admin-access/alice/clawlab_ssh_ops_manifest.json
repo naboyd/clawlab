@@ -1,5 +1,5 @@
 {
-  "source": "/Users/naboyd/AI/clawlab/ssh-ops-mcp/server.py",
+  "source": "ssh-ops-mcp/server.py",
   "tools_discovered": [
     "apply_change",
     "check_health",
@@ -16,6 +16,6 @@
     "tail_log",
     "upload_file"
   ],
-  "examples_written": 12,
-  "output": "/Users/naboyd/AI/clawlab/admin-access/alice/training/ssh_ops_generated.jsonl"
+  "examples_written": 10,
+  "output": "admin-access/alice/training/ssh_ops_generated.jsonl"
 }

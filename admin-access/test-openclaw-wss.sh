@@ -2,7 +2,7 @@
 # Quick checks for OpenClaw WebSocket path through nginx.
 set -euo pipefail
 
-LAN_IP="${LAN_IP:-192.168.128.93}"
+LAN_IP="${LAN_IP:-192.168.1.10}"
 PORT="${PORT_PORTAL:-8443}"
 BASE="https://${LAN_IP}:${PORT}/openclaw/"
 

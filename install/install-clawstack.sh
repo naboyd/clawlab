@@ -4,14 +4,14 @@
 # -----------------------------------------------------------------------------
 # Interactive installer. Prompts for:
 #   • install MODE:  local       (127.0.0.1 gateway only)
-#                    local-full  (Mac/desktop: portal :8083 + MCP + claw-auth; like icecream, no LE)
+#                    local-full  (Mac/desktop: portal :8083 + MCP + claw-auth; like a Linux lab host, no LE)
 #                    server      (Linux/apt legacy PAM nginx :8444 — prefer install-portals.sh)
 #   • model PROVIDERS  — iterative (name, api type, key, models)
 #   • MCP servers      — iterative (name, url, bearer token)
 #   • DefenseClaw scan — local Ollama judge / Cisco AI Defense API / both
 #   • secrets          — API keys / tokens, written to per-app .env (never echoed)
 #
-# Category map (vs install-portals.sh / icecream production path):
+# Category map (vs install-portals.sh / Linux HTTPS production path):
 #   KEEP here     — OpenClaw/DefenseClaw build, provider+MCP loops, gateway bind,
 #                   guardrail rules, Webex webhook, shim-heal + dc-webex-bridge assets
 #   REPLACE       — server nginx :8444 PAM → claw-portals/install-portals.sh (:8443)
@@ -669,7 +669,7 @@ python3 -c "import json;d=json.load(open('$OC_HOME/openclaw.json'));print('confi
 MAC_NOTE=""
 if [[ "$CLAWLAB_PLATFORM" == "macos" && "$MODE" == "local" ]]; then
   MAC_NOTE="
-  macOS local:  Gateway only. For portal + MCP like icecream, re-run and choose local-full:
+  macOS local:  Gateway only. For portal + MCP with portal + MCP, re-run and choose local-full:
                 bash $SCRIPT_DIR/install-clawstack.sh
   Or start ssh-ops manually: bash $CLAWLAB_REPO/ssh-ops-mcp/podctl.sh --build"
 fi

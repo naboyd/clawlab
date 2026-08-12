@@ -60,7 +60,7 @@ sequenceDiagram
 
 ---
 
-## Step-by-step (icecream lab)
+## Step-by-step (lab host)
 
 ### 1. Alice proposes via chat
 
@@ -101,7 +101,7 @@ Expected agent tool call (illustrative):
 
 ### 2. Bob approves (four-eyes)
 
-1. Open `https://icecream.naboydciscolab.com:8443/ssh-ops/?tab=changes`
+1. Open `https://lab.example.com:8443/ssh-ops/?tab=changes`
 2. Log in as **bob** (not alice)
 3. Approve `chg-…` — status becomes `approved`
 
@@ -167,7 +167,7 @@ Common shortcut commands that DefenseClaw blocks even after approval:
 ## Reproduce deterministically (no agent)
 
 ```bash
-# From icecream after git pull
+# From the lab host after git pull
 bash tests/scenario-approved-dc-block.sh
 ```
 

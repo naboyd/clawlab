@@ -7,7 +7,7 @@
     ],
     "primary": "ollama/llama3.1:8b"
    },
-   "workspace": "/home/naboyd/.openclaw/workspace"
+   "workspace": "/home/clawlab/.openclaw/workspace"
   }
  },
  "gateway": {
@@ -19,9 +19,9 @@
   "controlUi": {
    "basePath": "/openclaw",
    "allowedOrigins": [
-    "https://icecream.naboydciscolab.com:8443",
-    "https://192.168.128.93:8443",
-    "https://icecream:8443"
+    "https://lab.example.com:8443",
+    "https://192.168.1.10:8443",
+    "https://lab-host:8443"
    ]
   },
   "mode": "local",
@@ -47,7 +47,7 @@
      "Authorization": "Bearer <SSH_OPS_MCP_TOKEN>"
     },
     "transport": "streamable-http",
-    "url": "https://icecream.naboydciscolab.com:8766/mcp"
+    "url": "https://lab.example.com:8766/mcp"
    }
   }
  },
@@ -276,66 +276,6 @@
      },
      {
       "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-specialist-config-v1:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-specialist-config-v1:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-specialist-network-v1:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-specialist-network-v1:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-specialist-splunk-v1:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-specialist-splunk-v1:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
        "supportsTools": false,
        "supportsUsageInStreaming": true
       },
@@ -372,106 +312,6 @@
       ],
       "maxTokens": 8192,
       "name": "llama3.1:8b",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-q25-v2-7b-field-defs-v3.2:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-q25-v2-7b-field-defs-v3.2:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-q25-v2-7b:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-q25-v2-7b:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-q25-v1-7b-field-defs-v3.2:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-q25-v1-7b-field-defs-v3.2:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-q25-v1-7b-field-defs-v3.1:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-q25-v1-7b-field-defs-v3.1:latest",
-      "reasoning": false
-     },
-     {
-      "compat": {
-       "supportsTools": true,
-       "supportsUsageInStreaming": true
-      },
-      "contextWindow": 32768,
-      "cost": {
-       "cacheRead": 0,
-       "cacheWrite": 0,
-       "input": 0,
-       "output": 0
-      },
-      "id": "hannah-q25-v1-7b-field-defs:latest",
-      "input": [
-       "text"
-      ],
-      "maxTokens": 8192,
-      "name": "hannah-q25-v1-7b-field-defs:latest",
       "reasoning": false
      },
      {
@@ -572,7 +412,7 @@
   },
   "load": {
    "paths": [
-    "/home/naboyd/.openclaw/extensions/defenseclaw"
+    "/home/clawlab/.openclaw/extensions/defenseclaw"
    ]
   }
  },

@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clawlab — Policy Enforcement Flow</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/roughjs@4.6.6/bundled/rough.js"></script>
+  <style>
+    :root {
+      --board: #f4f1ea;
+      --board-grid: rgba(60, 50, 40, 0.06);
+      --ink: #2c2825;
+      --ink-muted: #5c5650;
+      --panel: #fffdf8;
+      --stroke: #3d3832;
+      --entry: #dbeafe;
+      --entry-stroke: #2563eb;
+      --dc: #ffedd5;
+      --dc-stroke: #ea580c;
+      --crit: #fecaca;
+      --crit-stroke: #dc2626;
+      --warn: #fef08a;
+      --warn-stroke: #ca8a04;
+      --allow: #bbf7d0;
+      --allow-stroke: #16a34a;
+      --approve: #fde68a;
+      --approve-stroke: #d97706;
+      --notify: #e9d5ff;
+      --notify-stroke: #9333ea;
+      --blocked: #fee2e2;
+      --blocked-stroke: #b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "IBM Plex Sans", system-ui, sans-serif;
+      color: var(--ink);
+      background: #e8e4dc;
+      overflow: hidden;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 10px 16px;
+      background: var(--panel);
+      border-bottom: 2px solid var(--stroke);
+      font-size: 14px;
+      z-index: 10;
+      position: relative;
+    }
+    .toolbar h1 {
+      font-family: Caveat, cursive;
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 12px 0 0;
+      letter-spacing: 0.02em;
+    }
+    .toolbar .hint { color: var(--ink-muted); font-size: 13px; }
+    .toolbar button, .toolbar label {
+      font: inherit;
+      cursor: pointer;
+      border: 2px solid var(--stroke);
+      background: var(--board);
+      border-radius: 8px;
+      padding: 6px 12px;
+    }
+    .toolbar button:hover { background: #fff; }
+    .toolbar label { display: inline-flex; align-items: center; gap: 6px; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr min(360px, 32vw);
+      height: calc(100% - 54px);
+    }
+    .layout.detail-closed { grid-template-columns: 1fr; }
+
+    .viewport {
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      background:
+        linear-gradient(var(--board-grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--board-grid) 1px, transparent 1px),
+        var(--board);
+      background-size: 24px 24px;
+    }
+    .viewport.grabbing { cursor: grabbing; }
+
+    .board-wrap {
+      position: absolute;
+      left: 0; top: 0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    #sketch-canvas {
+      position: absolute;
+      left: 0; top: 0;
+      pointer-events: none;
+    }
+
+    .board {
+      position: relative;
+      display: flex;
+      gap: 72px;
+      padding: 48px 64px 120px;
+      min-width: 1680px;
+    }
+
+    .column {
+      flex: 0 0 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .col-title {
+      font-family: Caveat, cursive;
+      font-size: 26px;
+      font-weight: 700;
+      text-align: center;
+      padding: 8px 12px;
+      border-bottom: 3px solid var(--stroke);
+      margin-bottom: 4px;
+    }
+
+    .node {
+      position: relative;
+      padding: 14px 16px;
+      border: 2.5px solid var(--stroke);
+      border-radius: 14px;
+      background: #fff;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      min-height: 56px;
+    }
+    .node:hover { transform: translateY(-2px) rotate(-0.3deg); }
+    .node.selected {
+      outline: 3px solid var(--ink);
+      outline-offset: 3px;
+      transform: scale(1.02);
+    }
+    .node.dim { opacity: 0.35; }
+    .node .title {
+      font-family: Caveat, cursive;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+    .node .sub {
+      font-size: 12px;
+      color: var(--ink-muted);
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+
+    .node.entry { background: var(--entry); border-color: var(--entry-stroke); }
+    .node.dc { background: var(--dc); border-color: var(--dc-stroke); }
+    .node.crit { background: var(--crit); border-color: var(--crit-stroke); }
+    .node.warn { background: var(--warn); border-color: var(--warn-stroke); }
+    .node.allow { background: var(--allow); border-color: var(--allow-stroke); }
+    .node.approve { background: var(--approve); border-color: var(--approve-stroke); }
+    .node.notify { background: var(--notify); border-color: var(--notify-stroke); }
+    .node.blocked {
+      background: var(--blocked);
+      border-color: var(--blocked-stroke);
+      border-style: dashed;
+    }
+
+    .legend {
+      position: absolute;
+      left: 64px;
+      bottom: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      padding: 12px 18px;
+      background: rgba(255, 253, 248, 0.92);
+      border: 2px solid var(--stroke);
+      border-radius: 12px;
+      font-size: 13px;
+      max-width: 900px;
+    }
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .swatch {
+      width: 18px; height: 18px;
+      border: 2px solid var(--stroke);
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .swatch.crit { background: var(--crit); border-color: var(--crit-stroke); }
+    .swatch.warn { background: var(--warn); border-color: var(--warn-stroke); }
+    .swatch.approve { background: var(--approve); border-color: var(--approve-stroke); }
+    .swatch.allow { background: var(--allow); border-color: var(--allow-stroke); }
+    .swatch.notify { background: var(--notify); border-color: var(--notify-stroke); }
+
+    .detail {
+      background: var(--panel);
+      border-left: 2px solid var(--stroke);
+      padding: 20px 22px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .detail.hidden { display: none; }
+    .detail h2 {
+      font-family: Caveat, cursive;
+      font-size: 32px;
+      margin: 0;
+      line-height: 1.1;
+    }
+    .detail .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 3px 8px;
+      border-radius: 6px;
+      border: 1.5px solid var(--stroke);
+    }
+    .detail p, .detail li {
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+    .detail ul { margin: 0; padding-left: 18px; }
+    .detail .close {
+      align-self: flex-start;
+      margin-bottom: 4px;
+    }
+    .detail-empty {
+      color: var(--ink-muted);
+      font-size: 14px;
+      padding: 24px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .detail {
+        position: fixed;
+        inset: auto 0 0 0;
+        max-height: 45vh;
+        border-left: none;
+        border-top: 2px solid var(--stroke);
+        z-index: 20;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <h1>Clawlab policy enforcement</h1>
+    <button type="button" id="zoom-out" title="Zoom out">−</button>
+    <button type="button" id="zoom-in" title="Zoom in">+</button>
+    <button type="button" id="zoom-fit" title="Fit to view">Fit</button>
+    <button type="button" id="zoom-reset" title="Reset view">Reset</button>
+    <label><input type="checkbox" id="focus-mode"> Focus path</label>
+    <a href="clawlab-architecture-overview.html" style="color:var(--ink)">System overview</a>
+    <span class="hint">Drag to pan · scroll to zoom · click a box for details</span>
+  </header>
+
+  <div class="layout detail-closed" id="layout">
+    <div class="viewport" id="viewport">
+      <div class="board-wrap" id="board-wrap">
+        <canvas id="sketch-canvas"></canvas>
+        <div class="board" id="board"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+    <aside class="detail hidden" id="detail">
+      <button type="button" class="close" id="detail-close">Close</button>
+      <div id="detail-body" class="detail-empty">
+        Click any box on the board to see how that step fits into the enforcement chain.
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const COLUMNS = [
+      {
+        id: "entry",
+        title: "1 · User entry points",
+        nodes: [
+          { id: "op", cls: "entry", title: "Operator", sub: "Human in the loop",
+            detail: "Network operator or lab admin driving changes through governed UI paths — never raw shell shortcuts for production config." },
+          { id: "chat", cls: "entry", title: "OpenClaw Chat", sub: "Control UI · /openclaw/",
+            detail: "OpenClaw gateway Control UI. Agent proposes commands; all LLM traffic passes through DefenseClaw guardrail proxy before reaching Ollama or cloud providers." },
+          { id: "auth", cls: "entry", title: "claw-auth login", sub: "Unified portal :8443 (or :8083 local-full)",
+            detail: "Session cookie auth via claw-auth (:8780). nginx auth_request on /ssh-ops/ and /defenseclaw/. OpenClaw uses gateway token + device pairing instead." },
+          { id: "portal", cls: "entry", title: "MCP Admin Portal", sub: "/ssh-ops/ · Hosts · Discovery · Changes · Policy",
+            detail: "ssh-ops GUI for inventory, discovery, propose/approve/apply workflow, and per-group IOS-XE policy access modes (deny / approve / allow)." },
+        ],
+      },
+      {
+        id: "defenseclaw",
+        title: "2 · DefenseClaw inspect & block",
+        nodes: [
+          { id: "pin", cls: "dc", title: "Prompt / chat inspect", sub: "regex + LLM judge\nFoundation-Sec or Cisco AI Defense",
+            detail: "Scans user prompts and model completions. scanner_mode local/both uses Ollama judge; remote/both adds Cisco AI Defense API. detection_strategy: regex_judge." },
+          { id: "crit1", cls: "crit", title: "CRITICAL = hard block", sub: "Stops request before tool exec",
+            detail: "CRITICAL severity blocks the chat turn entirely. Operator sees block reason; event logged to audit.db and may notify Webex." },
+          { id: "tin", cls: "dc", title: "Tool inspect API :18970", sub: "exec shims · bash · curl · nc",
+            detail: "DefenseClaw sidecar on loopback :18970. OpenClaw exec tools route through shims that POST to /api/v1/inspect/tool before running." },
+          { id: "crit2", cls: "crit", title: "CRITICAL patterns", sub: "IOS-BLK / IOS-DENY",
+            detail: "Merged rules from commands.yaml + ios-xe-policy.yaml always_block and denied allow_groups. Revshell, user CRUD, and denied IOS patterns." },
+          { id: "hadv", cls: "warn", title: "HIGH advisory alerts", sub: "Alert only · no hard block",
+            detail: "Risky-but-permitted patterns from allowed IOS groups. Surfaces risk without blocking; useful for four-eyes review context." },
+          { id: "pol", cls: "dc", title: "Policy merge", sub: "commands.yaml ← ios-xe-policy.yaml\nalways_block + denied groups",
+            detail: "refresh-clawlab-policies.sh merges IOS policy into DefenseClaw commands.yaml. Single source: config-templates/ios-xe-policy.yaml (60 allow_groups)." },
+          { id: "scr", cls: "dc", title: "install-clawlab-guardrail-rules.sh", sub: "C2 revshell + user CRUD blocks",
+            detail: "Installs Clawlab-specific guardrail rules and reloads gateway sidecar. Run after policy edits or via local-full ensure_guardrails." },
+        ],
+      },
+      {
+        id: "mcp",
+        title: "3 · ssh-ops MCP write gate",
+        nodes: [
+          { id: "rc", cls: "allow", title: "run_command", sub: "Read-only allowlist\nshow · ping · uptime",
+            detail: "MCP tool for non-mutating commands only. Cannot push config; separate code path from propose_change / apply_change." },
+          { id: "pc", cls: "allow", title: "propose_change", sub: "ios-xe-policy.yaml · 60 allow_groups\ndefault deny · always_block",
+            detail: "Agent submits IOS config fragment. Validated against allow_groups; creates pending change record with proposer identity from MCP identity plugin." },
+          { id: "acc", cls: "approve", title: "Per-group access modes", sub: "Deny · Approval required · Always allow\nvlan_l3 · interface_trunk · trustsec …",
+            detail: "Policy tab sets per-group mode: deny (always blocked), approve (needs human), allow (auto-approve path). Admin save + reload restarts gateways." },
+          { id: "fe", cls: "approve", title: "Four-eyes gate", sub: "forbid_self_approval\nproposer ≠ approver",
+            detail: "Proposer cannot approve their own change. Enforced in MCP and claw-auth user identity from nginx X-Auth-User / MCP identity proxy." },
+          { id: "pend", cls: "approve", title: "Pending changes queue", sub: "Awaiting second pair of eyes",
+            detail: "Changes tab lists pending items with diff preview. Status: proposed → approved/rejected → applied." },
+          { id: "appr", cls: "approve", title: "Approve / reject", sub: "Different claw-auth user",
+            detail: "Second operator reviews in MCP Admin Changes tab. Reject stops the line; approve enables apply_change." },
+          { id: "apply", cls: "allow", title: "apply_change", sub: "backup → push → verify → write mem",
+            detail: "Only runs when status=approved. SSH to target, archive config, push, verify, write memory. Webex notification on success." },
+          { id: "sw", cls: "allow", title: "Cisco IOS-XE switches", sub: "Lab fleet targets",
+            detail: "Managed hosts from ~/.clawlab/ssh-ops/data/hosts.yaml. Mac local-full includes mac-local via Podman host gateway." },
+          { id: "bypass", cls: "blocked", title: "Direct writes blocked", sub: "No bash / ssh shortcut bypass",
+            detail: "Agent cannot mutate network state outside propose_change → approve → apply_change. Tool inspect blocks raw destructive patterns." },
+        ],
+      },
+      {
+        id: "notify",
+        title: "4 · Notifications",
+        nodes: [
+          { id: "wx1", cls: "notify", title: "Webex · change event", sub: "On successful apply",
+            detail: "dc-webex-bridge or configured webhook posts change summary after apply_change completes." },
+          { id: "wx2", cls: "notify", title: "Webex · block / guardrail", sub: "audit.db → dc-webex-bridge",
+            detail: "CRITICAL blocks and guardrail hits can alert operators via Webex for SOC visibility." },
+          { id: "wx3", cls: "notify", title: "Webex · self-approval blocked", sub: "Four-eyes violation",
+            detail: "When proposer attempts self-approval, MCP rejects and may notify that four-eyes policy was enforced." },
+        ],
+      },
+    ];
+
+    const FLOW_EDGES = [
+      ["op", "chat"], ["chat", "auth"], ["auth", "portal"],
+      ["portal", "pin"], ["pin", "crit1"], ["crit1", "tin"], ["tin", "crit2"], ["crit2", "hadv"], ["hadv", "pol"], ["pol", "scr"],
+      ["scr", "rc"], ["rc", "pc"], ["pc", "acc"], ["acc", "fe"], ["fe", "pend"], ["pend", "appr"], ["appr", "apply"], ["apply", "sw"],
+      ["apply", "wx1"], ["wx1", "wx2"], ["wx2", "wx3"],
+      ["apply", "bypass"],
+    ];
+
+    const LEGEND = [
+      { cls: "crit", label: "CRITICAL hard block" },
+      { cls: "warn", label: "HIGH advisory" },
+      { cls: "approve", label: "Human approval / four-eyes" },
+      { cls: "allow", label: "Allowed apply path" },
+      { cls: "notify", label: "Webex notifications" },
+    ];
+
+    const board = document.getElementById("board");
+    const boardWrap = document.getElementById("board-wrap");
+    const viewport = document.getElementById("viewport");
+    const canvas = document.getElementById("sketch-canvas");
+    const detail = document.getElementById("detail");
+    const detailBody = document.getElementById("detail-body");
+    const layout = document.getElementById("layout");
+
+    const nodeEls = {};
+    const nodeMeta = {};
+
+    let scale = 0.92;
+    let panX = 40;
+    let panY = 20;
+    let dragging = false;
+    let dragStart = { x: 0, y: 0, panX: 0, panY: 0 };
+    let selectedId = null;
+
+    function buildBoard() {
+      COLUMNS.forEach((col) => {
+        const colEl = document.createElement("section");
+        colEl.className = "column";
+        colEl.dataset.col = col.id;
+        const title = document.createElement("div");
+        title.className = "col-title";
+        title.textContent = col.title;
+        colEl.appendChild(title);
+        col.nodes.forEach((n) => {
+          nodeMeta[n.id] = n;
+          const el = document.createElement("div");
+          el.className = `node ${n.cls}`;
+          el.dataset.id = n.id;
+          el.innerHTML = `<div class="title">${n.title}</div>${n.sub ? `<div class="sub">${n.sub}</div>` : ""}`;
+          el.addEventListener("click", (e) => {
+            e.stopPropagation();
+            selectNode(n.id);
+          });
+          nodeEls[n.id] = el;
+          colEl.appendChild(el);
+        });
+        board.appendChild(colEl);
+      });
+
+      const legend = document.getElementById("legend");
+      LEGEND.forEach((item) => {
+        const row = document.createElement("div");
+        row.className = "legend-item";
+        row.innerHTML = `<span class="swatch ${item.cls}"></span><span>${item.label}</span>`;
+        legend.appendChild(row);
+      });
+    }
+
+    function applyTransform() {
+      boardWrap.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      drawSketch();
+    }
+
+    function centerFit() {
+      const vw = viewport.clientWidth;
+      const vh = viewport.clientHeight;
+      const bw = board.offsetWidth + 128;
+      const bh = board.offsetHeight + 160;
+      scale = Math.min(1, Math.min(vw / bw, vh / bh) * 0.95);
+      panX = Math.max(24, (vw - bw * scale) / 2);
+      panY = Math.max(16, (vh - bh * scale) / 2);
+      applyTransform();
+    }
+
+    function selectNode(id) {
+      selectedId = id;
+      Object.values(nodeEls).forEach((el) => {
+        el.classList.toggle("selected", el.dataset.id === id);
+      });
+      const n = nodeMeta[id];
+      detail.classList.remove("hidden");
+      layout.classList.remove("detail-closed");
+      detailBody.className = "";
+      detailBody.innerHTML = `
+        <span class="tag ${n.cls}">${n.cls}</span>
+        <h2>${n.title}</h2>
+        <p>${n.detail}</p>
+      `;
+      if (document.getElementById("focus-mode").checked) {
+        highlightFlow(id);
+      }
+    }
+
+    function clearSelection() {
+      selectedId = null;
+      Object.values(nodeEls).forEach((el) => el.classList.remove("selected", "dim"));
+      detail.classList.add("hidden");
+      layout.classList.add("detail-closed");
+      detailBody.className = "detail-empty";
+      detailBody.textContent = "Click any box on the board to see how that step fits into the enforcement chain.";
+    }
+
+    function highlightFlow(id) {
+      const neighbors = (n) => {
+        const out = new Set();
+        FLOW_EDGES.forEach(([a, b]) => {
+          if (a === n) out.add(b);
+          if (b === n) out.add(a);
+        });
+        return [...out];
+      };
+      const reachable = new Set([id]);
+      let frontier = [id];
+      for (let i = 0; i < 60 && frontier.length; i++) {
+        const next = [];
+        frontier.forEach((n) => {
+          neighbors(n).forEach((m) => {
+            if (!reachable.has(m)) { reachable.add(m); next.push(m); }
+          });
+        });
+        frontier = next;
+      }
+      Object.entries(nodeEls).forEach(([nid, el]) => {
+        el.classList.toggle("dim", !reachable.has(nid));
+      });
+    }
+
+    function nodeCenter(id) {
+      const el = nodeEls[id];
+      const col = el.closest(".column");
+      return {
+        x: col.offsetLeft + el.offsetLeft + el.offsetWidth / 2,
+        y: col.offsetTop + el.offsetTop + el.offsetHeight / 2,
+      };
+    }
+
+    function drawSketch() {
+      const w = board.offsetWidth + 128;
+      const h = board.offsetHeight + 100;
+      canvas.width = w * devicePixelRatio;
+      canvas.height = h * devicePixelRatio;
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      const ctx = canvas.getContext("2d");
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const rc = rough.canvas(canvas);
+      const opts = { stroke: "#3d3832", strokeWidth: 2, roughness: 1.4, bowing: 1.2 };
+
+      FLOW_EDGES.forEach(([a, b]) => {
+        if (!nodeEls[a] || !nodeEls[b]) return;
+        const p1 = nodeCenter(a);
+        const p2 = nodeCenter(b);
+        const sameCol = nodeEls[a].closest(".column") === nodeEls[b].closest(".column");
+        if (sameCol) {
+          rc.line(p1.x, p1.y + 20, p2.x, p2.y - 20, opts);
+        } else {
+          const midX = (p1.x + p2.x) / 2;
+          rc.curve([
+            [p1.x + 40, p1.y],
+            [midX, p1.y],
+            [midX, p2.y],
+            [p2.x - 40, p2.y],
+          ], opts);
+        }
+      });
+
+      COLUMNS.forEach((col) => {
+        const colEl = board.querySelector(`[data-col="${col.id}"]`);
+        if (!colEl) return;
+        const x = colEl.offsetLeft - 12;
+        const y = colEl.offsetTop - 8;
+        const cw = colEl.offsetWidth + 24;
+        const ch = colEl.offsetHeight + 16;
+        rc.rectangle(x, y, cw, ch, { ...opts, fill: "rgba(255,255,255,0.15)", fillStyle: "solid", roughness: 2 });
+      });
+    }
+
+    viewport.addEventListener("mousedown", (e) => {
+      if (e.target.closest(".node")) return;
+      dragging = true;
+      viewport.classList.add("grabbing");
+      dragStart = { x: e.clientX, y: e.clientY, panX, panY };
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!dragging) return;
+      panX = dragStart.panX + (e.clientX - dragStart.x);
+      panY = dragStart.panY + (e.clientY - dragStart.y);
+      applyTransform();
+    });
+    window.addEventListener("mouseup", () => {
+      dragging = false;
+      viewport.classList.remove("grabbing");
+    });
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.92 : 1.08;
+      const rect = viewport.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const newScale = Math.min(2.5, Math.max(0.35, scale * delta));
+      panX = mx - (mx - panX) * (newScale / scale);
+      panY = my - (my - panY) * (newScale / scale);
+      scale = newScale;
+      applyTransform();
+    }, { passive: false });
+
+    document.getElementById("zoom-in").onclick = () => { scale = Math.min(2.5, scale * 1.12); applyTransform(); };
+    document.getElementById("zoom-out").onclick = () => { scale = Math.max(0.35, scale / 1.12); applyTransform(); };
+    document.getElementById("zoom-fit").onclick = centerFit;
+    document.getElementById("zoom-reset").onclick = () => { scale = 0.92; panX = 40; panY = 20; applyTransform(); };
+    document.getElementById("detail-close").onclick = clearSelection;
+    document.getElementById("focus-mode").addEventListener("change", () => {
+      if (selectedId && document.getElementById("focus-mode").checked) highlightFlow(selectedId);
+      else Object.values(nodeEls).forEach((el) => el.classList.remove("dim"));
+    });
+
+    buildBoard();
+    requestAnimationFrame(() => {
+      centerFit();
+      window.addEventListener("resize", () => requestAnimationFrame(drawSketch));
+    });
+  </script>
+</body>
+</html>

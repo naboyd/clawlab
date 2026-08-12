@@ -19,9 +19,9 @@ NGINX_AVAILABLE="/etc/nginx/sites-available"
 NGINX_ENABLED="/etc/nginx/sites-enabled"
 
 # Defaults (override via env or prompts)
-LAN_IP="${LAN_IP:-192.168.128.93}"
-DOMAIN="${DOMAIN:-icecream.naboydciscolab.com}"
-LE_EMAIL="${LE_EMAIL:-boydn@me.com}"
+LAN_IP="${LAN_IP:-192.168.1.10}"
+DOMAIN="${DOMAIN:-lab.example.com}"
+LE_EMAIL="${LE_EMAIL:-admin@example.com}"
 TLS_MODE="${TLS_MODE:-}"          # http | https-le | https-existing
 AUTH_MODE="${AUTH_MODE:-}"        # claw-auth | pam
 PORT_SSH_OPS="${PORT_SSH_OPS:-}"
@@ -326,7 +326,7 @@ write_unified_portal_nginx() {
     echo
     echo "server {"
     nginx_tls_listen "$PORT_PORTAL"
-    echo "    server_name ${DOMAIN} icecream ${LAN_IP};"
+    echo "    server_name ${DOMAIN} lab-host ${LAN_IP};"
     echo
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then
       nginx_auth_claw_block
@@ -403,7 +403,7 @@ write_nginx_site() {
   {
     echo "server {"
     nginx_tls_listen "$port"
-    echo "    server_name ${DOMAIN} icecream ${LAN_IP};"
+    echo "    server_name ${DOMAIN} lab-host ${LAN_IP};"
     echo
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then
       nginx_auth_claw_block
@@ -482,7 +482,7 @@ issue_le_cert_if_needed() {
 
 # Re-exec entry for sudo nginx deploy (after helper functions are defined)
 if [[ "${DEPLOY_NGINX_ONLY:-0}" -eq 1 ]]; then
-  DEPLOY_USER="${SUDO_USER:-${USER:-naboyd}}"
+  DEPLOY_USER="${SUDO_USER:-${USER:-clawlab}}"
   DEPLOY_HOME="$(getent passwd "$DEPLOY_USER" 2>/dev/null | cut -d: -f6 || echo "/home/$DEPLOY_USER")"
   : "${CONFIG_FILE:=$DEPLOY_HOME/.claw-portals/config.env}"
   : "${REPO:=$DEPLOY_HOME/clawlab}"

@@ -104,4 +104,4 @@ systemctl --user restart openclaw-gateway
 ```
 
 If assets or WebSockets still fail, open `/openclaw/` in a new window and confirm
-`controlUi.allowedOrigins` includes your portal origin (e.g. `https://icecream:8443`).
+`controlUi.allowedOrigins` includes your portal origin (e.g. `https://lab-host:8443`).

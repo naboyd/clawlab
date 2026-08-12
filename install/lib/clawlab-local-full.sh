@@ -326,10 +326,37 @@ clawlab_local_full_ensure_guardrails() {
   clawlab_local_full_guardrails_ok || warn "revshell rules still not blocking — run: defenseclaw-gateway restart && bash $script"
 }
 
+clawlab_local_full_ssh_port_open() {
+  python3 -c "import socket;s=socket.socket();s.settimeout(2);s.connect(('127.0.0.1',22))" 2>/dev/null
+}
+
+# Mac: passwordless loopback SSH (what policy-test / MCP needs — not the Sharing toggle alone).
 clawlab_local_full_ssh_loopback_ok() {
   local user="${1:-$USER}"
-  ssh -o BatchMode=yes -o ConnectTimeout=4 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-    "${user}@127.0.0.1" true >/dev/null 2>&1
+  local key="$HOME/.ssh/id_ed25519"
+  local -a opts=(
+    -o BatchMode=yes
+    -o ConnectTimeout=4
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+  )
+  [[ -f "$key" ]] && opts+=(-i "$key")
+  ssh "${opts[@]}" "${user}@127.0.0.1" true >/dev/null 2>&1
+}
+
+# Returns 0 if OK; prints human reason to stderr and returns 1 on failure.
+clawlab_local_full_mac_ssh_diagnose() {
+  local user="${1:-$USER}"
+  if ! clawlab_local_full_ssh_port_open; then
+    echo "sshd not listening on 127.0.0.1:22 — enable Remote Login (Sharing)" >&2
+    return 1
+  fi
+  if clawlab_local_full_ssh_loopback_ok "$user"; then
+    return 0
+  fi
+  echo "Remote Login may be ON, but key auth failed for ${user}@127.0.0.1 (BatchMode — no password prompt)" >&2
+  echo "Need ~/.ssh/id_ed25519 (or default key) in ~/.ssh/authorized_keys" >&2
+  return 2
 }
 
 clawlab_local_full_doctor() {
@@ -338,11 +365,21 @@ clawlab_local_full_doctor() {
   echo "=== local-full doctor (Mac/desktop policy prerequisites) ==="
   clawlab_local_full_ensure_hosts_inventory "$repo" || true
   if [[ "$(uname -s)" == Darwin ]]; then
-    if clawlab_local_full_ssh_loopback_ok; then
-      echo "  OK   loopback SSH (${USER}@127.0.0.1)"
+    clawlab_local_full_mac_ssh_diagnose
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+      echo "  OK   loopback SSH (${USER}@127.0.0.1, key auth)"
     else
-      echo "  FAIL loopback SSH — enable Remote Login:"
-      echo "        System Settings → General → Sharing → Remote Login"
+      if [[ "$rc" -eq 1 ]]; then
+        echo "  FAIL sshd not on 127.0.0.1:22 — enable Remote Login:"
+        echo "        System Settings → General → Sharing → Remote Login"
+      else
+        echo "  FAIL loopback SSH key auth (${USER}@127.0.0.1)"
+        echo "        Remote Login can be ON while this still fails (no password in BatchMode)"
+        echo "        Fix: bash $repo/install/local-full-ctl.sh restart"
+        echo "        Or:  cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys"
+        echo "        Test: ssh -o BatchMode=yes -i ~/.ssh/id_ed25519 ${USER}@127.0.0.1 true"
+      fi
       issues=$((issues + 1))
     fi
     if clawlab_local_full_mcp_container_ssh_ok; then

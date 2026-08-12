@@ -29,8 +29,8 @@ PY
 
 TOKEN="$(read_token)"
 LEN="${#TOKEN}"
-DOMAIN="${DOMAIN:-icecream.naboydciscolab.com}"
-LAN_IP="${LAN_IP:-192.168.128.93}"
+DOMAIN="${DOMAIN:-lab.example.com}"
+LAN_IP="${LAN_IP:-192.168.1.10}"
 PORT="${PORT_PORTAL:-8443}"
 
 portal_url() {
@@ -42,7 +42,7 @@ portal_url() {
 
 echo "Token length: ${LEN} chars (expect 40+; if ~5, fix ~/.openclaw/.env duplicates)"
 echo
-echo "Loopback (SSH tunnel from Mac: ssh -N -L 18789:127.0.0.1:18789 user@icecream):"
+echo "Loopback (SSH tunnel from Mac: ssh -N -L 18789:127.0.0.1:18789 user@lab-host):"
 echo "  http://127.0.0.1:18789/openclaw/#token=${TOKEN}"
 echo
 echo "Portal HTTPS (gatewayUrl host must match the host in your browser address bar):"

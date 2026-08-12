@@ -4,7 +4,15 @@ Self-hosted AI-ops lab: a governed **OpenClaw** agent with **Cisco DefenseClaw**
 guardrails, a hardened **ssh-ops** MCP for network changes, a unified HTTPS admin
 portal (**claw-auth**), and **Webex** alerting on policy violations.
 
+> **Reference lab only.** This repository demonstrates integration patterns for
+> OpenClaw + DefenseClaw + ssh-ops MCP. It is **not** a supported Cisco product.
+> Run on isolated lab networks; see [SECURITY.md](SECURITY.md).
+
 ![Policy enforcement flow](docs/clawlab-policy-enforcement-flow.png)
+
+System overview: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
+Demo & test matrix: [docs/clawlab-demo-test-matrix.png](docs/clawlab-demo-test-matrix.png) ·
+Policy flow detail: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png).
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for ports, auth model, LLM routing,
 and the full operational runbook.
@@ -45,10 +53,10 @@ Run these in order on a **new host**. Each step is idempotent (safe to re-run).
 |------|--------|--------------|------|
 | **1** | `install/preinstall-check.sh` | Read-only checklist: Node, pnpm, Ollama models, DefenseClaw config, portal, podman | Before anything else; use `--fix` for conservative apt/brew/pnpm fixes |
 | **2** | `install/install-clawstack.sh` | OpenClaw + DefenseClaw, providers, MCP, guardrail + judge backend; **`local-full`** adds portal `:8083` + ssh-ops MCP/GUI | Every new stack; **`local-full`** default on macOS (self-contained desktop); **`local`** = agent-only; **`server`** = legacy Linux |
-| **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, portal tabs, LE TLS (optional) | **Linux lab host** after step 2 (icecream production path) |
+| **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, portal tabs, LE TLS (optional) | **Linux lab host** after step 2 (Linux HTTPS production path) |
 
 ```bash
-git clone https://github.com/nabboyd/clawlab.git ~/clawlab
+git clone https://github.com/cisco/clawlab.git ~/clawlab
 cd ~/clawlab
 
 # 1 — prerequisites (optional --fix)
@@ -63,9 +71,9 @@ bash install/install-clawstack.sh --local-full
 bash claw-portals/install-portals.sh
 ```
 
-**macOS (self-contained, like icecream without LE):** steps **1 → 2 with `local-full`** — bookmark `http://127.0.0.1:8083/`
+**macOS (self-contained, like lab-host without LE):** steps **1 → 2 with `local-full`** — bookmark `http://127.0.0.1:8083/`
 
-**Linux lab server (icecream):** steps **1 → 2 (`local` or `local-full`) → 3** for `:8443` HTTPS + Let's Encrypt
+**Linux lab server:** steps **1 → 2 (`local` or `local-full`) → 3** for `:8443` HTTPS + Let's Encrypt
 
 **DefenseClaw scan backend** (step 2 prompt): **local** (Ollama Foundation-Sec judge), **cisco** (AI Defense API), or **both**.
 
@@ -134,7 +142,7 @@ bash demo/clawlab-demo.sh --fast       # no pauses
 bash tests/policy-test.sh --no-agent   # full deterministic policy matrix
 ```
 
-### Lab host redeploy (icecream)
+### Lab host redeploy
 
 ```bash
 cd ~/clawlab && git pull

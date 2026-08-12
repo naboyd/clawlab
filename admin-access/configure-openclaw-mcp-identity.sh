@@ -55,7 +55,7 @@ if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
   MCP_HOST="$(grep -E '^PublishPort=' "$REPO/quadlets/ssh-ops-mcp.container" \
     | head -1 | sed -E 's/.*PublishPort=([^:]+):8766.*/\1/')"
 fi
-MCP_HOST="${MCP_HOST:-192.168.128.93}"
+MCP_HOST="${MCP_HOST:-192.168.1.10}"
 OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
 install -d -m 0755 "$OVERRIDE_DIR"
 cat >"$OVERRIDE_DIR/upstream.conf" <<EOF
