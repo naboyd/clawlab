@@ -128,6 +128,11 @@ def propose_change(
             )
         except change_approval.ApprovalDenied:
             pass
+    elif status == "proposed":
+        try:
+            change_notify.notify_change_proposed(change)
+        except Exception:  # noqa: BLE001
+            pass
 
     return {
         "change_id": cid,
@@ -174,7 +179,35 @@ def approve_change(change_id: str, *, approver: str, note: str = "") -> dict[str
         updated = change_store.approve(change_id, approver, note=note)
     except change_approval.ApprovalDenied as exc:
         return {"error": str(exc), "code": exc.code}
+    try:
+        change_notify.notify_change_approved(updated, approver=approver)
+    except Exception:  # noqa: BLE001
+        pass
     return {"change_id": change_id, "status": "approved", "approved_by": updated.get("approved_by")}
+
+
+def reject_change(change_id: str, *, approver: str, note: str = "") -> dict[str, Any]:
+    """Reject a proposed change; optional Webex confirmation."""
+    try:
+        change = change_store.load(change_id)
+    except FileNotFoundError:
+        return {"error": f"Change not found: {change_id}"}
+
+    if change.get("status") != "proposed":
+        return {
+            "error": f"Change {change_id} is not proposed (status={change.get('status')}).",
+            "code": "wrong_status",
+        }
+
+    try:
+        updated = change_store.reject(change_id, approver, note=note)
+    except ValueError as exc:
+        return {"error": str(exc), "code": "reject_failed"}
+    try:
+        change_notify.notify_change_rejected(updated, actor=approver)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"change_id": change_id, "status": "rejected", "rejected_by": updated.get("rejected_by")}
 
 
 def get_change(change_id: str, *, redact: bool = True) -> dict[str, Any]:

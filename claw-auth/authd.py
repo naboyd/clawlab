@@ -416,11 +416,19 @@ ADMIN_PAGE = """
   <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
   {% if msg %}<div class="banner">{{ msg }}</div>{% endif %}
   <table>
-    <tr><th>Username</th><th>Role</th><th>Created</th><th></th></tr>
+    <tr><th>Username</th><th>Role</th><th>Webex email</th><th>Created</th><th></th></tr>
     {% for u in users %}
     <tr>
       <td>{{ u.username }}</td>
       <td>{{ u.role }}</td>
+      <td>
+        <form method="post" style="display:flex;gap:.35rem;align-items:center">
+          <input type="hidden" name="action" value="set_webex_email">
+          <input type="hidden" name="username" value="{{ u.username }}">
+          <input type="email" name="webex_email" value="{{ u.webex_email or '' }}" placeholder="user@cisco.com" style="min-width:14rem">
+          <button type="submit">save</button>
+        </form>
+      </td>
       <td class="hint">{{ u.created_at }}</td>
       <td>{% if u.username != user.username %}
         <form method="post" style="display:inline" onsubmit="return confirm('Delete {{ u.username }}?')">
@@ -942,6 +950,11 @@ def admin_users():
                 else:
                     store.delete_user(name)
                     msg = f"Deleted {name}."
+            elif action == "set_webex_email":
+                name = (request.form.get("username") or "").strip().lower()
+                email = (request.form.get("webex_email") or "").strip()
+                store.set_webex_email(name, email)
+                msg = f"Updated Webex email for {name}."
         except ValueError as exc:
             msg = str(exc)
 

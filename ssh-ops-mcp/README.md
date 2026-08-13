@@ -321,6 +321,56 @@ If you'd rather not mount private keys, mount the agent socket and set
 -v $SSH_AUTH_SOCK:/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent
 ```
 
+## Webex four-eyes approval
+
+When a change is **proposed**, ssh-ops can post an adaptive card to your configured
+Webex room with **Approve** and **Reject** buttons (four-eyes: approver must be a
+*different* claw-auth user than the proposer).
+
+### Prerequisites
+
+1. Webex bot token and room in `~/.defenseclaw/config.yaml` with `change` in `events`
+2. Link each approver's Webex email in claw-auth (`manage.py set-webex-email` or Admin → Users)
+3. Mount `DEFENSECLAW_HOME` into the ssh-ops container (see `podctl.sh` / quadlets)
+4. nginx exposes `/ssh-ops/webex/hooks/` **without** claw-auth (HMAC-verified instead)
+
+### Inbound webhook (card buttons)
+
+Register at [developer.webex.com](https://developer.webex.com):
+
+| Field | Value |
+|-------|-------|
+| Resource | `attachmentActions` |
+| Event | `created` |
+| Target URL | `https://YOUR-HOST:8443/ssh-ops/webex/hooks/attachment-actions` |
+
+Save the webhook secret to `~/.defenseclaw/.env`:
+
+```bash
+WEBEX_APPROVAL_WEBHOOK_SECRET=...
+```
+
+Optional:
+
+| Variable | Purpose |
+|----------|---------|
+| `WEBEX_APPROVAL_CARDS` | `0` to disable adaptive cards (markdown + signed links only) |
+| `WEBEX_APPROVAL_PUBLIC_URL` | Override webhook URL if auto-detect fails |
+| `WEBEX_ACTION_SECRET` | HMAC secret for signed portal approve/reject links (defaults to `CLAWLAB_INTERNAL_TOKEN`) |
+| `CLAW_PORTAL_SSH_OPS_URL` | Base URL for portal links, e.g. `https://host:8443/ssh-ops` |
+
+### Signed portal fallback
+
+Proposed-change messages include signed **Approve in browser** / **Reject** links.
+These hit `/ssh-ops/webex/action?token=...`, require claw-auth login, and enforce
+the same four-eyes rules as the Webex card.
+
+### Test
+
+```bash
+python3 tests/test_webex_approval.py
+```
+
 ## Extending
 
 - Add binaries to `READ_ONLY_BINARIES` in `server.py` to widen diagnostics.

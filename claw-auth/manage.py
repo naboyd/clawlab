@@ -26,6 +26,10 @@ def main() -> int:
     passwd = sub.add_parser("set-password", help="Reset a user password")
     passwd.add_argument("username")
 
+    email = sub.add_parser("set-webex-email", help="Link a Webex personEmail to a claw-auth user")
+    email.add_argument("username")
+    email.add_argument("email", nargs="?", default="", help="Webex email (empty to clear)")
+
     args = parser.parse_args()
     store.init_db()
 
@@ -46,7 +50,22 @@ def main() -> int:
     if args.cmd == "list-users":
         for user in store.list_users():
             status = "disabled" if user["disabled"] else "active"
-            print(f"{user['username']}\t{user['role']}\t{status}\t{user['created_at']}")
+            wx = user.get("webex_email") or "—"
+            print(
+                f"{user['username']}\t{user['role']}\t{status}\t{wx}\t{user['created_at']}"
+            )
+        return 0
+
+    if args.cmd == "set-webex-email":
+        try:
+            store.set_webex_email(args.username, args.email)
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        if (args.email or "").strip():
+            print(f"Linked {args.username.lower()} → {args.email.strip().lower()}")
+        else:
+            print(f"Cleared Webex email for {args.username.lower()}")
         return 0
 
     if args.cmd == "delete-user":

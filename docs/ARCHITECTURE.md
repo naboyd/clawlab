@@ -236,6 +236,7 @@ OpenClaw agent ──MCP HTTPS :8766──► ssh-ops MCP (Podman)
 ```
 
 - **Admin GUI:** Podman `ssh-ops-gui` on `:8765`, portal `/ssh-ops/`
+- **Webex four-eyes:** adaptive-card Approve/Reject on propose; inbound webhook at `/ssh-ops/webex/hooks/attachment-actions`; signed portal links at `/webex/action` (see `ssh-ops-mcp/README.md`)
 - **Quadlets:** `quadlets/ssh-ops-gui.container`, `ssh-ops-mcp.container`
 - **Policy file:** `/data/ios-xe-policy.yaml` (writable; seeded from image on first start)
 - **MCP Admin tabs:** Hosts, Discovery, **Changes** (propose/approve/apply), **Policy** (per-group access)
@@ -385,7 +386,9 @@ See **[Troubleshooting scripts.md](Troubleshooting%20scripts.md)** for the full 
 inspection, ssh-ops `ios-xe-policy.yaml` (`always_block` + 60 granular `allow_groups` with
 deny/approve/allow modes), four-eyes change approval, OPA admission actions.
 
-**What alerts:** Webex bridge on HIGH/CRITICAL audit events and change apply/self-approval blocks.
+**What alerts:** Webex bridge on HIGH/CRITICAL audit events; ssh-ops change workflow
+(proposed → needs approval, approved, applied, self-approval blocked) when webhook
+`events` includes `change`.
 
 **Diagrams:** [System overview PNG](clawlab-architecture-overview.png) ·
 [Command flow pass/deny PNG](clawlab-command-flow-pass-deny.png) ·

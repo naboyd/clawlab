@@ -12,7 +12,10 @@ PublishPort=192.168.1.10:8766:8766
 Volume=%h/ssh_ops_mcp/data:/data:Z
 Volume=%h/.ssh:/root/.ssh:ro,Z
 Volume=%h/.claw-auth/users.db:/claw-auth/users.db:ro,Z
+Volume=%h/.defenseclaw:/defenseclaw:ro,Z
+EnvironmentFile=%h/.claw-portals/config.env
 Environment=CLAW_AUTH_DB=/claw-auth/users.db
+Environment=DEFENSECLAW_HOME=/defenseclaw
 Environment=SSH_OPS_RBAC=1
 
 Volume=%h/mcp/acme/lego/certificates:/certs:ro,Z

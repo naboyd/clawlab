@@ -76,8 +76,10 @@ start_container() {
         -v "$SSH_DIR:/root/.ssh:ro" \
         -v "$CLAWLAB_REPO:/clawlab:ro" \
         -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
+        -v "$HOME/.defenseclaw:/defenseclaw:ro" \
         "${rules_mount[@]}" \
         -e CLAW_AUTH_DB=/claw-auth/users.db \
+        -e DEFENSECLAW_HOME=/defenseclaw \
         -e SSH_OPS_RBAC=1 \
         "$IMAGE" gui >/dev/null
       ;;
@@ -92,7 +94,9 @@ start_container() {
         -v "$DATA_DIR:/data" \
         -v "$SSH_DIR:/root/.ssh:ro" \
         -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
+        -v "$HOME/.defenseclaw:/defenseclaw:ro" \
         -e CLAW_AUTH_DB=/claw-auth/users.db \
+        -e DEFENSECLAW_HOME=/defenseclaw \
         -e SSH_OPS_RBAC=1 \
         "$IMAGE" mcp >/dev/null
       ;;

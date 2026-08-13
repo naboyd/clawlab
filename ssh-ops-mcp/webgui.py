@@ -74,6 +74,11 @@ try:
 except ImportError:
     portal_mount = None
 
+try:
+    import webex_approval
+except ImportError:
+    webex_approval = None  # type: ignore[assignment]
+
 _PORTALS = Path(__file__).resolve().parent.parent / "claw-portals"
 if _PORTALS.is_dir() and str(_PORTALS) not in sys.path:
     sys.path.insert(0, str(_PORTALS))
@@ -559,7 +564,7 @@ must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
 <table>
 <tr><th>ID</th><th>Status</th><th>Risk</th><th>Host</th><th>Proposed by</th><th>Intent</th><th>Created</th><th>Actions</th></tr>
 {% for c in changes %}
-<tr>
+<tr id="change-{{ c.id }}"{% if highlight_change == c.id %} style="background:#eef4ff"{% endif %}>
   <td><code>{{ c.id }}</code></td>
   <td>{{ c.status }}</td>
   <td>{{ c.risk }}</td>
@@ -997,6 +1002,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
             policy_path_str = ios_xe_policy.policy_path()
         except Exception:
             policy_groups = []
+    highlight_change = (request.args.get("change") or "").strip()
     ctx = dict(
         common_style=COMMON_STYLE,
         brand_head=BRAND_HEAD,
@@ -1033,6 +1039,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         policy_admin=_policy_admin(),
         gui_user=_gui_user(),
         gui_role=_gui_role(),
+        highlight_change=highlight_change,
     )
     ctx.update(extra)
     return render_template_string(PAGE, **ctx)
@@ -1067,6 +1074,60 @@ def healthz():
         return {"status": "ok"}, 200
     except Exception as exc:  # noqa: BLE001
         return {"status": "error", "detail": str(exc)}, 500
+
+
+@app.route("/webex/hooks/attachment-actions", methods=["POST"])
+def webex_attachment_actions_hook():
+    if webex_approval is None or change_engine is None:
+        return jsonify({"ok": False, "error": "webex approval unavailable"}), 503
+    body = request.get_data()
+    signature = request.headers.get("X-Spark-Signature")
+    if not webex_approval.verify_webhook_signature(body, signature):
+        return jsonify({"ok": False, "error": "invalid webhook signature"}), 401
+    result, status = webex_approval.handle_webhook_request(body)
+    return jsonify(result), status
+
+
+@app.route("/webex/action", methods=["GET", "POST"])
+def webex_portal_action():
+    """Signed portal link fallback — requires claw-auth login + valid token."""
+    if webex_approval is None or change_engine is None:
+        return _changes_redirect("Webex approval unavailable.", err=True)
+    token = (request.args.get("token") or request.form.get("token") or "").strip()
+    parsed = webex_approval.verify_action_token(token)
+    if not parsed:
+        return _changes_redirect("Invalid or expired approval link.", err=True)
+    change_id, action = parsed
+    user = _gui_user()
+    if request.method == "GET":
+        return render_template_string(
+            """
+            <!doctype html><html><head><meta charset="utf-8"><title>Confirm change {{ action }}</title>
+            <style>{{ common_style }}</style></head><body>
+            <div class="card">
+              <h2>Confirm {{ action }} {{ change_id }}</h2>
+              <p>Signed in as <b>{{ user }}</b>. Four-eyes rules still apply.</p>
+              <form method="post">
+                <input type="hidden" name="token" value="{{ token }}">
+                <button type="submit">{{ action|title }} change</button>
+                <a class="btn secondary" href="{{ url_for('index', tab='changes', change=change_id) }}">Cancel</a>
+              </form>
+            </div></body></html>
+            """,
+            common_style=COMMON_STYLE,
+            action=action,
+            change_id=change_id,
+            user=user,
+            token=token,
+        )
+    if action == "approve":
+        result = change_engine.approve_change(change_id, approver=user, note="via signed portal link")
+    else:
+        result = change_engine.reject_change(change_id, approver=user, note="via signed portal link")
+    webex_approval._mark_token_used(token)
+    if result.get("error"):
+        return _changes_redirect(result["error"], err=True)
+    return _changes_redirect(f"{change_id} {action}d by {user} via portal link.")
 
 
 @app.route("/")
@@ -1543,10 +1604,9 @@ def change_reject():
     note = (request.form.get("note") or "").strip()
     if not cid:
         return _changes_redirect("Missing change id.", err=True)
-    try:
-        change_store.reject(cid, _gui_user(), note=note)
-    except (FileNotFoundError, ValueError) as exc:
-        return _changes_redirect(str(exc), err=True)
+    result = change_engine.reject_change(cid, approver=_gui_user(), note=note)
+    if result.get("error"):
+        return _changes_redirect(result["error"], err=True)
     return _changes_redirect(f"Rejected {cid}.")
 
 

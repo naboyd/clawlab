@@ -365,6 +365,12 @@ write_unified_portal_nginx() {
       echo "    }"
     fi
     echo
+    echo "    # Webex bot inbound (attachmentActions) — no claw-auth; verified by HMAC"
+    echo "    location /ssh-ops/webex/hooks/ {"
+    echo "        proxy_pass http://127.0.0.1:8765/webex/hooks/;"
+    nginx_proxy_common
+    echo "    }"
+    echo
     echo "    # MCP / ssh-ops admin GUI (Podman :8765)"
     echo "    location /ssh-ops/ {"
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi

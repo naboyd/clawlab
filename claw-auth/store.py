@@ -58,6 +58,24 @@ def init_db() -> None:
             os.chmod(DB_PATH, 0o600)
         except OSError:
             pass
+        _migrate_webex_email(conn)
+
+
+def _migrate_webex_email(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    if "webex_email" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN webex_email TEXT")
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_webex_email
+            ON users(webex_email)
+            WHERE webex_email IS NOT NULL AND webex_email != ''
+            """
+        )
+
+
+def _norm_email(email: str | None) -> str:
+    return (email or "").strip().lower()
 
 
 def _now() -> datetime:
@@ -173,9 +191,59 @@ def list_users() -> list[dict]:
     init_db()
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT username, role, created_at, disabled FROM users ORDER BY username"
+            """
+            SELECT username, role, created_at, disabled, webex_email
+            FROM users ORDER BY username
+            """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def set_webex_email(username: str, email: str | None) -> None:
+    username = username.strip().lower()
+    normalized = _norm_email(email)
+    init_db()
+    with _connect() as conn:
+        if normalized:
+            existing = conn.execute(
+                """
+                SELECT username FROM users
+                WHERE webex_email = ? AND username != ?
+                """,
+                (normalized, username),
+            ).fetchone()
+            if existing:
+                raise ValueError(
+                    f"Webex email already linked to user '{existing['username']}'"
+                )
+        cur = conn.execute(
+            "UPDATE users SET webex_email = ? WHERE username = ?",
+            (normalized or None, username),
+        )
+        if cur.rowcount == 0:
+            raise ValueError(f"user not found: {username}")
+
+
+def get_user_by_webex_email(email: str | None) -> dict | None:
+    normalized = _norm_email(email)
+    if not normalized:
+        return None
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT username, role, disabled, webex_email
+            FROM users WHERE webex_email = ?
+            """,
+            (normalized,),
+        ).fetchone()
+    if not row or row["disabled"]:
+        return None
+    return {
+        "username": row["username"],
+        "role": row["role"],
+        "webex_email": row["webex_email"],
+    }
 
 
 def purge_expired_sessions() -> int:

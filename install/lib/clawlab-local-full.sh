@@ -504,6 +504,13 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    location /ssh-ops/webex/hooks/ {
+        proxy_pass http://127.0.0.1:8765/webex/hooks/;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Host \$http_host;
+    }
+
     location /ssh-ops/ {
         auth_request /_claw_auth/verify;
         auth_request_set \$claw_user \$upstream_http_x_auth_user;

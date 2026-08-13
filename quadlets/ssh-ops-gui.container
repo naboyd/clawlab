@@ -27,8 +27,10 @@ Volume=%h/.ssh:/root/.ssh:ro,Z
 Volume=%h/.claw-auth/users.db:/claw-auth/users.db:ro,Z
 Volume=%h/clawlab:/clawlab:ro,Z
 Volume=%h/.defenseclaw/policies/guardrail/strict/rules:/defenseclaw-rules:Z
+Volume=%h/.defenseclaw:/defenseclaw:ro,Z
 EnvironmentFile=%h/.claw-portals/config.env
 Environment=CLAW_AUTH_DB=/claw-auth/users.db
+Environment=DEFENSECLAW_HOME=/defenseclaw
 Environment=SSH_OPS_RBAC=1
 Environment=CLAW_AUTH_REQUIRED=1
 Environment=PORTAL_MOUNT_PATH=/ssh-ops

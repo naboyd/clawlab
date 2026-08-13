@@ -51,6 +51,8 @@ def install_auth(app) -> None:
             return None
         if request.path in ("/healthz",):
             return None
+        if request.path.startswith("/webex/hooks/"):
+            return None
         if current_user():
             return None
         port = os.environ.get("CLAW_PORTAL_SSH_OPS_PORT", "8443")

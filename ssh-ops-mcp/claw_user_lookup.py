@@ -59,3 +59,37 @@ def lookup_role(username: str | None) -> str | None:
 
 def clear_role_cache() -> None:
     _ROLE_CACHE.clear()
+    _EMAIL_CACHE.clear()
+
+
+_EMAIL_CACHE: dict[str, str | None] = {}
+
+
+def lookup_username_by_webex_email(email: str | None) -> str | None:
+    """Map Webex personEmail to claw-auth username."""
+    normalized = (email or "").strip().lower()
+    if not normalized:
+        return None
+    if normalized in _EMAIL_CACHE:
+        return _EMAIL_CACHE[normalized]
+    username: str | None = None
+    conn = _connect()
+    if conn is not None:
+        try:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+            if "webex_email" in cols:
+                row = conn.execute(
+                    """
+                    SELECT username FROM users
+                    WHERE webex_email = ? AND disabled = 0
+                    """,
+                    (normalized,),
+                ).fetchone()
+                if row:
+                    username = str(row["username"])
+        except sqlite3.Error:
+            username = None
+        finally:
+            conn.close()
+    _EMAIL_CACHE[normalized] = username
+    return username

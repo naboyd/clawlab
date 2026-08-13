@@ -43,7 +43,12 @@ python3 manage.py create-user alice
 python3 manage.py list-users
 python3 manage.py set-password alice
 python3 manage.py delete-user alice
+python3 manage.py set-webex-email bob bob@cisco.com   # link Webex personEmail for four-eyes approval
 ```
+
+Each user may have an optional **Webex email** (`webex_email` column). ssh-ops maps
+Webex `personEmail` from adaptive-card button clicks to a claw-auth username. Set it in
+**Admin → Users** or via `set-webex-email`. Emails must be unique across users.
 
 ## How it works
 
