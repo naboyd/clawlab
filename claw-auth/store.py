@@ -78,6 +78,16 @@ def _norm_email(email: str | None) -> str:
     return (email or "").strip().lower()
 
 
+VALID_ROLES = frozenset({"admin", "operator"})
+
+
+def _norm_role(role: str | None) -> str:
+    normalized = (role or "").strip().lower()
+    if normalized not in VALID_ROLES:
+        raise ValueError(f"invalid role: {role!r} (allowed: admin, operator)")
+    return normalized
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -90,6 +100,7 @@ def create_user(username: str, password: str, role: str = "admin") -> None:
     username = username.strip().lower()
     if not username or not password:
         raise ValueError("username and password required")
+    role = _norm_role(role)
     init_db()
     with _connect() as conn:
         conn.execute(
@@ -197,6 +208,90 @@ def list_users() -> list[dict]:
             """
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_user(username: str) -> dict | None:
+    username = username.strip().lower()
+    if not username:
+        return None
+    init_db()
+    with _connect() as conn:
+        row = conn.execute(
+            """
+            SELECT username, role, created_at, disabled, webex_email
+            FROM users WHERE username = ?
+            """,
+            (username,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def admin_count(*, include_disabled: bool = False) -> int:
+    init_db()
+    with _connect() as conn:
+        if include_disabled:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin'"
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0"
+            ).fetchone()
+    return int(row["n"]) if row else 0
+
+
+def update_user(
+    username: str,
+    *,
+    role: str | None = None,
+    password: str | None = None,
+    webex_email: str | None = None,
+    disabled: bool | None = None,
+    actor: str | None = None,
+) -> None:
+    """Update user fields. Password is changed only when non-empty."""
+    username = username.strip().lower()
+    actor = (actor or "").strip().lower()
+    if not get_user(username):
+        raise ValueError(f"user not found: {username}")
+
+    if role is not None:
+        role = _norm_role(role)
+        current = get_user(username)
+        if (
+            current
+            and current["role"] == "admin"
+            and role != "admin"
+            and admin_count(include_disabled=False) <= 1
+        ):
+            raise ValueError("cannot demote the last active admin")
+        if actor and actor == username and role != "admin":
+            raise ValueError("cannot remove your own admin role")
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE users SET role = ? WHERE username = ?",
+                (role, username),
+            )
+
+    if password:
+        set_password(username, password)
+
+    if webex_email is not None:
+        set_webex_email(username, webex_email)
+
+    if disabled is not None:
+        if actor and actor == username and disabled:
+            raise ValueError("cannot disable your own account")
+        if disabled and get_user(username) and get_user(username)["role"] == "admin":
+            if admin_count(include_disabled=False) <= 1:
+                raise ValueError("cannot disable the last active admin")
+        with _connect() as conn:
+            conn.execute(
+                "UPDATE users SET disabled = ? WHERE username = ?",
+                (1 if disabled else 0, username),
+            )
+            if disabled:
+                conn.execute("DELETE FROM sessions WHERE username = ?", (username,))
 
 
 def set_webex_email(username: str, email: str | None) -> None:

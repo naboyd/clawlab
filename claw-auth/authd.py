@@ -188,6 +188,9 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:72
 label{display:block;margin:.6rem 0 .2rem;font-weight:600;font-size:.85rem}
 input{width:100%;padding:.45rem;border:1px solid #ccc;border-radius:5px;box-sizing:border-box}
 button{padding:.5rem 1rem;border:0;border-radius:6px;background:#2c5cff;color:#fff;cursor:pointer}
+button.linkish{background:transparent;color:#2c5cff;padding:0;text-decoration:underline;font-size:inherit}
+.btn.secondary{display:inline-block;padding:.5rem 1rem;border-radius:6px;background:#eee;color:#333;text-decoration:none}
+select{width:100%;padding:.45rem;border:1px solid #ccc;border-radius:5px;box-sizing:border-box}
 .banner{background:#eef4ff;border:1px solid #cdddff;padding:.6rem .8rem;border-radius:6px;margin:.8rem 0}
 .err{background:#fdeeee;border-color:#f0bcbc}
 table{border-collapse:collapse;width:100%;margin-top:1rem}
@@ -414,28 +417,25 @@ ADMIN_PAGE = """
 <div class="card">
   <h1 style="margin-top:0">Users</h1>
   <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
-  {% if msg %}<div class="banner">{{ msg }}</div>{% endif %}
+  {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
   <table>
-    <tr><th>Username</th><th>Role</th><th>Webex email</th><th>Created</th><th></th></tr>
+    <tr><th>Username</th><th>Role</th><th>Webex email</th><th>Status</th><th>Created</th><th></th></tr>
     {% for u in users %}
     <tr>
       <td>{{ u.username }}</td>
       <td>{{ u.role }}</td>
-      <td>
-        <form method="post" style="display:flex;gap:.35rem;align-items:center">
-          <input type="hidden" name="action" value="set_webex_email">
-          <input type="hidden" name="username" value="{{ u.username }}">
-          <input type="email" name="webex_email" value="{{ u.webex_email or '' }}" placeholder="user@cisco.com" style="min-width:14rem">
-          <button type="submit">save</button>
-        </form>
-      </td>
+      <td class="hint">{{ u.webex_email or '—' }}</td>
+      <td>{% if u.disabled %}<span class="hint">disabled</span>{% else %}active{% endif %}</td>
       <td class="hint">{{ u.created_at }}</td>
-      <td>{% if u.username != user.username %}
-        <form method="post" style="display:inline" onsubmit="return confirm('Delete {{ u.username }}?')">
+      <td style="white-space:nowrap">
+        <a href="{{ ext_url('/admin/users/' + u.username + '/edit') }}">edit</a>
+        {% if u.username != user.username %}
+        · <form method="post" style="display:inline" onsubmit="return confirm('Delete {{ u.username }}?')">
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="username" value="{{ u.username }}">
-          <button type="submit">delete</button>
-        </form>{% endif %}</td>
+          <button type="submit" class="linkish">delete</button>
+        </form>{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table>
@@ -444,8 +444,51 @@ ADMIN_PAGE = """
     <input type="hidden" name="action" value="create">
     <label>Username</label><input type="text" name="username" required>
     <label>Password</label><input type="password" name="password" required>
-    <label>Role</label><input type="text" name="role" value="admin">
+    <label>Role</label>
+    <select name="role">
+      <option value="admin">admin</option>
+      <option value="operator">operator</option>
+    </select>
     <div style="margin-top:1rem"><button type="submit">Create user</button></div>
+  </form>
+</div>
+</body></html>
+"""
+
+ADMIN_EDIT_PAGE = """
+<!doctype html><html><head><meta charset="utf-8"><title>Edit {{ edit_user.username }}</title>
+<style>{{ style }}</style></head><body>
+<div class="card">
+  <h1 style="margin-top:0">Edit user</h1>
+  <p><a href="{{ ext_url('/admin/users') }}">&larr; users</a></p>
+  {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
+  <form method="post">
+    <label>Username</label>
+    <input type="text" value="{{ edit_user.username }}" disabled>
+    <label>Role</label>
+    <select name="role"{% if edit_user.username == user.username %} disabled{% endif %}>
+      <option value="admin"{% if edit_user.role == 'admin' %} selected{% endif %}>admin</option>
+      <option value="operator"{% if edit_user.role == 'operator' %} selected{% endif %}>operator</option>
+    </select>
+    {% if edit_user.username == user.username %}
+    <input type="hidden" name="role" value="{{ edit_user.role }}">
+    <p class="hint">You cannot change your own role.</p>
+    {% endif %}
+    <label>New password <span class="hint">(leave blank to keep current)</span></label>
+    <input type="password" name="password" autocomplete="new-password">
+    <label>Webex email</label>
+    <input type="email" name="webex_email" value="{{ edit_user.webex_email or '' }}" placeholder="user@cisco.com">
+    <label style="display:flex;align-items:center;gap:.45rem;margin-top:.8rem">
+      <input type="checkbox" name="disabled" value="1"{% if edit_user.disabled %} checked{% endif %}{% if edit_user.username == user.username %} disabled{% endif %} style="width:auto">
+      Disabled
+    </label>
+    {% if edit_user.username == user.username %}
+    <p class="hint">You cannot disable your own account.</p>
+    {% endif %}
+    <div style="margin-top:1rem;display:flex;gap:.6rem">
+      <button type="submit">Save changes</button>
+      <a class="btn secondary" href="{{ ext_url('/admin/users') }}">Cancel</a>
+    </div>
   </form>
 </div>
 </body></html>
@@ -933,6 +976,7 @@ def admin_users():
         return ("forbidden", 403)
 
     msg = ""
+    msg_err = False
     if request.method == "POST":
         action = request.form.get("action")
         try:
@@ -947,16 +991,13 @@ def admin_users():
                 name = (request.form.get("username") or "").strip().lower()
                 if name == sess["username"]:
                     msg = "Cannot delete yourself."
+                    msg_err = True
                 else:
                     store.delete_user(name)
                     msg = f"Deleted {name}."
-            elif action == "set_webex_email":
-                name = (request.form.get("username") or "").strip().lower()
-                email = (request.form.get("webex_email") or "").strip()
-                store.set_webex_email(name, email)
-                msg = f"Updated Webex email for {name}."
         except ValueError as exc:
             msg = str(exc)
+            msg_err = True
 
     return render_template_string(
         ADMIN_PAGE,
@@ -964,6 +1005,48 @@ def admin_users():
         user=sess,
         users=store.list_users(),
         msg=msg,
+        msg_err=msg_err,
+    )
+
+
+@app.route("/admin/users/<username>/edit", methods=["GET", "POST"])
+def admin_edit_user(username: str):
+    sess = _session_user()
+    if not sess:
+        return _login_redirect(request.full_path)
+    if sess["role"] != "admin":
+        return ("forbidden", 403)
+
+    edit_user = store.get_user(username)
+    if not edit_user:
+        return redirect(_external_path("/admin/users"))
+
+    msg = ""
+    msg_err = False
+    if request.method == "POST":
+        try:
+            disabled_raw = request.form.get("disabled")
+            store.update_user(
+                edit_user["username"],
+                role=(request.form.get("role") or edit_user["role"]).strip(),
+                password=(request.form.get("password") or "").strip() or None,
+                webex_email=(request.form.get("webex_email") or "").strip(),
+                disabled=bool(disabled_raw),
+                actor=sess["username"],
+            )
+            edit_user = store.get_user(username) or edit_user
+            msg = f"Saved changes for {edit_user['username']}."
+        except ValueError as exc:
+            msg = str(exc)
+            msg_err = True
+
+    return render_template_string(
+        ADMIN_EDIT_PAGE,
+        style=STYLE,
+        user=sess,
+        edit_user=edit_user,
+        msg=msg,
+        msg_err=msg_err,
     )
 
 
