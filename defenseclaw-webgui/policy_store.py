@@ -155,6 +155,97 @@ def env_var_set(name: str | None) -> bool:
     return False
 
 
+def env_var_value(name: str | None) -> str:
+    """Return the value of an env var from the process env or ~/.defenseclaw/.env."""
+    if not name:
+        return ""
+    val = (os.environ.get(name) or "").strip()
+    if val:
+        return val.strip('"').strip("'")
+    if not ENV_PATH.exists():
+        return ""
+    for line in ENV_PATH.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        if key.strip() == name:
+            return val.strip().strip('"').strip("'")
+    return ""
+
+
+def test_webex_webhooks(cfg: dict | None = None) -> list[dict]:
+    """Post a synthetic alert to each enabled Webex webhook (same as dc-webex-bridge --test)."""
+    import json
+    import socket
+    import urllib.error
+    import urllib.request
+
+    cfg = cfg or load_config()
+    host = os.environ.get("DC_BRIDGE_HOST") or socket.gethostname()
+    markdown = (
+        f"🧪 **DefenseClaw bridge test** on **{host}** — "
+        "if you see this, audit→Webex alerting is live."
+    )
+    results: list[dict] = []
+    for wh in cfg.get("webhooks") or []:
+        if not isinstance(wh, dict):
+            continue
+        name = wh.get("name") or "webex"
+        if (wh.get("type") or "").lower() != "webex":
+            results.append(
+                {"name": name, "ok": False, "detail": "skipped (not type=webex)"}
+            )
+            continue
+        if wh.get("enabled") is False:
+            results.append({"name": name, "ok": False, "detail": "skipped (disabled)"})
+            continue
+        room_id = (wh.get("room_id") or "").strip()
+        secret_env = (wh.get("secret_env") or "").strip()
+        token = env_var_value(secret_env)
+        if not room_id:
+            results.append({"name": name, "ok": False, "detail": "missing room_id"})
+            continue
+        if not token:
+            results.append(
+                {
+                    "name": name,
+                    "ok": False,
+                    "detail": f"missing token ({secret_env or 'secret_env'})",
+                }
+            )
+            continue
+        url = wh.get("url") or "https://webexapis.com/v1/messages"
+        body = json.dumps({"roomId": room_id, "markdown": markdown}).encode()
+        req = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "User-Agent": "defenseclaw-webgui/1.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                ok = 200 <= resp.status < 300
+                detail = f"HTTP {resp.status}"
+        except urllib.error.HTTPError as exc:
+            ok = False
+            retry = exc.headers.get("Retry-After")
+            body_snip = exc.read()[:200].decode("utf-8", "replace")
+            detail = f"HTTP {exc.code}"
+            if retry:
+                detail += f" retry-after={retry}"
+            detail += f": {body_snip}"
+        except Exception as exc:
+            ok = False
+            detail = f"ERR {exc}"
+        results.append({"name": name, "ok": ok, "detail": detail})
+    return results
+
+
 def redact_config(cfg: dict) -> dict:
     """Return a copy safe to display — secrets replaced with placeholders."""
 

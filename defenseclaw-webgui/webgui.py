@@ -549,7 +549,12 @@ WEBHOOKS = """
     <label>Webhooks YAML <span class="hint">(list under top-level <code>webhooks:</code>)</span></label>
     <textarea name="webhooks_yaml" rows="18">{{ webhooks_yaml }}</textarea>
     <button type="submit">Save webhooks</button>
+    <button type="submit" formaction="{{ url_for('webhooks_test') }}" formmethod="post"
+            style="margin-left:.5rem">Send test alert</button>
   </form>
+  <p class="hint" style="margin-top:.75rem">Test posts the same synthetic message as
+  <code>python3 ~/.defenseclaw/webex-bridge/dc-webex-bridge.py --test</code> to each enabled
+  Webex webhook (uses saved config + token from <code>~/.defenseclaw/.env</code>).</p>
   <table style="margin-top:1rem">
     <tr><th>Name</th><th>Type</th><th>Room ID</th><th>Min severity</th><th>Secret env</th><th>Status</th></tr>
     {% for wh in summary %}
@@ -620,7 +625,33 @@ def webhooks():
         )
 
     webhooks_yaml = yaml.safe_dump(hooks, sort_keys=False, default_flow_style=False)
-    return render_page(WEBHOOKS, "webhooks", webhooks_yaml=webhooks_yaml, summary=summary)
+    msg, msg_class = msg_from_query()
+    return render_page(
+        WEBHOOKS,
+        "webhooks",
+        webhooks_yaml=webhooks_yaml,
+        summary=summary,
+        msg=msg,
+        msg_class=msg_class or ("ok" if msg else ""),
+    )
+
+
+@app.route("/webhooks/test", methods=["POST"])
+def webhooks_test():
+    results = ps.test_webex_webhooks()
+    if not results:
+        return redirect(
+            url_for("webhooks", msg="No webhooks configured.", kind="err")
+        )
+    parts = []
+    all_ok = True
+    for item in results:
+        if not item["ok"]:
+            all_ok = False
+        status = "OK" if item["ok"] else "FAIL"
+        parts.append(f"{item['name']}: {status} ({item['detail']})")
+    msg = "Test alert — " + "; ".join(parts)
+    return redirect(url_for("webhooks", msg=msg, kind="ok" if all_ok else "err"))
 
 
 # --------------------------------------------------------------------------- #
