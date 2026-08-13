@@ -451,6 +451,15 @@ server {
 
     client_max_body_size 50m;
 
+    location /clawlab-assets/ {
+        alias ${repo}/docs/assets/;
+        access_log off;
+    }
+    location = /favicon.ico {
+        alias ${repo}/docs/assets/favicon-32.png;
+        access_log off;
+    }
+
     location = /_claw_auth { return 302 /_claw_auth/login; }
     location = /_claw_auth/verify {
         internal;

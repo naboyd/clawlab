@@ -96,6 +96,20 @@ def _safe_next(raw: str | None) -> str:
 app = Flask(__name__)
 app.secret_key = _load_secret_key()
 
+_PORTALS = Path(__file__).resolve().parent.parent / "claw-portals"
+if _PORTALS.is_dir() and str(_PORTALS) not in sys.path:
+    sys.path.insert(0, str(_PORTALS))
+try:
+    import claw_assets as _claw_assets
+except ImportError:
+    _claw_assets = None  # type: ignore[assignment]
+
+if _claw_assets:
+    _claw_assets.register_routes(app)
+
+BRAND_HEAD = _claw_assets.head_tags() if _claw_assets else ""
+BRAND_ICON = "/clawlab-assets/favicon-32.png"
+
 
 def _setup_logging() -> logging.Logger:
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -185,9 +199,12 @@ a{color:#2c5cff}
 
 LOGIN_PAGE = """
 <!doctype html><html><head><meta charset="utf-8"><title>clawlab login</title>
+{{ brand_head|safe }}
 <style>{{ style }}</style></head><body>
 <div class="card">
-  <h1 style="margin-top:0">clawlab admin login</h1>
+  <h1 style="margin-top:0;display:flex;align-items:center;gap:.5rem">
+    <img src="{{ brand_icon }}" alt="" width="32" height="32" style="border-radius:8px">
+    clawlab admin login</h1>
   <p class="hint">One login for the clawlab portal hub (OpenClaw, MCP Admin, DefenseClaw).
   First OpenClaw use: open the Control UI, then approve the browser device on the
   <strong>OpenClaw devices</strong> tab (admins).</p>
@@ -206,6 +223,7 @@ LOGIN_PAGE = """
 
 HUB_PAGE = """
 <!doctype html><html><head><meta charset="utf-8"><title>clawlab</title>
+{{ brand_head|safe }}
 <style>
   *{box-sizing:border-box}
   body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
@@ -241,7 +259,9 @@ HUB_PAGE = """
 <div class="pair-banner"{% if not pending_banner %} style="display:none"{% endif %}>{{ pending_banner|safe }}</div>
 {% endif %}
 <header>
-  <h1>clawlab</h1>
+  <h1 style="display:flex;align-items:center;gap:.5rem">
+    <img src="{{ brand_icon }}" alt="" width="28" height="28" style="border-radius:7px">
+    clawlab</h1>
   <div class="meta">Signed in as <b>{{ user.username }}</b>{% if is_admin %}
     <a href="{{ ext_url('/admin/users') }}">Users</a>{% endif %}
     <a href="{{ ext_url('/logout') }}">Sign out</a></div>
@@ -707,6 +727,8 @@ def login():
         return render_template_string(
             LOGIN_PAGE,
             style=STYLE,
+            brand_head=BRAND_HEAD,
+            brand_icon=BRAND_ICON,
             error="",
             next_url=next_url,
         )
@@ -724,6 +746,8 @@ def login():
         return render_template_string(
             LOGIN_PAGE,
             style=STYLE,
+            brand_head=BRAND_HEAD,
+            brand_icon=BRAND_ICON,
             error="Invalid username or password.",
             next_url=next_url,
         ), 401
@@ -797,6 +821,8 @@ def hub():
     return render_template_string(
         HUB_PAGE,
         style=STYLE,
+        brand_head=BRAND_HEAD,
+        brand_icon=BRAND_ICON,
         user=sess,
         mcp_bind=mcp_bind,
         tabs=_portal_tabs(

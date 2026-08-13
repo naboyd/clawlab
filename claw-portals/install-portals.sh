@@ -336,6 +336,15 @@ write_unified_portal_nginx() {
     echo
     echo "    client_max_body_size 50m;"
     echo
+    echo "    location /clawlab-assets/ {"
+    echo "        alias ${REPO}/docs/assets/;"
+    echo "        access_log off;"
+    echo "    }"
+    echo "    location = /favicon.ico {"
+    echo "        alias ${REPO}/docs/assets/favicon-32.png;"
+    echo "        access_log off;"
+    echo "    }"
+    echo
     echo "    # Portal hub (tabbed UI)"
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then
       echo "    location = / {"

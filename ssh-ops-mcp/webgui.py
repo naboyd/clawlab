@@ -19,6 +19,7 @@ Passwords are never written to hosts.yaml or shown back in the page; only a
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -73,6 +74,14 @@ try:
 except ImportError:
     portal_mount = None
 
+_PORTALS = Path(__file__).resolve().parent.parent / "claw-portals"
+if _PORTALS.is_dir() and str(_PORTALS) not in sys.path:
+    sys.path.insert(0, str(_PORTALS))
+try:
+    import claw_assets as _claw_assets
+except ImportError:
+    _claw_assets = None  # type: ignore[assignment]
+
 CONFIG_PATH = Path(
     os.environ.get("SSH_OPS_CONFIG", Path(__file__).parent / "hosts.yaml")
 ).expanduser()
@@ -89,6 +98,10 @@ if claw_auth:
     claw_auth.install_auth(app)
 if portal_mount:
     portal_mount.apply_mount(app)
+if _claw_assets:
+    _claw_assets.register_routes(app)
+
+BRAND_HEAD = _claw_assets.head_tags() if _claw_assets else ""
 
 
 # --------------------------------------------------------------------------- #
@@ -156,6 +169,7 @@ COMMON_STYLE = """
 PAGE = """
 <!doctype html>
 <html><head><meta charset="utf-8"><title>ssh-ops MCP Admin</title>
+{{ brand_head|safe }}
 <style>{{ common_style|safe }}</style>
 <script>
 function togglePlatform(){
@@ -228,7 +242,9 @@ document.addEventListener('DOMContentLoaded',function(){
   {% if job_status.status == 'running' %}pollDiscoveryStatus();{% endif %}
 });
 </script></head><body>
-<h1>ssh-ops — MCP Admin</h1>
+<h1 style="display:flex;align-items:center;gap:.45rem">
+  <img src="/clawlab-assets/favicon-32.png" alt="" width="26" height="26" style="border-radius:6px">
+  ssh-ops — MCP Admin</h1>
 <div class="banner">Editing <code>{{ config_path }}</code>. Secrets are stored
 <b>encrypted</b> in the .env file; the master key is in a separate 0600 keyfile.
 {% if auth_required %}LAN access requires <b>claw-auth</b> via nginx.{% else %}
@@ -983,6 +999,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
             policy_groups = []
     ctx = dict(
         common_style=COMMON_STYLE,
+        brand_head=BRAND_HEAD,
         tab=active,
         hosts=cfg["hosts"],
         inventory=inventory,

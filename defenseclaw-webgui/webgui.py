@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -42,11 +43,23 @@ try:
 except ImportError:
     portal_mount = None
 
+_PORTALS = Path(__file__).resolve().parent.parent / "claw-portals"
+if _PORTALS.is_dir() and str(_PORTALS) not in sys.path:
+    sys.path.insert(0, str(_PORTALS))
+try:
+    import claw_assets as _claw_assets
+except ImportError:
+    _claw_assets = None  # type: ignore[assignment]
+
 app = Flask(__name__)
 if claw_auth:
     claw_auth.install_auth(app, service="DefenseClaw policy editor")
 if portal_mount:
     portal_mount.apply_mount(app)
+if _claw_assets:
+    _claw_assets.register_routes(app)
+
+BRAND_HEAD = _claw_assets.head_tags() if _claw_assets else ""
 
 STYLE = """
 body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:980px;
@@ -99,8 +112,11 @@ NAV = """
 
 SHELL = """
 <!doctype html><html><head><meta charset="utf-8"><title>DefenseClaw policies</title>
+{{ brand_head|safe }}
 <style>{{ style }}</style></head><body>
-<h1>DefenseClaw — policy editor</h1>
+<h1 style="display:flex;align-items:center;gap:.45rem">
+  <img src="/clawlab-assets/favicon-32.png" alt="" width="26" height="26" style="border-radius:6px">
+  DefenseClaw — policy editor</h1>
 <p class="hint">Config: <code>{{ config_path }}</code> · Home: <code>{{ home_path }}</code></p>
 {% if msg %}<div class="banner {{ msg_class }}">{{ msg }}</div>{% endif %}
 {{ nav|safe }}
@@ -114,6 +130,7 @@ def render_page(template: str, tab: str, **ctx):
     shell_ctx = {
         **ctx,
         "style": STYLE,
+        "brand_head": BRAND_HEAD,
         "nav": render_template_string(NAV, tab=tab),
         "config_path": str(ps.CONFIG_PATH),
         "home_path": str(ps.DEFENSECLAW_HOME),
@@ -524,18 +541,22 @@ def activate_policy():
 WEBHOOKS = """
 <div class="card">
   <h2 style="margin-top:0">Alert webhooks</h2>
-  <p class="hint">Token values live in <code>.env</code> via <code>secret_env</code> — never shown here.</p>
+  <p class="hint">Webex uses <code>room_id</code> in the YAML below (target space). Bot bearer token lives in
+  <code>~/.defenseclaw/.env</code> as <code>DEFENSECLAW_WEBEX_TOKEN</code> — edit that file to rotate the token;
+  this UI never displays secrets. There is no separate “bot ID” field: Webex posts to
+  <code>room_id</code> using the bot token.</p>
   <form method="post">
     <label>Webhooks YAML <span class="hint">(list under top-level <code>webhooks:</code>)</span></label>
     <textarea name="webhooks_yaml" rows="18">{{ webhooks_yaml }}</textarea>
     <button type="submit">Save webhooks</button>
   </form>
   <table style="margin-top:1rem">
-    <tr><th>Name</th><th>Type</th><th>Min severity</th><th>Secret env</th><th>Status</th></tr>
+    <tr><th>Name</th><th>Type</th><th>Room ID</th><th>Min severity</th><th>Secret env</th><th>Status</th></tr>
     {% for wh in summary %}
     <tr>
       <td>{{ wh.name }}</td>
       <td>{{ wh.type }}</td>
+      <td><code>{{ wh.room_id or '—' }}</code></td>
       <td>{{ wh.min_severity }}</td>
       <td><code>{{ wh.secret_env or '—' }}</code></td>
       <td>{% if wh.enabled %}<span class="pill yes">enabled</span>{% else %}<span class="pill no">disabled</span>{% endif %}
@@ -543,7 +564,7 @@ WEBHOOKS = """
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5" class="hint">No webhooks configured.</td></tr>
+    <tr><td colspan="6" class="hint">No webhooks configured.</td></tr>
     {% endfor %}
   </table>
 </div>
@@ -590,6 +611,7 @@ def webhooks():
             {
                 "name": wh.get("name", "—"),
                 "type": wh.get("type", "—"),
+                "room_id": wh.get("room_id") or "",
                 "min_severity": wh.get("min_severity", "—"),
                 "secret_env": secret_env,
                 "secret_set": ps.env_var_set(secret_env),

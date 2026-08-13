@@ -4,6 +4,9 @@ Fires a Webex alert for every HIGH/CRITICAL security violation DefenseClaw
 records, closing a gap in DefenseClaw 0.8.4 where the enforcing lanes don't
 reach the built-in webhook dispatcher.
 
+**Suggested Webex bot avatar:** [../docs/assets/webex-bot-goalie-crab-512.png](../docs/assets/webex-bot-goalie-crab-512.png)
+(512×512 — OpenClaw crab in hockey goalie pads). Full-size: [webex-bot-goalie-crab.png](../docs/assets/webex-bot-goalie-crab.png).
+
 ## Why it's needed
 
 For the OpenClaw connector in 0.8.4:
