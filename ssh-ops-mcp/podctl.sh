@@ -28,12 +28,17 @@ MCP_PUBLISH="${SSH_OPS_MCP_PUBLISH:-127.0.0.1:8766:8766}"
 PORTAL_ENV="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
 LOG_DIR="${SSH_OPS_LOG_DIR:-$HOME/.clawlab/ssh-ops/logs}"
 LOG_FILE="$LOG_DIR/pods.log"
+MCP_TLS_CERT_HOST="${SSH_OPS_MCP_TLS_CERT:-}"
+MCP_TLS_KEY_HOST="${SSH_OPS_MCP_TLS_KEY:-}"
 
 # Long-running containers: "name|mode".
 MANAGED=( "ssh-ops-gui|gui" )
 if [[ "${CLAWLAB_MANAGE_MCP:-0}" == "1" ]]; then
   MANAGED+=( "ssh-ops-mcp|mcp" )
 fi
+
+# Remote MCP (LAN/internet :8766 with TLS): export SSH_OPS_MCP_REMOTE=1
+# Auto TLS from DOMAIN in ~/.claw-portals/config.env + lego certs, or set SSH_OPS_MCP_TLS_CERT/KEY.
 
 # ---- helpers --------------------------------------------------------------
 say() { printf '>> %s\n' "$*"; }
@@ -44,6 +49,39 @@ usage() { sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; }
 need_podman() { command -v podman >/dev/null 2>&1 || die "podman not found on PATH"; }
 
 is_running() { podman ps --format '{{.Names}}' 2>/dev/null | grep -qx "$1"; }
+
+_portal_domain() {
+  [[ -f "$PORTAL_ENV" ]] || return 0
+  grep -E '^DOMAIN=' "$PORTAL_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs
+}
+
+_resolve_mcp_publish() {
+  if [[ -n "${SSH_OPS_MCP_PUBLISH:-}" ]]; then
+    printf '%s' "$SSH_OPS_MCP_PUBLISH"
+    return
+  fi
+  if [[ "${SSH_OPS_MCP_REMOTE:-0}" == "1" ]]; then
+    printf '%s' "0.0.0.0:8766:8766"
+    return
+  fi
+  printf '%s' "127.0.0.1:8766:8766"
+}
+
+_resolve_mcp_tls() {
+  local cert="${MCP_TLS_CERT_HOST}" key="${MCP_TLS_KEY_HOST}"
+  if [[ -z "$cert" || -z "$key" ]]; then
+    local domain lego
+    domain="$(_portal_domain)"
+    lego="${SSH_OPS_MCP_TLS_DIR:-$HOME/mcp/acme/lego/certificates}"
+    if [[ -n "$domain" && -f "$lego/${domain}.crt" && -f "$lego/${domain}.key" ]]; then
+      cert="$lego/${domain}.crt"
+      key="$lego/${domain}.key"
+    fi
+  fi
+  if [[ -n "$cert" && -n "$key" && -f "$cert" && -f "$key" ]]; then
+    printf '%s\n' "$cert" "$key"
+  fi
+}
 
 build_image() {
   say "building $IMAGE${NOCACHE:+ (no cache)} from $PROJECT_DIR"
@@ -84,6 +122,22 @@ start_container() {
         "$IMAGE" gui >/dev/null
       ;;
     mcp)
+      MCP_PUBLISH="$(_resolve_mcp_publish)"
+      local -a mcp_tls_mount=() mcp_tls_env=()
+      local tls_cert tls_key
+      if tls_paths="$( _resolve_mcp_tls )"; then
+        tls_cert="${tls_paths%%$'\n'*}"
+        tls_key="${tls_paths#*$'\n'}"
+        mcp_tls_mount=(-v "$tls_cert:/certs/tls.crt:ro" -v "$tls_key:/certs/tls.key:ro")
+        mcp_tls_env=(
+          -e SSH_OPS_MCP_TLS_CERT=/certs/tls.crt
+          -e SSH_OPS_MCP_TLS_KEY=/certs/tls.key
+        )
+        say "MCP TLS: $tls_cert"
+      elif [[ "${SSH_OPS_MCP_REMOTE:-0}" == "1" ]]; then
+        die "SSH_OPS_MCP_REMOTE=1 but no TLS cert/key found (set SSH_OPS_MCP_TLS_CERT/KEY or DOMAIN + lego certs)"
+      fi
+      say "MCP publish: $MCP_PUBLISH"
       podman run -d --name "$name" --restart unless-stopped \
         -p "$MCP_PUBLISH" \
         -e SSH_OPS_MCP_TRANSPORT=streamable-http \
@@ -95,6 +149,8 @@ start_container() {
         -v "$SSH_DIR:/root/.ssh:ro" \
         -v "$HOME/.claw-auth/users.db:/claw-auth/users.db:ro" \
         -v "$HOME/.defenseclaw:/defenseclaw:ro" \
+        "${mcp_tls_mount[@]}" \
+        "${mcp_tls_env[@]}" \
         -e CLAW_AUTH_DB=/claw-auth/users.db \
         -e DEFENSECLAW_HOME=/defenseclaw \
         -e SSH_OPS_RBAC=1 \

@@ -246,6 +246,10 @@ Quadlet unit — see `podman/ssh-ops-gui.container` for the install steps.
 
 Notes for Podman on Linux:
 
+- **Remote MCP:** set `SSH_OPS_MCP_REMOTE=1` before `./podctl.sh --recreate` to
+  publish on `0.0.0.0:8766` with TLS (auto-detects lego certs from `DOMAIN` in
+  `~/.claw-portals/config.env`). Clients use `https://your-host:8766/mcp` with a
+  Bearer token from the ssh-ops admin GUI.
 - **`:Z`** on volume mounts relabels them for SELinux (needed on Fedora/RHEL).
   Drop it on non-SELinux systems if it causes trouble.
 - **LAN reachability:** rootless Podman's default network (pasta/slirp4netns)
