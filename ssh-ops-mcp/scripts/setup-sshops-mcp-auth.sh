@@ -16,6 +16,7 @@
 #
 # Options:
 #   --dry-run          Print actions only
+#   --hosts LIST       Comma-separated inventory names only (e.g. Services,Nuc03,splunk)
 #   --skip-secrets     Do not edit encrypted .env secrets
 #   --skip-hosts-yaml  Do not patch hosts.yaml
 #   --keep-sudo-secrets  Leave encrypted sudo passwords in .env
@@ -49,6 +50,7 @@ DRY_RUN=0
 SKIP_SECRETS=0
 SKIP_HOSTS_YAML=0
 KEEP_SUDO_SECRETS=0
+ONLY_HOSTS=()
 
 usage() {
   sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//'
@@ -57,6 +59,12 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
+    --hosts)
+      [[ $# -ge 2 ]] || { echo "error: --hosts requires a comma-separated list" >&2; exit 1; }
+      IFS=',' read -r -a ONLY_HOSTS <<< "$2"
+      shift 2
+      continue
+      ;;
     --skip-secrets) SKIP_SECRETS=1 ;;
     --skip-hosts-yaml) SKIP_HOSTS_YAML=1 ;;
     --keep-sudo-secrets) KEEP_SUDO_SECRETS=1 ;;
@@ -65,6 +73,29 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+host_selected() {
+  local inv="$1"
+  if [[ ${#ONLY_HOSTS[@]} -eq 0 ]]; then
+    return 0
+  fi
+  local pick
+  for pick in "${ONLY_HOSTS[@]}"; do
+    if [[ "$pick" == "$inv" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+selected_hosts_csv() {
+  local inv out=""
+  for inv in "${HOST_INVENTORY[@]}"; do
+    host_selected "$inv" || continue
+    out+="${out:+,}${inv}"
+  done
+  printf '%s' "$out"
+}
 
 say() { printf '>> %s\n' "$*"; }
 run() {
@@ -104,11 +135,13 @@ remote_exec() {
     printf '%s\n' "$body" | sudo bash
   else
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      printf '[dry-run] ssh %s@%s sudo bash <<SETUP\n%s\nSETUP\n' "$user" "$host" "$body"
+      printf '[dry-run] ssh -t %s@%s sudo bash -s <<SETUP\n%s\nSETUP\n' "$user" "$host" "$body"
       return 0
     fi
-    printf '%s\n' "$body" | ssh -o BatchMode=yes -o ConnectTimeout=15 \
-      "${user}@${host}" 'sudo bash'
+    # -t required so remote sudo can prompt for naboyd password during bootstrap.
+    ssh -t -o ConnectTimeout=15 "${user}@${host}" 'sudo bash -s' <<REMOTE_SCRIPT
+${body}
+REMOTE_SCRIPT
   fi
 }
 
@@ -287,7 +320,7 @@ patch_hosts_yaml() {
     return 0
   fi
   need_cmd python3
-  HOSTS_YAML="$HOSTS_YAML" SSHOPS_USER="$SSHOPS_USER" python3 <<'PY'
+  HOSTS_YAML="$HOSTS_YAML" SSHOPS_USER="$SSHOPS_USER" SSHOPS_TARGETS="$(selected_hosts_csv)" python3 <<'PY'
 import os
 from pathlib import Path
 
@@ -297,7 +330,7 @@ except ImportError as exc:
     raise SystemExit("PyYAML required: pip install pyyaml") from exc
 
 path = Path(os.environ["HOSTS_YAML"])
-targets = ["icecream", "Services", "Nuc03", "splunk"]
+targets = [t.strip() for t in os.environ["SSHOPS_TARGETS"].split(",") if t.strip()]
 user = os.environ["SSHOPS_USER"]
 cfg = yaml.safe_load(path.read_text()) or {}
 hosts = cfg.setdefault("hosts", {})
@@ -310,7 +343,7 @@ for name in targets:
     entry["key_path"] = "/root/.ssh/ssh-ops-mcp"
     entry.setdefault("platform", "linux")
 path.write_text(yaml.dump(cfg, default_flow_style=False, sort_keys=False))
-print(f"updated {path}")
+print(f"updated {path} for: {', '.join(targets)}")
 PY
 }
 
@@ -327,7 +360,7 @@ clear_secrets() {
     printf '[dry-run] clear login/sudo secrets for: %s\n' "${HOST_INVENTORY[*]}"
     return 0
   fi
-  KEEP_SUDO="$KEEP_SUDO_SECRETS" DATA_DIR="$DATA_DIR" REPO_DIR="$REPO_DIR" python3 <<'PY'
+  KEEP_SUDO="$KEEP_SUDO_SECRETS" DATA_DIR="$DATA_DIR" REPO_DIR="$REPO_DIR" SSHOPS_TARGETS="$(selected_hosts_csv)" python3 <<'PY'
 import os
 import sys
 from pathlib import Path
@@ -340,7 +373,7 @@ os.environ.setdefault("SSH_OPS_KEYFILE", str(Path(os.environ["DATA_DIR"]) / "mas
 
 import secrets_store  # noqa: E402
 
-targets = ["icecream", "Services", "Nuc03", "splunk"]
+targets = [t.strip() for t in os.environ["SSHOPS_TARGETS"].split(",") if t.strip()]
 keep_sudo = os.environ.get("KEEP_SUDO", "0") == "1"
 for host in targets:
     for kind in ("login", "sudo"):
@@ -381,11 +414,13 @@ main() {
 
   local inv target
   for inv in "${HOST_INVENTORY[@]}"; do
+    host_selected "$inv" || continue
     target="$(host_target "$inv")" || continue
     install_on_host "$inv" "$target"
   done
 
   for inv in "${HOST_INVENTORY[@]}"; do
+    host_selected "$inv" || continue
     target="$(host_target "$inv")" || continue
     verify_key_login "$inv" "$target"
   done
