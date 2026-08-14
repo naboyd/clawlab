@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/mcp-proxy-env.sh
+source "$REPO/admin-access/lib/mcp-proxy-env.sh"
 OC_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 DATA_DIR="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 VENV_PY="${CLAW_PYTHON:-$HOME/.clawlab/venv/bin/python}"
@@ -77,9 +79,19 @@ print("DefenseClaw gateway tokens synced")
 PY
 
 say "Syncing ssh-ops MCP bearer from secrets store -> openclaw.json"
+UNIT_DIR="$HOME/.config/systemd/user"
+OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
+PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-}}"
+if [[ -z "$PROXY_BIND" && -f "$OVERRIDE_DIR/clawlab.conf" ]]; then
+  PROXY_BIND="$(grep -E '^Environment=SSH_OPS_MCP_PROXY_HOST=' "$OVERRIDE_DIR/clawlab.conf" \
+    | head -1 | sed 's/^Environment=SSH_OPS_MCP_PROXY_HOST=//' || true)"
+fi
+PROXY_BIND="${PROXY_BIND:-127.0.0.1}"
+PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
 SSH_OPS_CONFIG="$DATA_DIR/hosts.yaml" \
 SSH_OPS_ENV="$DATA_DIR/.env" \
 SSH_OPS_KEYFILE="$DATA_DIR/master.key" \
+SSH_OPS_MCP_PROXY_URL="$PROXY_URL" \
 PYTHONPATH="$REPO/ssh-ops-mcp" \
   "$VENV_PY" - <<'PY'
 import json, os, sys
@@ -98,18 +110,14 @@ print("openclaw.json ssh-ops MCP auth synced")
 PY
 
 # Identity proxy: same data dir + upstream as the MCP container (podctl.sh).
-UNIT_DIR="$HOME/.config/systemd/user"
-OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
 install -d -m 0755 "$UNIT_DIR" "$OVERRIDE_DIR"
 install -m 0644 "$REPO/systemd-user/mcp-identity-proxy.service" "$UNIT_DIR/"
-cat >"$OVERRIDE_DIR/clawlab.conf" <<EOF
-[Service]
-Environment=SSH_OPS_MCP_UPSTREAM=https://127.0.0.1:8766
-Environment=SSH_OPS_ENV=${DATA_DIR}/.env
-Environment=SSH_OPS_KEYFILE=${DATA_DIR}/master.key
-EOF
+mcp_proxy_write_dropin "127.0.0.1" "$PROXY_BIND" "$DATA_DIR"
 rm -f "$OVERRIDE_DIR/upstream.conf"
-say "Identity proxy -> upstream :8766, secrets ${DATA_DIR}"
+say "Identity proxy listen ${PROXY_BIND}:8767 -> upstream :8766, secrets ${DATA_DIR}"
+if mcp_proxy_resolve_tls >/dev/null; then
+  say "Identity proxy TLS: lego cert for $(mcp_proxy_portal_domain)"
+fi
 
 systemctl --user daemon-reload
 systemctl --user restart mcp-identity-proxy.service openclaw-gateway.service

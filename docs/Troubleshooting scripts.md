@@ -128,6 +128,8 @@ Enable clawlab MCP identity plugin and point ssh-ops MCP at the identity proxy.
 |-----|-------------|
 | `OPENCLAW_HOME` | OpenClaw dir (default `~/.openclaw`) |
 | `SSH_OPS_MCP_PROXY_URL` | Proxy URL (default `http://127.0.0.1:8767/mcp`) |
+| `SSH_OPS_MCP_PROXY_BIND` | Listen address (default `127.0.0.1`; use lab LAN IP for Claude Desktop without SSH tunnel) |
+| `SSH_OPS_MCP_PROXY_TLS_CERT` / `SSH_OPS_MCP_PROXY_TLS_KEY` | TLS for the proxy (auto from lego + `DOMAIN` in `~/.claw-portals/config.env` when present) |
 | `CLAW_PYTHON` | Python for JSON patch |
 
 ```bash

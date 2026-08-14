@@ -211,6 +211,27 @@ function setDiscoveryRunning(running){
   if(btn){btn.disabled=running; btn.textContent=running?'Running discovery…':'Run discovery';}
   if(status && running){status.style.display='block'; status.className='banner'; status.textContent='Discovery in progress — connecting to seed device. This may take several minutes.';}
 }
+function setChangeApplyRunning(changeId,running){
+  var status=document.getElementById('change-apply-status');
+  if(changeId){
+    var row=document.getElementById('change-'+changeId);
+    if(row){
+      row.querySelectorAll('.change-apply-btn').forEach(function(btn){
+        btn.disabled=running;
+        btn.textContent=running?'Applying…':'Apply now';
+      });
+    }
+  }
+  if(status){
+    if(running){
+      status.style.display='block';
+      status.className='banner';
+      status.textContent='Change '+(changeId||'')+' in progress — backup, push, verify, and write memory. This may take a minute.';
+    } else {
+      status.style.display='none';
+    }
+  }
+}
 function pollDiscoveryStatus(){
   fetch('{{ url_for("discovery_status") }}',{credentials:'same-origin'})
     .then(function(r){return r.json();})
@@ -244,6 +265,11 @@ document.addEventListener('DOMContentLoaded',function(){
   togglePlatform();toggleMethod();
   var form=document.getElementById('discovery-run-form');
   if(form){ form.addEventListener('submit',function(){ setDiscoveryRunning(true); }); }
+  document.querySelectorAll('.change-apply-form').forEach(function(f){
+    f.addEventListener('submit',function(){
+      setChangeApplyRunning(f.getAttribute('data-change-id')||'',true);
+    });
+  });
   {% if job_status.status == 'running' %}pollDiscoveryStatus();{% endif %}
 });
 </script></head><body>
@@ -558,6 +584,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
 <h2>Pending network changes</h2>
 <p class="hint">Agents may <code>propose_change</code> only. A <b>different</b> claw-auth user
 must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
+<div id="change-apply-status" class="banner" style="display:none"></div>
 {% if not changes_enabled %}
 <div class="banner err">Change modules not available in this container image.</div>
 {% else %}
@@ -566,7 +593,7 @@ must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
 {% for c in changes %}
 <tr id="change-{{ c.id }}"{% if highlight_change == c.id %} style="background:#eef4ff"{% endif %}>
   <td><code>{{ c.id }}</code></td>
-  <td>{{ c.status }}</td>
+  <td>{{ c.status }}{% if c.status == 'applying' %}<br><span class="hint">in progress…</span>{% endif %}{% if c.failure_stage %}<br><span class="hint">failed at: {{ c.failure_stage }}</span>{% endif %}</td>
   <td>{{ c.risk }}</td>
   <td>{% if c.targets %}{{ c.targets[0].name }}{% else %}—{% endif %}</td>
   <td>{{ c.created_by or '—' }}{% if c.approved_by %}<br><span class="hint">approved: {{ c.approved_by }}</span>{% endif %}</td>
@@ -589,10 +616,10 @@ must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
     <button type="submit" class="del">Reject</button>
   </form>
   {% elif c.status == 'approved' %}
-  <form method="post" action="{{ url_for('change_apply') }}" style="display:inline">
+  <form method="post" action="{{ url_for('change_apply') }}" class="change-apply-form" data-change-id="{{ c.id }}" style="display:inline">
     <input type="hidden" name="change_id" value="{{ c.id }}">
     <input type="hidden" name="tab" value="changes">
-    <button type="submit">Apply now</button>
+    <button type="submit" class="change-apply-btn">Apply now</button>
   </form>
   {% elif c.status == 'applied' %}
   <form method="post" action="{{ url_for('change_rollback') }}" style="display:inline"
@@ -812,8 +839,13 @@ def _active_tab() -> str:
     return tab if tab in ("hosts", "discovery", "changes", "policy") else "hosts"
 
 
-def _changes_redirect(msg: str, *, err: bool = False):
-    return redirect(url_for("index", tab="changes", msg=msg, err="1" if err else None))
+def _changes_redirect(msg: str, *, err: bool = False, change_id: str | None = None):
+    kwargs: dict[str, str] = {"tab": "changes", "msg": msg}
+    if err:
+        kwargs["err"] = "1"
+    if change_id:
+        kwargs["change"] = change_id
+    return redirect(url_for("index", **kwargs))
 
 
 def _policy_redirect(msg: str, *, err: bool = False):
@@ -1620,8 +1652,19 @@ def change_apply():
     _ensure_network_apply()
     result = change_engine.apply_change(cid, actor=_gui_user())
     if result.get("error"):
-        return _changes_redirect(f"{cid}: {result['error']}", err=True)
-    return _changes_redirect(f"{cid} applied successfully.")
+        stage = result.get("failure_stage")
+        detail = result["error"]
+        if stage:
+            detail = f"{detail} (failed at {stage})"
+        return _changes_redirect(f"{cid}: {detail}", err=True, change_id=cid)
+    if result.get("status") != "applied":
+        stage = result.get("failure_stage") or "unknown"
+        return _changes_redirect(
+            f"{cid} finished with status={result.get('status')} (stage={stage}).",
+            err=True,
+            change_id=cid,
+        )
+    return _changes_redirect(f"{cid} applied successfully.", change_id=cid)
 
 
 @app.route("/changes/rollback", methods=["POST"])

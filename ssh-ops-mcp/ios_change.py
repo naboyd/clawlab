@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import ios_xe_policy
+import verify_spec
 
 
 def normalize_interface_state(spec: dict[str, Any]) -> str:
@@ -88,8 +89,15 @@ def build_ios_interface_state_target(host: str, platform: str, spec: dict[str, A
 def build_ios_config_lines_target(host: str, platform: str, spec: dict[str, Any]) -> dict[str, Any]:
     lines = ios_xe_policy.normalize_lines([str(x) for x in (spec.get("lines") or [])])
     group = str(spec.get("group") or spec.get("_policy_group") or "config").strip()
-    rollback_lines = list(spec.get("rollback") or [])
-    verify_cmds = list(spec.get("verify") or [])
+    rollback_lines, rollback_errors = verify_spec.parse_rollback_input(spec.get("rollback"))
+    if rollback_errors:
+        raise ValueError("; ".join(rollback_errors))
+    verify_cmds, verify_errors = verify_spec.parse_verify_input(spec.get("verify"))
+    if verify_errors:
+        raise ValueError("; ".join(verify_errors))
+    verify_expect, expect_errors = verify_spec.parse_verify_expect(spec.get("verify_expect"))
+    if expect_errors:
+        raise ValueError("; ".join(expect_errors))
     if not verify_cmds:
         verify_cmds = ["show running-config | include ."]
     summary = spec.get("summary") or f"IOS config ({group}) on {host} — {len(lines)} line(s)"
@@ -101,7 +109,7 @@ def build_ios_config_lines_target(host: str, platform: str, spec: dict[str, Any]
         "apply": lines,
         "rollback": rollback_lines,
         "verify": verify_cmds,
-        "verify_expect": "config_present",
+        "verify_expect": verify_expect,
         "policy_group": group,
     }
 

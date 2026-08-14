@@ -7,4 +7,4 @@ Wants=network-online.target
 Type=oneshot
 EnvironmentFile=%h/mcp/acme/godaddy.env
 Environment=PATH=%h/go/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=%h/go/bin/lego --accept-tos --email admin@example.com --dns godaddy --dns.propagation-wait=120s --domains lab.example.com --path %h/mcp/acme/lego renew --days 30 --renew-hook "systemctl --user restart ssh-ops-mcp; sudo systemctl reload nginx"
+ExecStart=%h/go/bin/lego --accept-tos --email admin@example.com --dns godaddy --dns.propagation-wait=120s --domains lab.example.com --path %h/mcp/acme/lego renew --days 30 --renew-hook "systemctl --user restart ssh-ops-mcp mcp-identity-proxy; sudo systemctl reload nginx"

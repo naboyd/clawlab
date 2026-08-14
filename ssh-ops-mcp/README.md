@@ -337,6 +337,28 @@ If you'd rather not mount private keys, mount the agent socket and set
 -v $SSH_AUTH_SOCK:/ssh-agent -e SSH_AUTH_SOCK=/ssh-agent
 ```
 
+## Gated change workflow
+
+Agents call `propose_change`; a **different** claw-auth user approves in MCP Admin
+(or Webex); then `apply_change` runs backup → push → verify → write memory. Failed
+verify triggers auto-rollback.
+
+### Verify shapes (`ios_config_lines`)
+
+| Form | Example |
+|------|---------|
+| Plain string | `"verify": "show run \| include helper-address 10.0.0.2"` |
+| String list | `"verify": ["show run \| include vlan 100"]` |
+| Structured (add) | `"verify": [{"command": "show run \| include helper-address", "expect_contains": "10.0.0.2"}]` |
+| Removal (structured) | `"verify": [{"command": "show run \| include helper-address 10.0.0.1", "expect_not_contains": "10.0.0.1"}]` |
+| Removal (plain) | `"verify": ["show run \| include helper-address 10.0.0.1"], "verify_expect": "config_absent"` |
+
+A bare object at the top level (e.g. `"verify": {"command": "...", "expect_contains": "..."}`)
+is **rejected at proposal** — wrap structured entries in a list.
+
+Failed applies record `failure_stage` (`apply`, `verify`, or `rollback`) on the change
+record so operators can see whether the config push itself succeeded.
+
 ## Webex four-eyes approval
 
 When a change is **proposed**, ssh-ops can post an adaptive card to your configured

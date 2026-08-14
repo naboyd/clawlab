@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -154,19 +155,70 @@ def _check_verify_output(out: str, expect: str) -> bool:
     return bool(text)
 
 
+def _command_from_verify_entry(entry: Any) -> str:
+    if isinstance(entry, str):
+        return entry
+    if isinstance(entry, dict):
+        return str(entry.get("command") or "")
+    return str(entry)
+
+
+def _evaluate_structured_verify(out: str, entry: dict[str, Any]) -> tuple[bool, str]:
+    text = out.strip()
+    if "% Invalid" in text:
+        return False, "invalid_input"
+    if "expect_contains" in entry:
+        val = str(entry["expect_contains"])
+        return val in text, f"expect_contains:{val!r}"
+    if "expect_not_contains" in entry:
+        val = str(entry["expect_not_contains"])
+        return val not in text, f"expect_not_contains:{val!r}"
+    if entry.get("expect_empty") is True:
+        return not text, "expect_empty"
+    if entry.get("expect_empty") is False:
+        return bool(text), "expect_nonempty"
+    if "expect_regex" in entry:
+        pat = str(entry["expect_regex"])
+        matched = bool(re.search(pat, text, re.MULTILINE))
+        return matched, f"expect_regex:{pat!r}"
+    if "expect_not_regex" in entry:
+        pat = str(entry["expect_not_regex"])
+        matched = bool(re.search(pat, text, re.MULTILINE))
+        return not matched, f"expect_not_regex:{pat!r}"
+    return bool(text), "default_present"
+
+
 def verify_target(target: dict[str, Any], *, expect_present: bool | None = None) -> tuple[bool, list[dict[str, str]]]:
     host = target["name"]
     results: list[dict[str, str]] = []
     ok = True
-    verify_expect = target.get("verify_expect")
-    for cmd in target.get("verify") or []:
+    verify_expect = str(target.get("verify_expect") or "config_present")
+    for entry in target.get("verify") or []:
+        cmd = _command_from_verify_entry(entry)
         out = run_show(host, cmd)
-        if verify_expect:
-            passed = _check_verify_output(out, str(verify_expect))
+        expectation = verify_expect
+        if isinstance(entry, dict) and any(
+            key in entry for key in (
+                "expect_contains",
+                "expect_not_contains",
+                "expect_empty",
+                "expect_regex",
+                "expect_not_regex",
+            )
+        ):
+            passed, expectation = _evaluate_structured_verify(out, entry)
+        elif verify_expect:
+            passed = _check_verify_output(out, verify_expect)
         else:
             present = bool(out.strip()) and "% Invalid" not in out
             passed = present if expect_present else not present
-        results.append({"command": cmd, "passed": str(passed), "stdout": out[:2000]})
+        row = {
+            "command": cmd,
+            "passed": str(passed),
+            "stdout": out[:2000],
+            "expectation": expectation,
+        }
+        results.append(row)
         if not passed:
             ok = False
     return ok, results

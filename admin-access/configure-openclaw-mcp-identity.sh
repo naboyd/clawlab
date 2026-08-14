@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=lib/mcp-proxy-env.sh
+source "$REPO/admin-access/lib/mcp-proxy-env.sh"
+
 OC_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CONFIG="$OC_HOME/openclaw.json"
 UNIT_DIR="$HOME/.config/systemd/user"
@@ -19,7 +22,9 @@ mkdir -p "$OC_HOME/extensions"
 rm -rf "$EXT_DST"
 cp -a "$EXT_SRC" "$EXT_DST"
 
-PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-http://127.0.0.1:8767/mcp}"
+PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-127.0.0.1}}"
+PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
+
 "$VENV_PY" - <<PY
 import json
 from pathlib import Path
@@ -49,7 +54,6 @@ PY
 install -d -m 0755 "$UNIT_DIR"
 install -m 0644 "$REPO/systemd-user/mcp-identity-proxy.service" "$UNIT_DIR/"
 
-# Upstream MCP listens on the podman bridge IP (see quadlets/ssh-ops-mcp.container PublishPort).
 MCP_HOST="${SSH_OPS_MCP_HOST:-}"
 if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
   MCP_HOST="$(grep -E '^PublishPort=' "$REPO/quadlets/ssh-ops-mcp.container" \
@@ -57,18 +61,19 @@ if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
 fi
 MCP_HOST="${MCP_HOST:-127.0.0.1}"
 SSH_OPS_DATA="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
-OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
-install -d -m 0755 "$OVERRIDE_DIR"
-cat >"$OVERRIDE_DIR/clawlab.conf" <<EOF
-[Service]
-Environment=SSH_OPS_MCP_UPSTREAM=https://${MCP_HOST}:8766
-Environment=SSH_OPS_ENV=${SSH_OPS_DATA}/.env
-Environment=SSH_OPS_KEYFILE=${SSH_OPS_DATA}/master.key
-EOF
+
+mcp_proxy_write_dropin "$MCP_HOST" "$PROXY_BIND" "$SSH_OPS_DATA"
+
+echo "  mcp-identity-proxy listen   = ${PROXY_BIND}:8767"
 echo "  mcp-identity-proxy upstream = https://${MCP_HOST}:8766"
 echo "  mcp-identity-proxy secrets  = ${SSH_OPS_DATA}"
-# Remove legacy upstream-only drop-in if present.
-rm -f "$OVERRIDE_DIR/upstream.conf"
+if mcp_proxy_resolve_tls >/dev/null; then
+  echo "  mcp-identity-proxy TLS      = lego ($(mcp_proxy_portal_domain))"
+fi
+if [[ "$PROXY_BIND" != "127.0.0.1" && "$PROXY_BIND" != "::1" ]] || mcp_proxy_resolve_tls >/dev/null; then
+  echo "  Remote MCP URL (PAT skops_…): $(mcp_proxy_public_url "$PROXY_BIND")"
+fi
+rm -f "$UNIT_DIR/mcp-identity-proxy.service.d/upstream.conf"
 
 systemctl --user daemon-reload
 systemctl --user enable --now mcp-identity-proxy.service

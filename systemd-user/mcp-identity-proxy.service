@@ -10,6 +10,9 @@ Environment=SSH_OPS_MCP_UPSTREAM=https://127.0.0.1:8766
 Environment=SSH_OPS_MCP_PROXY_HOST=127.0.0.1
 Environment=SSH_OPS_MCP_PROXY_PORT=8767
 Environment=SSH_OPS_MCP_PROXY_VERIFY_TLS=0
+# TLS (Let's Encrypt via lego): set in clawlab.conf drop-in by configure-openclaw-mcp-identity.sh
+# Environment=SSH_OPS_MCP_PROXY_TLS_CERT=%h/mcp/acme/lego/certificates/lab.example.com.crt
+# Environment=SSH_OPS_MCP_PROXY_TLS_KEY=%h/mcp/acme/lego/certificates/lab.example.com.key
 Environment=SSH_OPS_ENV=%h/.clawlab/ssh-ops/data/.env
 Environment=SSH_OPS_KEYFILE=%h/.clawlab/ssh-ops/data/master.key
 WorkingDirectory=%h/clawlab/ssh-ops-mcp

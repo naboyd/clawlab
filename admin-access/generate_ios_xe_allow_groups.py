@@ -252,8 +252,11 @@ ALLOW_GROUPS: dict[str, dict] = {
         "risk": "medium",
         "defenseclaw_alert": True,
         "patterns": [
-            r"(?i)^interface\s+(?:Vlan\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*",
-            r"(?i)^\s*ip\s+helper-address\s+",
+            r"(?i)^interface\s+(?:Vlan\d+|Loopback\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S*",
+            r"(?i)^\s*ip\s+helper-address(?:\s+vrf\s+\S+)?\s+",
+            r"(?i)^\s*no\s+ip\s+helper-address(?:\s+vrf\s+\S+)?\s+",
+            r"(?i)^ip\s+forward-protocol\s+",
+            r"(?i)^no\s+ip\s+forward-protocol\s+",
         ],
     },
     "dhcp_snooping": {

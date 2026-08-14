@@ -1,0 +1,67 @@
+# shellcheck shell=bash
+# Shared helpers for mcp-identity-proxy systemd drop-in (lego TLS, LAN bind).
+
+mcp_proxy_portal_domain() {
+  local portal_env="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+  [[ -f "$portal_env" ]] || return 0
+  grep -E '^DOMAIN=' "$portal_env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs
+}
+
+# Prints cert path then key path when found.
+mcp_proxy_resolve_tls() {
+  local cert="${SSH_OPS_MCP_PROXY_TLS_CERT:-}" key="${SSH_OPS_MCP_PROXY_TLS_KEY:-}"
+  if [[ -z "$cert" || -z "$key" ]]; then
+    local domain lego
+    domain="$(mcp_proxy_portal_domain)"
+    lego="${SSH_OPS_MCP_TLS_DIR:-$HOME/mcp/acme/lego/certificates}"
+    if [[ -n "$domain" && -f "$lego/${domain}.crt" && -f "$lego/${domain}.key" ]]; then
+      cert="$lego/${domain}.crt"
+      key="$lego/${domain}.key"
+    fi
+  fi
+  if [[ -n "$cert" && -f "$cert" && -n "$key" && -f "$key" ]]; then
+    printf '%s\n' "$cert" "$key"
+  fi
+}
+
+mcp_proxy_public_url() {
+  local bind="${1:-127.0.0.1}" port="${2:-8767}"
+  local domain scheme="http"
+  domain="$(mcp_proxy_portal_domain)"
+  if mcp_proxy_resolve_tls >/dev/null; then
+    scheme="https"
+  fi
+  if [[ "$scheme" == "https" && -n "$domain" ]]; then
+    printf '%s://%s:%s/mcp' "$scheme" "$domain" "$port"
+  elif [[ "$bind" != "127.0.0.1" && "$bind" != "::1" ]]; then
+    printf '%s://%s:%s/mcp' "$scheme" "$bind" "$port"
+  else
+    printf '%s://127.0.0.1:%s/mcp' "$scheme" "$port"
+  fi
+}
+
+# Write ~/.config/systemd/user/mcp-identity-proxy.service.d/clawlab.conf
+mcp_proxy_write_dropin() {
+  local upstream_host="${1:-127.0.0.1}"
+  local bind="${2:-127.0.0.1}"
+  local data_dir="${3:-$HOME/.clawlab/ssh-ops/data}"
+  local unit_dir="${HOME}/.config/systemd/user"
+  local override_dir="${unit_dir}/mcp-identity-proxy.service.d"
+  install -d -m 0755 "$override_dir"
+  local tls_block=""
+  if tls_paths="$(mcp_proxy_resolve_tls)"; then
+    local tls_cert tls_key
+    tls_cert="${tls_paths%%$'\n'*}"
+    tls_key="${tls_paths#*$'\n'}"
+    tls_block="Environment=SSH_OPS_MCP_PROXY_TLS_CERT=${tls_cert}
+Environment=SSH_OPS_MCP_PROXY_TLS_KEY=${tls_key}"
+  fi
+  cat >"${override_dir}/clawlab.conf" <<EOF
+[Service]
+Environment=SSH_OPS_MCP_UPSTREAM=https://${upstream_host}:8766
+Environment=SSH_OPS_MCP_PROXY_HOST=${bind}
+Environment=SSH_OPS_ENV=${data_dir}/.env
+Environment=SSH_OPS_KEYFILE=${data_dir}/master.key
+${tls_block}
+EOF
+}

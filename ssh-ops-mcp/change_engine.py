@@ -14,6 +14,7 @@ import change_approval
 import ios_change
 import ios_xe_policy
 import network_apply
+import verify_spec
 
 _BACKUPS_DIR = Path(
     os.environ.get(
@@ -82,14 +83,17 @@ def propose_change(
             "warnings": warnings,
         }
 
-    if change_type == "ios_local_user":
-        target = ios_change.build_ios_local_user_target(host, platform, spec)
-    elif change_type == "ios_interface_state":
-        target = ios_change.build_ios_interface_state_target(host, platform, spec)
-    elif change_type == "ios_config_lines":
-        target = ios_change.build_ios_config_lines_target(host, platform, spec)
-    else:
-        return {"error": f"Unsupported change_type: {change_type}"}
+    try:
+        if change_type == "ios_local_user":
+            target = ios_change.build_ios_local_user_target(host, platform, spec)
+        elif change_type == "ios_interface_state":
+            target = ios_change.build_ios_interface_state_target(host, platform, spec)
+        elif change_type == "ios_config_lines":
+            target = ios_change.build_ios_config_lines_target(host, platform, spec)
+        else:
+            return {"error": f"Unsupported change_type: {change_type}"}
+    except ValueError as exc:
+        return {"error": str(exc), "risk": risk, "warnings": warnings}
 
     cid = change_store.next_id()
     policy_group = target.get("policy_group") or spec.get("_policy_group")
@@ -238,11 +242,13 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
     change_store.set_status(change_id, "applying", apply_started_at=_now(), apply_actor=actor)
     results: list[dict[str, Any]] = []
     all_ok = True
+    failure_stage: str | None = None
 
     for target in change.get("targets") or []:
         host = target["name"]
         apply_lines = list(target.get("apply") or [])
         tr: dict[str, Any] = {"host": host, "steps": []}
+        apply_succeeded = False
         try:
             backup_dir = _BACKUPS_DIR / change_id
             backup_path = network_apply.backup_running_config(host, backup_dir)
@@ -251,16 +257,22 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
             if apply_lines:
                 out = network_apply.apply_config_lines(host, apply_lines)
                 tr["steps"].append({"step": "apply", "output": out})
+            apply_succeeded = True
 
             verified, verify_results = network_apply.verify_target(target)
             tr["steps"].append({"step": "verify", "passed": verified, "results": verify_results})
             if not verified:
                 all_ok = False
+                failure_stage = failure_stage or "verify"
                 tr["error"] = "Verification failed"
                 rollback_lines = list(target.get("rollback") or [])
                 if rollback_lines:
-                    network_apply.apply_config_lines(host, rollback_lines)
-                    tr["steps"].append({"step": "auto_rollback", "lines": len(rollback_lines)})
+                    try:
+                        network_apply.apply_config_lines(host, rollback_lines)
+                        tr["steps"].append({"step": "auto_rollback", "lines": len(rollback_lines)})
+                    except Exception as rb_exc:  # noqa: BLE001
+                        failure_stage = "rollback"
+                        tr["rollback_error"] = f"{type(rb_exc).__name__}: {rb_exc}"
                 results.append(tr)
                 continue
 
@@ -269,6 +281,10 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
             tr["ok"] = True
         except Exception as exc:  # noqa: BLE001
             all_ok = False
+            if apply_succeeded:
+                failure_stage = failure_stage or "verify"
+            else:
+                failure_stage = failure_stage or "apply"
             tr["error"] = f"{type(exc).__name__}: {exc}"
             rollback_lines = list(target.get("rollback") or [])
             if rollback_lines:
@@ -276,6 +292,7 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
                     network_apply.apply_config_lines(host, rollback_lines)
                     tr["steps"].append({"step": "auto_rollback", "lines": len(rollback_lines)})
                 except Exception as rb_exc:  # noqa: BLE001
+                    failure_stage = "rollback"
                     tr["rollback_error"] = f"{type(rb_exc).__name__}: {rb_exc}"
         results.append(tr)
 
@@ -285,6 +302,7 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
             "applied",
             apply_finished_at=_now(),
             apply_results=results,
+            failure_stage=None,
         )
         try:
             notify_result = change_notify.notify_change_applied(applied, actor=actor)
@@ -302,8 +320,15 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
         "failed",
         apply_finished_at=_now(),
         apply_results=results,
+        failure_stage=failure_stage or "apply",
     )
-    return {"change_id": change_id, "status": "failed", "results": results, "error": "One or more targets failed"}
+    return {
+        "change_id": change_id,
+        "status": "failed",
+        "failure_stage": failure_stage or "apply",
+        "results": results,
+        "error": "One or more targets failed",
+    }
 
 
 def rollback_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
@@ -336,12 +361,21 @@ def rollback_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
             spec = change.get("spec") or {}
             if change.get("change_type") == "ios_interface_state":
                 state = ios_change.normalize_interface_state(spec)
-                rb_target["verify_expect"] = "admin_up" if state == "shutdown" else "admin_down"
+                rb_target["verify_expect"] = verify_spec.invert_verify_expect(
+                    "admin_up" if state == "shutdown" else "admin_down"
+                )
             elif change.get("change_type") == "ios_local_user":
                 action = str(spec.get("action") or "create").lower()
-                rb_target["verify_expect"] = "config_absent" if action == "create" else "config_present"
+                rb_target["verify_expect"] = verify_spec.invert_verify_expect(
+                    "config_absent" if action == "create" else "config_present"
+                )
             elif change.get("change_type") == "ios_config_lines":
-                rb_target["verify_expect"] = "config_absent"
+                rb_target["verify_expect"] = verify_spec.invert_verify_expect(
+                    str(target.get("verify_expect") or "config_present")
+                )
+                rb_target["verify"] = verify_spec.invert_verify_list(
+                    list(target.get("verify") or [])
+                )
             verified, verify_results = network_apply.verify_target(rb_target)
             tr["steps"].append({"step": "verify", "passed": verified, "results": verify_results})
             if not verified:

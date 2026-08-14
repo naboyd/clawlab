@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 import ios_xe_policy
+import verify_spec
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 PRIVILEGE_MIN = 1
@@ -96,6 +97,12 @@ def validate_proposal(
                 spec["_policy_group"] = matched
                 if line_risk in ("high", "medium", "low"):
                     pass  # risk set below
+        _verify, verify_errors = verify_spec.parse_verify_input(spec.get("verify"))
+        errors.extend(verify_errors)
+        _rollback, rollback_errors = verify_spec.parse_rollback_input(spec.get("rollback"))
+        errors.extend(rollback_errors)
+        _expect, expect_errors = verify_spec.parse_verify_expect(spec.get("verify_expect"))
+        errors.extend(expect_errors)
 
     if change_type == "ios_local_user":
         risk = "high"

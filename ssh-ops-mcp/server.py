@@ -921,6 +921,18 @@ def propose_change(
       (create|delete)
     * ``ios_config_lines`` — spec: lines (list), optional group, optional rollback/verify
 
+    For ``ios_config_lines``, ``verify`` must be one of:
+
+    * omitted (default verify command),
+    * a non-empty string (single show command),
+    * a list of show-command strings (pass/fail from ``verify_expect``), or
+    * a list of structured objects, each with ``command`` and exactly one of
+      ``expect_contains``, ``expect_not_contains``, ``expect_empty`` (bool),
+      or ``expect_regex``. A bare dict at the top level is rejected — wrap it
+      in a list. Optional ``verify_expect``: ``config_present`` (default) or
+      ``config_absent`` for removal-style checks on plain-string verify commands.
+      ``rollback`` must be a list of config lines when provided.
+
     Arbitrary config outside allow_groups in ios-xe-policy.yaml is rejected.
 
     Args:

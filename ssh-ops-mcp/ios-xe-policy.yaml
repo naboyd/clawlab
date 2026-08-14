@@ -381,8 +381,11 @@ allow_groups:
     risk: medium
     defenseclaw_alert: true
     patterns:
-    - (?i)^interface\s+(?:Vlan\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te)\S*
-    - (?i)^\s*ip\s+helper-address\s+
+    - (?i)^interface\s+(?:Vlan\d+|Loopback\d+|GigabitEthernet|Gi|TenGigabitEthernet|Te|FastEthernet|Fa|Port-channel|Po)\S*
+    - (?i)^\s*ip\s+helper-address(?:\s+vrf\s+\S+)?\s+
+    - (?i)^\s*no\s+ip\s+helper-address(?:\s+vrf\s+\S+)?\s+
+    - (?i)^ip\s+forward-protocol\s+
+    - (?i)^no\s+ip\s+forward-protocol\s+
   dhcp_snooping:
     category: ip_addressing
     description: DHCP snooping global and per-VLAN

@@ -98,6 +98,21 @@ class IosXePolicyGroupTests(unittest.TestCase):
         self.assertIn("qos_class_map", groups)
         self.assertIn("acl_extended", groups)
 
+    def test_ip_helpers_update_lines_valid(self) -> None:
+        lines = [
+            "interface Vlan100",
+            " no ip helper-address 10.0.0.1",
+            " ip helper-address 10.0.0.2",
+        ]
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            lines,
+            group="ip_helpers",
+        )
+        self.assertFalse(errs, errs)
+        self.assertEqual(matched, "ip_helpers")
+        self.assertEqual(risk, "medium")
+        self.assertEqual(ios_xe_policy.get_group_access("ip_helpers"), "approve")
+
 
 if __name__ == "__main__":
     unittest.main()

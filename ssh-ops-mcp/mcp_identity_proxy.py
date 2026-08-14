@@ -171,9 +171,23 @@ app.add_route("/", _proxy, methods=["GET", "POST", "DELETE", "OPTIONS"])
 
 
 def main() -> None:
-    print(f"MCP identity proxy listening on {LISTEN_HOST}:{LISTEN_PORT}")
+    run_kw: dict[str, object] = {
+        "host": LISTEN_HOST,
+        "port": LISTEN_PORT,
+        "log_level": "info",
+    }
+    tls_cert = os.environ.get("SSH_OPS_MCP_PROXY_TLS_CERT", "").strip()
+    tls_key = os.environ.get("SSH_OPS_MCP_PROXY_TLS_KEY", "").strip()
+    scheme = "http"
+    if tls_cert and tls_key:
+        run_kw["ssl_certfile"] = tls_cert
+        run_kw["ssl_keyfile"] = tls_key
+        scheme = "https"
+    print(f"MCP identity proxy listening on {scheme}://{LISTEN_HOST}:{LISTEN_PORT}")
     print(f"Upstream: {UPSTREAM} (verify_tls={VERIFY_TLS})")
-    uvicorn.run(app, host=LISTEN_HOST, port=LISTEN_PORT, log_level="info")
+    if tls_cert:
+        print(f"TLS cert: {tls_cert}")
+    uvicorn.run(app, **run_kw)
 
 
 if __name__ == "__main__":
