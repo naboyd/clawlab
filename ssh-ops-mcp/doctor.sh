@@ -67,11 +67,14 @@ if curl -fsS "http://127.0.0.1:8765/healthz" >/dev/null 2>&1; then
 else
   err "GUI healthz http://127.0.0.1:8765/healthz"
 fi
-if curl -fsS "http://127.0.0.1:8766/" >/dev/null 2>&1 || \
-   podman logs --tail 3 ssh-ops-mcp 2>/dev/null | grep -q "Uvicorn running"; then
-  ok "MCP listener :8766 (or uvicorn started in logs)"
+if curl -fsS "http://127.0.0.1:8766/" >/dev/null 2>&1; then
+  ok "MCP listener :8766"
+elif podman ps --filter "name=^ssh-ops-mcp$" --format '{{.Status}}' 2>/dev/null | grep -qE 'Up ([2-9]|[1-9][0-9]+) (minute|hour|day)'; then
+  ok "MCP container stable (streamable-http may not answer GET /)"
+elif podman logs --tail 20 ssh-ops-mcp 2>/dev/null | grep -qE 'Uvicorn running|Application startup complete'; then
+  ok "MCP process started (see podman logs ssh-ops-mcp)"
 else
-  err "MCP not responding on :8766 — check: podman logs ssh-ops-mcp"
+  err "MCP not healthy on :8766 — check: podman logs ssh-ops-mcp"
 fi
 echo
 
