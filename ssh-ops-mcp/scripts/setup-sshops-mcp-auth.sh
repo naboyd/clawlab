@@ -199,44 +199,54 @@ grep -qxF "\${PUBKEY}" "\${AUTH}" || echo "\${PUBKEY}" >> "\${AUTH}"
 SUDOERS="/etc/sudoers.d/sshops-mcp"
 TMP="\${SUDOERS}.tmp.\$\$"
 {
-  echo "# Managed by clawlab setup-sshops-mcp-auth.sh — do not edit by hand."
-  echo "# Inventory host: ${inv_name}"
-  echo "Cmnd_Alias SSHOPS_SYSTEMCTL = \\"
-  echo "  \${SYSTEMCTL} restart *, \\"
-  echo "  \${SYSTEMCTL} start *, \\"
-  echo "  \${SYSTEMCTL} stop *, \\"
-  echo "  \${SYSTEMCTL} reload *, \\"
-  echo "  \${SYSTEMCTL} try-restart *, \\"
-  echo "  \${SYSTEMCTL} status *, \\"
-  echo "  \${SYSTEMCTL} is-active *, \\"
-  echo "  \${SYSTEMCTL} is-enabled *, \\"
-  echo "  \${SYSTEMCTL} show *, \\"
-  echo "  \${SYSTEMCTL} daemon-reload, \\"
-  echo "  \${SYSTEMCTL} list-units *, \\"
-  echo "  \${SYSTEMCTL} list-unit-files *"
+  cat <<SUDOERS_INNER
+# Managed by clawlab setup-sshops-mcp-auth.sh - do not edit by hand.
+# Inventory host: ${inv_name}
+Cmnd_Alias SSHOPS_SYSTEMCTL = \\
+  \${SYSTEMCTL} restart *, \\
+  \${SYSTEMCTL} start *, \\
+  \${SYSTEMCTL} stop *, \\
+  \${SYSTEMCTL} reload *, \\
+  \${SYSTEMCTL} try-restart *, \\
+  \${SYSTEMCTL} status *, \\
+  \${SYSTEMCTL} is-active *, \\
+  \${SYSTEMCTL} is-enabled *, \\
+  \${SYSTEMCTL} show *, \\
+  \${SYSTEMCTL} daemon-reload, \\
+  \${SYSTEMCTL} list-units *, \\
+  \${SYSTEMCTL} list-unit-files *
+SUDOERS_INNER
   if [[ -n "\${APT_GET}" ]]; then
-    echo "Cmnd_Alias SSHOPS_APT_GET = \\"
-    echo "  \${APT_GET} update, \\"
-    echo "  \${APT_GET} -y update, \\"
-    echo "  \${APT_GET} -y upgrade, \\"
-    echo "  \${APT_GET} -y dist-upgrade, \\"
-    echo "  \${APT_GET} -y autoremove, \\"
-    echo "  \${APT_GET} -y install *, \\"
-    echo "  \${APT_GET} -y remove *, \\"
-    echo "  \${APT_GET} -y purge *"
+    cat <<SUDOERS_INNER
+Cmnd_Alias SSHOPS_APT_GET = \\
+  \${APT_GET} update, \\
+  \${APT_GET} -y update, \\
+  \${APT_GET} -y upgrade, \\
+  \${APT_GET} -y dist-upgrade, \\
+  \${APT_GET} -y autoremove, \\
+  \${APT_GET} -y install *, \\
+  \${APT_GET} -y remove *, \\
+  \${APT_GET} -y purge *
+SUDOERS_INNER
   fi
   if [[ -n "\${APT}" ]]; then
-    echo "Cmnd_Alias SSHOPS_APT = \\"
-    echo "  \${APT} update, \\"
-    echo "  \${APT} -y update, \\"
-    echo "  \${APT} -y upgrade, \\"
-    echo "  \${APT} -y install *, \\"
-    echo "  \${APT} -y remove *"
+    cat <<SUDOERS_INNER
+Cmnd_Alias SSHOPS_APT = \\
+  \${APT} update, \\
+  \${APT} -y update, \\
+  \${APT} -y upgrade, \\
+  \${APT} -y install *, \\
+  \${APT} -y remove *
+SUDOERS_INNER
   fi
-  echo -n "\${SSHOPS_USER} ALL=(root) NOPASSWD: SSHOPS_SYSTEMCTL"
-  [[ -n "\${APT_GET}" ]] && echo -n ", SSHOPS_APT_GET"
-  [[ -n "\${APT}" ]] && echo -n ", SSHOPS_APT"
-  echo
+  SUDO_PARTS="SSHOPS_SYSTEMCTL"
+  if [[ -n "\${APT_GET}" ]]; then
+    SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_APT_GET"
+  fi
+  if [[ -n "\${APT}" ]]; then
+    SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_APT"
+  fi
+  printf '%s ALL=(root) NOPASSWD: %s\n' "\${SSHOPS_USER}" "\${SUDO_PARTS}"
 } > "\${TMP}"
 chmod 440 "\${TMP}"
 visudo -cf "\${TMP}"
