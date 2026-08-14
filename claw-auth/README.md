@@ -48,6 +48,10 @@ python3 manage.py set-webex-email bob bob@cisco.com   # link Webex personEmail f
 
 Admins can **edit** users at `/admin/users` → **edit** (role, password, Webex email, disabled).
 
+**MCP personal access tokens:** portal hub → **MCP tokens** (`/mcp/tokens/ui`) or REST
+`POST/GET /mcp/tokens`, `DELETE /mcp/tokens/{id}`. Tokens use the `skops_` prefix;
+use as `Authorization: Bearer skops_…` in Cursor and other MCP clients.
+
 Each user may have an optional **Webex email** (`webex_email` column). ssh-ops maps
 Webex `personEmail` from adaptive-card button clicks to a claw-auth username. Set it in
 **Admin → Users** or via `set-webex-email`. Emails must be unique across users.

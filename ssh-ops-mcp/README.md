@@ -387,6 +387,37 @@ the same four-eyes rules as the Webex card.
 python3 tests/test_webex_approval.py
 ```
 
+## Connecting other AI tools (Cursor, Claude Desktop, …)
+
+OpenClaw uses short-lived `X-Claw-Mcp-Bind` tokens from the portal hub. Other MCP
+clients should use a **personal access token (PAT)**:
+
+1. Sign in to the portal hub → **MCP tokens** (or `POST /_claw_auth/mcp/tokens` with session cookie).
+2. Create a token — copy the `skops_…` value immediately (shown once).
+3. Point your MCP client at the ssh-ops URL and send:
+
+```json
+{
+  "headers": {
+    "Authorization": "Bearer skops_YOUR_TOKEN_HERE"
+  }
+}
+```
+
+Example (remote lab with TLS):
+
+```text
+https://icecream.example.com:8766/mcp
+Authorization: Bearer skops_…
+```
+
+**Migration:** if you previously used the shared MCP bearer token plus a self-asserted
+`X-Auth-User` header, switch to a PAT — spoofed identity headers from untrusted clients
+are no longer honored. To allow a front-end proxy (portal/nginx) to forward identity,
+set `SSH_OPS_TRUSTED_PROXY_IPS` to its IP(s), comma-separated.
+
+`X-Claw-Mcp-Bind` remains supported for OpenClaw.
+
 ## Extending
 
 - Add binaries to `READ_ONLY_BINARIES` in `server.py` to widen diagnostics.

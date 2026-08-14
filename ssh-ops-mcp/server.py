@@ -983,27 +983,24 @@ def rollback_change(change_id: str) -> dict[str, Any]:
     return change_engine.rollback_change(change_id, actor="mcp")
 
 
-def _apply_request_identity(headers: dict[str, str]) -> None:
-    """Bind verified portal/chat identity from proxy headers or MCP bind token."""
-    import mcp_bind
+def _apply_request_identity(headers: dict[str, str], *, peer_ip: str | None = None) -> None:
+    """Bind verified portal/chat identity from PAT, bind token, or trusted proxy."""
+    import mcp_identity
 
-    user = change_actor.actor_from_headers(headers)
-    role = change_actor.role_from_headers(headers)
-    bind_hdr = (
-        headers.get("X-Claw-Mcp-Bind")
-        or headers.get("x-claw-mcp-bind")
-        or ""
-    ).strip()
-    if bind_hdr:
-        bound = mcp_bind.validate_bind_token(bind_hdr)
-        if bound:
-            user = bound["username"]
-            role = bound["role"]
-    if user and not role:
-        from claw_user_lookup import lookup_role
+    result = mcp_identity.resolve_identity(headers, peer_ip=peer_ip)
+    mcp_identity.apply_identity(result)
 
-        role = lookup_role(user)
-    change_actor.set_request_identity(user, role)
+
+def _peer_ip_from_scope(scope: dict) -> str | None:
+    client = scope.get("client")
+    if client:
+        return client[0]
+    headers = {
+        k.decode().lower(): v.decode()
+        for k, v in scope.get("headers") or []
+    }
+    forwarded = headers.get("x-real-ip", "").strip()
+    return forwarded or None
 
 
 if __name__ == "__main__":
@@ -1021,14 +1018,41 @@ if __name__ == "__main__":
             secrets_store.ensure_mcp_token()
 
         async def _bearer(request, call_next):
+            if request.url.path == "/.well-known/oauth-protected-resource":
+                return await call_next(request)
             headers = dict(request.headers)
             if not _auth_on:
-                _apply_request_identity(headers)
+                _apply_request_identity(headers, peer_ip=_peer_ip_from_scope(request.scope))
                 return await call_next(request)
-            hdr = request.headers.get("authorization", "")
-            tok = hdr[7:].strip() if hdr[:7].lower() == "bearer " else ""
+            import mcp_identity
+            import mcp_tokens
+
+            tok = mcp_identity.bearer_token(headers)
+            if tok.startswith(mcp_tokens.PAT_PREFIX):
+                result = mcp_identity.resolve_identity(
+                    headers,
+                    peer_ip=_peer_ip_from_scope(request.scope),
+                )
+                if result.invalid_token:
+                    return JSONResponse(
+                        {"error": "invalid or expired token", "code": "invalid_token"},
+                        status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                mcp_identity.apply_identity(result)
+                return await call_next(request)
             if tok and tok in secrets_store.get_mcp_tokens():
-                _apply_request_identity(headers)
+                result = mcp_identity.resolve_identity(
+                    headers,
+                    peer_ip=_peer_ip_from_scope(request.scope),
+                )
+                if result.invalid_token:
+                    return JSONResponse(
+                        {"error": "invalid or expired token", "code": "invalid_token"},
+                        status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+                mcp_identity.apply_identity(result)
                 return await call_next(request)
             return JSONResponse(
                 {"error": "unauthorized"},
@@ -1038,6 +1062,16 @@ if __name__ == "__main__":
 
         _app = mcp.sse_app() if _t == "sse" else mcp.streamable_http_app()
         _app.add_middleware(BaseHTTPMiddleware, dispatch=_bearer)
+
+        async def _oauth_discovery(_request):  # noqa: ANN001
+            # TODO: MCP OAuth 2.1 authorization spec — protected resource metadata.
+            return JSONResponse({"error": "not implemented"}, status_code=404)
+
+        _app.add_route(
+            "/.well-known/oauth-protected-resource",
+            _oauth_discovery,
+            methods=["GET"],
+        )
         _run_kw = dict(
             host=os.environ.get("SSH_OPS_MCP_HOST", "0.0.0.0"),
             port=int(os.environ.get("SSH_OPS_MCP_PORT", "8766")),

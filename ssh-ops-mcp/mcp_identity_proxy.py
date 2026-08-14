@@ -3,9 +3,10 @@
 MCP identity proxy — inject verified claw-auth user/role before ssh-ops MCP.
 
 OpenClaw (or other clients) point at this proxy instead of :8766 directly.
-The proxy validates the shared MCP bearer token, optionally validates
-X-Claw-Mcp-Bind (issued by claw-auth /mcp/bind), and forwards trusted
-X-Auth-User / X-Auth-Role headers to the upstream MCP server.
+The proxy validates Bearer PATs (skops_…), shared MCP tokens, or
+X-Claw-Mcp-Bind, and forwards trusted X-Auth-User / X-Auth-Role headers to
+the upstream MCP server. Client-supplied identity headers are stripped unless
+the peer is in SSH_OPS_TRUSTED_PROXY_IPS.
 
 Run:
     export CLAW_AUTH_DB=~/.claw-auth/users.db
@@ -15,6 +16,7 @@ Run:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -26,13 +28,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-# Allow imports from this package when run as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import change_actor
-import mcp_bind
+import mcp_identity
+import mcp_tokens
 import secrets_store
-from claw_user_lookup import lookup_role
+
+log = logging.getLogger("ssh_ops.mcp_identity_proxy")
 
 UPSTREAM = os.environ.get(
     "SSH_OPS_MCP_UPSTREAM", "https://192.168.1.10:8766"
@@ -47,26 +49,25 @@ VERIFY_TLS = os.environ.get("SSH_OPS_MCP_PROXY_VERIFY_TLS", "0").lower() in (
 )
 
 
-def _resolve_identity(headers: dict[str, str]) -> tuple[str | None, str | None]:
-    user = change_actor.actor_from_headers(headers)
-    role = change_actor.role_from_headers(headers)
-    bind_hdr = (
-        headers.get("X-Claw-Mcp-Bind")
-        or headers.get("x-claw-mcp-bind")
-        or ""
-    ).strip()
-    if bind_hdr:
-        bound = mcp_bind.validate_bind_token(bind_hdr)
-        if bound:
-            user = bound["username"]
-            role = bound["role"]
-    if user and not role:
-        role = lookup_role(user)
-    return user, role
+def _peer_ip(request: Request) -> str:
+    forwarded = (request.headers.get("X-Real-IP") or "").strip()
+    if forwarded:
+        return forwarded
+    client = request.client
+    return client.host if client else ""
+
+
+def _upstream_bearer() -> str:
+    secrets_store.ensure_mcp_token()
+    tokens = secrets_store.get_mcp_tokens()
+    return next(iter(tokens), "")
 
 
 class IdentityProxyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/.well-known/oauth-protected-resource":
+            return await call_next(request)
+
         auth_on = os.environ.get("SSH_OPS_MCP_AUTH", "1").lower() not in (
             "0",
             "false",
@@ -74,11 +75,26 @@ class IdentityProxyMiddleware(BaseHTTPMiddleware):
             "off",
             "",
         )
-        hdr = request.headers.get("authorization", "")
-        tok = hdr[7:].strip() if hdr[:7].lower() == "bearer " else ""
+        bearer = mcp_identity.bearer_token(dict(request.headers))
+
+        if bearer.startswith(mcp_tokens.PAT_PREFIX):
+            result = mcp_identity.resolve_identity(
+                dict(request.headers),
+                peer_ip=_peer_ip(request),
+            )
+            if result.invalid_token:
+                log.info("auth_fail reason=invalid_pat prefix=%s", bearer[:10])
+                return JSONResponse(
+                    {"error": "invalid or expired token", "code": "invalid_token"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            request.state.mcp_identity = result
+            return await call_next(request)
+
         if auth_on:
             secrets_store.ensure_mcp_token()
-            if not tok or tok not in secrets_store.get_mcp_tokens():
+            if not bearer or bearer not in secrets_store.get_mcp_tokens():
                 return JSONResponse(
                     {"error": "unauthorized"},
                     status_code=401,
@@ -87,20 +103,45 @@ class IdentityProxyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+async def _oauth_discovery(_request: Request) -> Response:
+    # TODO: MCP OAuth 2.1 authorization spec — protected resource metadata here.
+    return JSONResponse({"error": "not implemented"}, status_code=404)
+
+
 async def _proxy(request: Request) -> Response:
     path = request.url.path.lstrip("/")
     upstream_url = f"{UPSTREAM}/{path}" if path else UPSTREAM
     if request.url.query:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
-    headers = dict(request.headers)
+    original = dict(request.headers)
+    headers = mcp_identity.strip_client_identity(original)
     headers.pop("host", None)
-    user, role = _resolve_identity(headers)
-    if user:
-        headers["X-Auth-User"] = user
-        headers["X-Forwarded-User"] = user
-    if role:
-        headers["X-Auth-Role"] = role
+
+    if getattr(request.state, "mcp_identity", None) is not None:
+        ident = request.state.mcp_identity
+    else:
+        ident = mcp_identity.resolve_identity(original, peer_ip=_peer_ip(request))
+        if ident.invalid_token:
+            return JSONResponse(
+                {"error": "invalid or expired token", "code": "invalid_token"},
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+    if ident.username:
+        headers["X-Auth-User"] = ident.username
+        headers["X-Forwarded-User"] = ident.username
+    if ident.role:
+        headers["X-Auth-Role"] = ident.role
+
+    client_bearer = mcp_identity.bearer_token(original)
+    if client_bearer.startswith(mcp_tokens.PAT_PREFIX):
+        upstream_tok = _upstream_bearer()
+        if upstream_tok:
+            headers["Authorization"] = f"Bearer {upstream_tok}"
+    elif not mcp_identity.bearer_token(headers) and _upstream_bearer():
+        headers["Authorization"] = f"Bearer {_upstream_bearer()}"
 
     body = await request.body()
     async with httpx.AsyncClient(verify=VERIFY_TLS, timeout=120.0) as client:
@@ -120,6 +161,11 @@ async def _proxy(request: Request) -> Response:
 
 app = Starlette()
 app.add_middleware(IdentityProxyMiddleware)
+app.add_route(
+    "/.well-known/oauth-protected-resource",
+    _oauth_discovery,
+    methods=["GET"],
+)
 app.add_route("/{path:path}", _proxy, methods=["GET", "POST", "DELETE", "OPTIONS"])
 app.add_route("/", _proxy, methods=["GET", "POST", "DELETE", "OPTIONS"])
 

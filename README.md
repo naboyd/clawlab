@@ -30,6 +30,7 @@ and the full operational runbook.
 | **OpenClaw** | Agent gateway (`:18789`) — chat, tools, MCP clients |
 | **DefenseClaw** | Prompt/tool inspect, regex + LLM judge, exec shims, audit |
 | **ssh-ops MCP** | Read-only `run_command` + gated `propose_change` / `apply_change` |
+| **MCP auth** | Per-user PATs (`skops_…`) via portal **MCP tokens**; see [ssh-ops-mcp/README.md](ssh-ops-mcp/README.md#connecting-other-ai-tools-cursor-claude-desktop-) |
 | **Portal :8443** | Single URL — OpenClaw, MCP Admin, DefenseClaw policy editor |
 | **claw-auth** | Shared login for all admin tabs (SQLite sessions) |
 

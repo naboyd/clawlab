@@ -33,8 +33,17 @@ from flask import (
 import store
 
 _AUTHD_DIR = Path(__file__).resolve().parent
+_CLAWLAB_REPO = _AUTHD_DIR.parent
+_SSH_OPS = _CLAWLAB_REPO / "ssh-ops-mcp"
 if str(_AUTHD_DIR) not in sys.path:
     sys.path.insert(0, str(_AUTHD_DIR))
+if _SSH_OPS.is_dir() and str(_SSH_OPS) not in sys.path:
+    sys.path.insert(0, str(_SSH_OPS))
+
+try:
+    import mcp_tokens
+except ImportError:
+    mcp_tokens = None  # type: ignore[assignment]
 
 try:
     import openclaw_devices
@@ -267,6 +276,7 @@ HUB_PAGE = """
     clawlab</h1>
   <div class="meta">Signed in as <b>{{ user.username }}</b>{% if is_admin %}
     <a href="{{ ext_url('/admin/users') }}">Users</a>{% endif %}
+    <a href="{{ ext_url('/mcp/tokens/ui') }}">MCP tokens</a>
     <a href="{{ ext_url('/logout') }}">Sign out</a></div>
 </header>
 <nav class="tabs">
@@ -490,6 +500,55 @@ ADMIN_EDIT_PAGE = """
       <a class="btn secondary" href="{{ ext_url('/admin/users') }}">Cancel</a>
     </div>
   </form>
+</div>
+</body></html>
+"""
+
+MCP_TOKENS_PAGE = """
+<!doctype html><html><head><meta charset="utf-8"><title>MCP tokens</title>
+<style>{{ style }}</style></head><body>
+<div class="card">
+  <h1 style="margin-top:0">MCP personal access tokens</h1>
+  <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
+  <p class="hint">Use <code>Authorization: Bearer skops_…</code> in Cursor, Claude Desktop, or other MCP clients.
+  Shown once at creation — copy immediately.</p>
+  {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
+  {% if new_token %}
+  <div class="banner">
+    <strong>New token (copy now):</strong>
+    <input type="text" readonly value="{{ new_token }}" id="newpat" style="margin-top:.5rem;font-family:monospace">
+    <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('newpat').value)">Copy</button>
+  </div>
+  {% endif %}
+  <h2>Create token</h2>
+  <form method="post">
+    <input type="hidden" name="action" value="create">
+    <label>Label</label><input type="text" name="label" placeholder="Cursor laptop" required>
+    <label>TTL days <span class="hint">(optional, blank = no expiry)</span></label>
+    <input type="number" name="ttl_days" min="1" placeholder="90">
+    <div style="margin-top:1rem"><button type="submit">Create token</button></div>
+  </form>
+  <h2>Your tokens</h2>
+  <table>
+    <tr><th>Label</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr>
+    {% for t in tokens %}
+    <tr>
+      <td>{{ t.label }}</td>
+      <td class="hint">{{ t.created_at }}</td>
+      <td class="hint">{{ t.expires_at or '—' }}</td>
+      <td class="hint">{{ t.last_used_at or '—' }}</td>
+      <td>{% if t.revoked %}revoked{% else %}active{% endif %}</td>
+      <td>{% if not t.revoked %}
+        <form method="post" style="display:inline" onsubmit="return confirm('Revoke this token?')">
+          <input type="hidden" name="action" value="revoke">
+          <input type="hidden" name="token_id" value="{{ t.id }}">
+          <button type="submit">revoke</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="hint">No tokens yet.</td></tr>
+    {% endfor %}
+  </table>
 </div>
 </body></html>
 """
@@ -853,6 +912,88 @@ def mcp_bind():
         "username": sess["username"],
         "role": sess["role"],
     }
+
+
+@app.route("/mcp/tokens", methods=["GET", "POST"])
+def mcp_tokens_api():
+    sess = _session_user()
+    if not sess:
+        return ("", 401)
+    if mcp_tokens is None:
+        return ({"error": "mcp_tokens unavailable"}, 503)
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        label = (body.get("label") or request.form.get("label") or "").strip()
+        ttl_raw = body.get("ttl_days") if body else request.form.get("ttl_days")
+        ttl_days = int(ttl_raw) if ttl_raw not in (None, "") else None
+        try:
+            raw = mcp_tokens.issue_pat(sess["username"], label, ttl_days=ttl_days)
+        except ValueError as exc:
+            return ({"error": str(exc)}, 400)
+        return {"token": raw, "username": sess["username"], "prefix": "skops_"}
+    rows = mcp_tokens.list_pats(sess["username"])
+    return {"tokens": rows}
+
+
+@app.route("/mcp/tokens/<int:token_id>", methods=["DELETE"])
+def mcp_tokens_revoke_api(token_id: int):
+    sess = _session_user()
+    if not sess:
+        return ("", 401)
+    if mcp_tokens is None:
+        return ({"error": "mcp_tokens unavailable"}, 503)
+    try:
+        mcp_tokens.revoke_pat(
+            token_id,
+            actor=sess["username"],
+            is_admin=sess.get("role") == "admin",
+        )
+    except ValueError as exc:
+        return ({"error": str(exc)}, 403 if "forbidden" in str(exc).lower() else 400)
+    return ("", 204)
+
+
+@app.route("/mcp/tokens/ui", methods=["GET", "POST"])
+def mcp_tokens_ui():
+    sess = _session_user()
+    if not sess:
+        return _login_redirect(request.full_path)
+    if mcp_tokens is None:
+        return ("MCP tokens module unavailable", 503)
+    msg = ""
+    msg_err = False
+    new_token = ""
+    if request.method == "POST":
+        action = request.form.get("action")
+        try:
+            if action == "create":
+                ttl_raw = (request.form.get("ttl_days") or "").strip()
+                ttl_days = int(ttl_raw) if ttl_raw else None
+                new_token = mcp_tokens.issue_pat(
+                    sess["username"],
+                    (request.form.get("label") or "").strip(),
+                    ttl_days=ttl_days,
+                )
+                msg = "Token created — copy it now; it will not be shown again."
+            elif action == "revoke":
+                mcp_tokens.revoke_pat(
+                    int(request.form.get("token_id") or "0"),
+                    actor=sess["username"],
+                    is_admin=sess.get("role") == "admin",
+                )
+                msg = "Token revoked."
+        except ValueError as exc:
+            msg = str(exc)
+            msg_err = True
+    return render_template_string(
+        MCP_TOKENS_PAGE,
+        style=STYLE,
+        user=sess,
+        tokens=mcp_tokens.list_pats(sess["username"]),
+        msg=msg,
+        msg_err=msg_err,
+        new_token=new_token,
+    )
 
 
 @app.route("/")

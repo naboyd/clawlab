@@ -52,6 +52,19 @@ def init_db() -> None:
                 FOREIGN KEY(username) REFERENCES users(username)
             );
             CREATE INDEX IF NOT EXISTS idx_mcp_binds_username ON mcp_binds(username);
+            CREATE TABLE IF NOT EXISTS mcp_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                label TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                expires_at TEXT,
+                last_used_at TEXT,
+                revoked INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(username) REFERENCES users(username)
+            );
+            CREATE INDEX IF NOT EXISTS idx_mcp_tokens_username ON mcp_tokens(username);
+            CREATE INDEX IF NOT EXISTS idx_mcp_tokens_hash ON mcp_tokens(token_hash);
             """
         )
         try:
