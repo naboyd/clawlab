@@ -262,6 +262,18 @@ call — **no server/app restart needed**. (Encrypted secrets in `.env` are also
 read live.) Only changes to `settings` — audit log path, timeouts — still
 require a restart.
 
+### Diagnostics
+
+If the MCP container keeps restarting (`Up 1 second` in `podman ps`), run:
+
+```bash
+bash ssh-ops-mcp/doctor.sh
+```
+
+It checks for `hosts.yaml` in the active data dir (default `~/.clawlab/ssh-ops/data`),
+warns if config still lives in the legacy `~/ssh_ops_mcp/data` path, and tails MCP
+logs for the usual crash cause.
+
 ## Docker
 
 The image runs in two modes via the entrypoint: `gui` (the config UI, default)
