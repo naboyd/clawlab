@@ -30,6 +30,7 @@ class McpPatTests(unittest.TestCase):
         store.init_db()
         store.create_user("alice", "secret", "operator")
         store.create_user("bob", "secret", "admin")
+        store.create_user("root", "secret", "superadmin")
         mcp_tokens.ensure_schema()
 
     def tearDown(self) -> None:
@@ -66,8 +67,30 @@ class McpPatTests(unittest.TestCase):
             )
         self.assertIsNone(mcp_tokens.validate_pat(raw))
 
+    def test_superadmin_pat_role(self) -> None:
+        raw = mcp_tokens.issue_pat("root", "cursor")
+        got = mcp_tokens.validate_pat(raw)
+        self.assertEqual(got, {"username": "root", "role": "superadmin"})
 
-class McpIdentityTests(unittest.TestCase):
+    def test_superadmin_can_revoke_other_users_token(self) -> None:
+        raw = mcp_tokens.issue_pat("alice", "x")
+        row = mcp_tokens.list_pats("alice")[0]
+        mcp_tokens.revoke_pat(row["id"], actor="root", is_superadmin=True)
+        self.assertIsNone(mcp_tokens.validate_pat(raw))
+
+    def test_admin_cannot_revoke_other_users_token(self) -> None:
+        raw = mcp_tokens.issue_pat("alice", "x")
+        row = mcp_tokens.list_pats("alice")[0]
+        with self.assertRaises(ValueError):
+            mcp_tokens.revoke_pat(row["id"], actor="bob", is_superadmin=False)
+        self.assertIsNotNone(mcp_tokens.validate_pat(raw))
+
+    def test_list_all_pats(self) -> None:
+        mcp_tokens.issue_pat("alice", "a")
+        mcp_tokens.issue_pat("bob", "b")
+        rows = mcp_tokens.list_all_pats()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({r["username"] for r in rows}, {"alice", "bob"})
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "users.db"

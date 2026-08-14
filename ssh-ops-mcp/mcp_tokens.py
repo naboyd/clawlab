@@ -207,7 +207,25 @@ def get_pat(token_id: int) -> dict | None:
         conn.close()
 
 
-def revoke_pat(token_id: int, *, actor: str, is_admin: bool = False) -> None:
+def list_all_pats() -> list[dict]:
+    ensure_schema()
+    conn = _connect()
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, username, label, created_at, expires_at, last_used_at, revoked
+            FROM mcp_tokens
+            ORDER BY username, created_at DESC
+            """
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def revoke_pat(token_id: int, *, actor: str, is_superadmin: bool = False) -> None:
     ensure_schema()
     conn = _connect(write=True)
     if conn is None:
@@ -219,7 +237,7 @@ def revoke_pat(token_id: int, *, actor: str, is_admin: bool = False) -> None:
         ).fetchone()
         if not row:
             raise ValueError(f"token not found: {token_id}")
-        if not is_admin and row["username"] != actor.strip().lower():
+        if not is_superadmin and row["username"] != actor.strip().lower():
             raise ValueError("forbidden")
         if row["revoked"]:
             return

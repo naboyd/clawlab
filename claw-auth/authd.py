@@ -152,6 +152,28 @@ log.info(
 )
 
 
+def _is_portal_admin(role: str | None) -> bool:
+    return store.is_portal_admin(role)
+
+
+def _is_superadmin(role: str | None) -> bool:
+    return store.is_superadmin(role)
+
+
+def _assert_assignable_role(actor_role: str | None, role: str) -> None:
+    normalized = (role or "").strip().lower()
+    if normalized == store.ROLE_SUPERADMIN and not _is_superadmin(actor_role):
+        raise ValueError("only superadmin can assign the superadmin role")
+
+
+def _resolve_pat_username(sess: dict, requested: str | None) -> str:
+    actor = sess["username"].strip().lower()
+    target = (requested or actor).strip().lower()
+    if target != actor and not _is_superadmin(sess.get("role")):
+        raise ValueError("only superadmin can manage tokens for other users")
+    return target
+
+
 def _client_ip() -> str:
     forwarded = (request.headers.get("X-Real-IP") or "").strip()
     return forwarded or (request.remote_addr or "unknown")
@@ -456,8 +478,9 @@ ADMIN_PAGE = """
     <label>Password</label><input type="password" name="password" required>
     <label>Role</label>
     <select name="role">
-      <option value="admin">admin</option>
       <option value="operator">operator</option>
+      <option value="admin">admin</option>
+      {% if is_superadmin %}<option value="superadmin">superadmin</option>{% endif %}
     </select>
     <div style="margin-top:1rem"><button type="submit">Create user</button></div>
   </form>
@@ -476,13 +499,19 @@ ADMIN_EDIT_PAGE = """
     <label>Username</label>
     <input type="text" value="{{ edit_user.username }}" disabled>
     <label>Role</label>
-    <select name="role"{% if edit_user.username == user.username %} disabled{% endif %}>
-      <option value="admin"{% if edit_user.role == 'admin' %} selected{% endif %}>admin</option>
+    <select name="role"{% if edit_user.username == user.username or (edit_user.role == 'superadmin' and not is_superadmin) %} disabled{% endif %}>
       <option value="operator"{% if edit_user.role == 'operator' %} selected{% endif %}>operator</option>
+      <option value="admin"{% if edit_user.role == 'admin' %} selected{% endif %}>admin</option>
+      {% if is_superadmin or edit_user.role == 'superadmin' %}
+      <option value="superadmin"{% if edit_user.role == 'superadmin' %} selected{% endif %}>superadmin</option>
+      {% endif %}
     </select>
     {% if edit_user.username == user.username %}
     <input type="hidden" name="role" value="{{ edit_user.role }}">
     <p class="hint">You cannot change your own role.</p>
+    {% elif edit_user.role == 'superadmin' and not is_superadmin %}
+    <input type="hidden" name="role" value="{{ edit_user.role }}">
+    <p class="hint">Only superadmin can change a superadmin account.</p>
     {% endif %}
     <label>New password <span class="hint">(leave blank to keep current)</span></label>
     <input type="password" name="password" autocomplete="new-password">
@@ -511,7 +540,8 @@ MCP_TOKENS_PAGE = """
   <h1 style="margin-top:0">MCP personal access tokens</h1>
   <p><a href="{{ ext_url('/') }}">&larr; portal hub</a></p>
   <p class="hint">Use <code>Authorization: Bearer skops_…</code> in Cursor, Claude Desktop, or other MCP clients.
-  Shown once at creation — copy immediately.</p>
+  Shown once at creation — copy immediately.
+  {% if is_superadmin %}As <b>superadmin</b> you can create and revoke tokens for any user.{% endif %}</p>
   {% if msg %}<div class="banner{% if msg_err %} err{% endif %}">{{ msg }}</div>{% endif %}
   {% if new_token %}
   <div class="banner">
@@ -523,16 +553,25 @@ MCP_TOKENS_PAGE = """
   <h2>Create token</h2>
   <form method="post">
     <input type="hidden" name="action" value="create">
+    {% if is_superadmin %}
+    <label>User</label>
+    <select name="target_username" required>
+      {% for u in all_users %}
+      <option value="{{ u.username }}"{% if u.username == user.username %} selected{% endif %}>{{ u.username }} ({{ u.role }})</option>
+      {% endfor %}
+    </select>
+    {% endif %}
     <label>Label</label><input type="text" name="label" placeholder="Cursor laptop" required>
     <label>TTL days <span class="hint">(optional, blank = no expiry)</span></label>
     <input type="number" name="ttl_days" min="1" placeholder="90">
     <div style="margin-top:1rem"><button type="submit">Create token</button></div>
   </form>
-  <h2>Your tokens</h2>
+  <h2>{% if is_superadmin %}All tokens{% else %}Your tokens{% endif %}</h2>
   <table>
-    <tr><th>Label</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr>
+    <tr>{% if is_superadmin %}<th>User</th>{% endif %}<th>Label</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr>
     {% for t in tokens %}
     <tr>
+      {% if is_superadmin %}<td><code>{{ t.username }}</code></td>{% endif %}
       <td>{{ t.label }}</td>
       <td class="hint">{{ t.created_at }}</td>
       <td class="hint">{{ t.expires_at or '—' }}</td>
@@ -546,7 +585,7 @@ MCP_TOKENS_PAGE = """
         </form>{% endif %}</td>
     </tr>
     {% else %}
-    <tr><td colspan="6" class="hint">No tokens yet.</td></tr>
+    <tr><td colspan="{% if is_superadmin %}7{% else %}6{% endif %}" class="hint">No tokens yet.</td></tr>
     {% endfor %}
   </table>
 </div>
@@ -926,12 +965,19 @@ def mcp_tokens_api():
         label = (body.get("label") or request.form.get("label") or "").strip()
         ttl_raw = body.get("ttl_days") if body else request.form.get("ttl_days")
         ttl_days = int(ttl_raw) if ttl_raw not in (None, "") else None
+        target = _resolve_pat_username(
+            sess,
+            body.get("username") if body else request.form.get("target_username"),
+        )
         try:
-            raw = mcp_tokens.issue_pat(sess["username"], label, ttl_days=ttl_days)
+            raw = mcp_tokens.issue_pat(target, label, ttl_days=ttl_days)
         except ValueError as exc:
             return ({"error": str(exc)}, 400)
-        return {"token": raw, "username": sess["username"], "prefix": "skops_"}
-    rows = mcp_tokens.list_pats(sess["username"])
+        return {"token": raw, "username": target, "prefix": "skops_"}
+    if _is_superadmin(sess.get("role")):
+        rows = mcp_tokens.list_all_pats()
+    else:
+        rows = mcp_tokens.list_pats(sess["username"])
     return {"tokens": rows}
 
 
@@ -946,7 +992,7 @@ def mcp_tokens_revoke_api(token_id: int):
         mcp_tokens.revoke_pat(
             token_id,
             actor=sess["username"],
-            is_admin=sess.get("role") == "admin",
+            is_superadmin=_is_superadmin(sess.get("role")),
         )
     except ValueError as exc:
         return ({"error": str(exc)}, 403 if "forbidden" in str(exc).lower() else 400)
@@ -969,27 +1015,37 @@ def mcp_tokens_ui():
             if action == "create":
                 ttl_raw = (request.form.get("ttl_days") or "").strip()
                 ttl_days = int(ttl_raw) if ttl_raw else None
+                target = _resolve_pat_username(
+                    sess, request.form.get("target_username")
+                )
                 new_token = mcp_tokens.issue_pat(
-                    sess["username"],
+                    target,
                     (request.form.get("label") or "").strip(),
                     ttl_days=ttl_days,
                 )
-                msg = "Token created — copy it now; it will not be shown again."
+                msg = f"Token created for {target} — copy it now; it will not be shown again."
             elif action == "revoke":
                 mcp_tokens.revoke_pat(
                     int(request.form.get("token_id") or "0"),
                     actor=sess["username"],
-                    is_admin=sess.get("role") == "admin",
+                    is_superadmin=_is_superadmin(sess.get("role")),
                 )
                 msg = "Token revoked."
         except ValueError as exc:
             msg = str(exc)
             msg_err = True
+    is_superadmin = _is_superadmin(sess.get("role"))
     return render_template_string(
         MCP_TOKENS_PAGE,
         style=STYLE,
         user=sess,
-        tokens=mcp_tokens.list_pats(sess["username"]),
+        is_superadmin=is_superadmin,
+        all_users=store.list_users() if is_superadmin else [],
+        tokens=(
+            mcp_tokens.list_all_pats()
+            if is_superadmin
+            else mcp_tokens.list_pats(sess["username"])
+        ),
         msg=msg,
         msg_err=msg_err,
         new_token=new_token,
@@ -1007,7 +1063,7 @@ def hub():
         mcp_bind = store.create_mcp_bind(sess["username"])
     except ValueError:
         mcp_bind = ""
-    is_admin = sess.get("role") == "admin"
+    is_admin = _is_portal_admin(sess.get("role"))
     devices = _device_snapshot()
     pending_n = len(_device_display_rows(devices.get("pending"), pending=True))
     return render_template_string(
@@ -1034,7 +1090,7 @@ def openclaw_devices_status():
     sess = _session_user()
     if not sess:
         return ("", 401)
-    if sess["role"] != "admin":
+    if not _is_portal_admin(sess["role"]):
         return ("", 403)
     devices = _device_snapshot()
     pending_n = len(_device_display_rows(devices.get("pending"), pending=True))
@@ -1051,7 +1107,7 @@ def admin_openclaw_devices():
     sess = _session_user()
     if not sess:
         return _login_redirect(request.full_path)
-    if sess["role"] != "admin":
+    if not _is_portal_admin(sess["role"]):
         return ("forbidden", 403)
 
     msg = ""
@@ -1113,7 +1169,7 @@ def admin_users():
     sess = _session_user()
     if not sess:
         return _login_redirect(request.full_path)
-    if sess["role"] != "admin":
+    if not _is_portal_admin(sess["role"]):
         return ("forbidden", 403)
 
     msg = ""
@@ -1122,10 +1178,12 @@ def admin_users():
         action = request.form.get("action")
         try:
             if action == "create":
+                role = (request.form.get("role") or store.ROLE_OPERATOR).strip()
+                _assert_assignable_role(sess.get("role"), role)
                 store.create_user(
                     request.form.get("username") or "",
                     request.form.get("password") or "",
-                    (request.form.get("role") or "admin").strip(),
+                    role,
                 )
                 msg = "User created."
             elif action == "delete":
@@ -1144,6 +1202,7 @@ def admin_users():
         ADMIN_PAGE,
         style=STYLE,
         user=sess,
+        is_superadmin=_is_superadmin(sess.get("role")),
         users=store.list_users(),
         msg=msg,
         msg_err=msg_err,
@@ -1155,7 +1214,7 @@ def admin_edit_user(username: str):
     sess = _session_user()
     if not sess:
         return _login_redirect(request.full_path)
-    if sess["role"] != "admin":
+    if not _is_portal_admin(sess["role"]):
         return ("forbidden", 403)
 
     edit_user = store.get_user(username)
@@ -1167,9 +1226,15 @@ def admin_edit_user(username: str):
     if request.method == "POST":
         try:
             disabled_raw = request.form.get("disabled")
+            role = (request.form.get("role") or edit_user["role"]).strip()
+            if edit_user["role"] == store.ROLE_SUPERADMIN and not _is_superadmin(
+                sess.get("role")
+            ):
+                role = edit_user["role"]
+            _assert_assignable_role(sess.get("role"), role)
             store.update_user(
                 edit_user["username"],
-                role=(request.form.get("role") or edit_user["role"]).strip(),
+                role=role,
                 password=(request.form.get("password") or "").strip() or None,
                 webex_email=(request.form.get("webex_email") or "").strip(),
                 disabled=bool(disabled_raw),
@@ -1185,6 +1250,7 @@ def admin_edit_user(username: str):
         ADMIN_EDIT_PAGE,
         style=STYLE,
         user=sess,
+        is_superadmin=_is_superadmin(sess.get("role")),
         edit_user=edit_user,
         msg=msg,
         msg_err=msg_err,

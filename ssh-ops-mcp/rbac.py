@@ -6,6 +6,7 @@ import os
 import re
 
 ADMIN_ROLE = "admin"
+ADMIN_ROLES = frozenset({"admin", "superadmin"})
 
 # Unfiltered full config dumps (operators may use "| include/section/begin").
 _FULL_CONFIG_RE = re.compile(
@@ -44,7 +45,7 @@ def _norm_role(role: str | None) -> str:
 
 
 def is_admin(role: str | None) -> bool:
-    return _norm_role(role) == ADMIN_ROLE
+    return _norm_role(role) in ADMIN_ROLES
 
 
 def effective_role(role: str | None, username: str | None) -> str:

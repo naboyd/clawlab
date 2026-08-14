@@ -27,6 +27,13 @@ class RbacPolicyTests(unittest.TestCase):
             platform="cisco_ios",
         )
 
+    def test_superadmin_allows_full_config(self) -> None:
+        rbac.check_run_command(
+            role="superadmin",
+            command="show running-config",
+            platform="cisco_ios",
+        )
+
     def test_operator_blocks_full_config(self) -> None:
         with self.assertRaises(rbac.RbacDenied) as ctx:
             rbac.check_run_command(

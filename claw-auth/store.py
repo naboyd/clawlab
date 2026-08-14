@@ -72,6 +72,18 @@ def init_db() -> None:
         except OSError:
             pass
         _migrate_webex_email(conn)
+        _migrate_superadmin(conn)
+
+
+def _migrate_superadmin(conn: sqlite3.Connection) -> None:
+    """Promote legacy admin account to superadmin; normalize unknown roles."""
+    conn.execute(
+        """
+        UPDATE users SET role = ?
+        WHERE username = 'admin' AND role = 'admin'
+        """,
+        (ROLE_SUPERADMIN,),
+    )
 
 
 def _migrate_webex_email(conn: sqlite3.Connection) -> None:
@@ -91,14 +103,28 @@ def _norm_email(email: str | None) -> str:
     return (email or "").strip().lower()
 
 
-VALID_ROLES = frozenset({"admin", "operator"})
+ROLE_OPERATOR = "operator"
+ROLE_ADMIN = "admin"
+ROLE_SUPERADMIN = "superadmin"
+VALID_ROLES = frozenset({ROLE_OPERATOR, ROLE_ADMIN, ROLE_SUPERADMIN})
+ROLE_RANK = {ROLE_OPERATOR: 0, ROLE_ADMIN: 1, ROLE_SUPERADMIN: 2}
 
 
 def _norm_role(role: str | None) -> str:
     normalized = (role or "").strip().lower()
     if normalized not in VALID_ROLES:
-        raise ValueError(f"invalid role: {role!r} (allowed: admin, operator)")
+        raise ValueError(
+            f"invalid role: {role!r} (allowed: operator, admin, superadmin)"
+        )
     return normalized
+
+
+def is_superadmin(role: str | None) -> bool:
+    return (role or "").strip().lower() == ROLE_SUPERADMIN
+
+
+def is_portal_admin(role: str | None) -> bool:
+    return (role or "").strip().lower() in (ROLE_ADMIN, ROLE_SUPERADMIN)
 
 
 def _now() -> datetime:
@@ -239,18 +265,50 @@ def get_user(username: str) -> dict | None:
     return dict(row) if row else None
 
 
-def admin_count(*, include_disabled: bool = False) -> int:
+def superadmin_count(*, include_disabled: bool = False) -> int:
     init_db()
     with _connect() as conn:
         if include_disabled:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin'"
+                "SELECT COUNT(*) AS n FROM users WHERE role = ?",
+                (ROLE_SUPERADMIN,),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND disabled = 0"
+                """
+                SELECT COUNT(*) AS n FROM users
+                WHERE role = ? AND disabled = 0
+                """,
+                (ROLE_SUPERADMIN,),
             ).fetchone()
     return int(row["n"]) if row else 0
+
+
+def portal_admin_count(*, include_disabled: bool = False) -> int:
+    init_db()
+    with _connect() as conn:
+        if include_disabled:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM users
+                WHERE role IN (?, ?)
+                """,
+                (ROLE_ADMIN, ROLE_SUPERADMIN),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT COUNT(*) AS n FROM users
+                WHERE role IN (?, ?) AND disabled = 0
+                """,
+                (ROLE_ADMIN, ROLE_SUPERADMIN),
+            ).fetchone()
+    return int(row["n"]) if row else 0
+
+
+def admin_count(*, include_disabled: bool = False) -> int:
+    """Backward-compatible alias for portal_admin_count."""
+    return portal_admin_count(include_disabled=include_disabled)
 
 
 def update_user(
@@ -271,15 +329,23 @@ def update_user(
     if role is not None:
         role = _norm_role(role)
         current = get_user(username)
-        if (
-            current
-            and current["role"] == "admin"
-            and role != "admin"
-            and admin_count(include_disabled=False) <= 1
-        ):
-            raise ValueError("cannot demote the last active admin")
-        if actor and actor == username and role != "admin":
-            raise ValueError("cannot remove your own admin role")
+        if current:
+            current_role = _norm_role(current["role"])
+            if (
+                current_role == ROLE_SUPERADMIN
+                and role != ROLE_SUPERADMIN
+                and superadmin_count(include_disabled=False) <= 1
+            ):
+                raise ValueError("cannot demote the last active superadmin")
+            if (
+                current_role in (ROLE_ADMIN, ROLE_SUPERADMIN)
+                and role == ROLE_OPERATOR
+                and portal_admin_count(include_disabled=False) <= 1
+            ):
+                raise ValueError("cannot demote the last active portal admin")
+            if actor and actor == username:
+                if ROLE_RANK.get(role, 0) < ROLE_RANK.get(current_role, 0):
+                    raise ValueError(f"cannot remove your own {current_role} role")
         with _connect() as conn:
             conn.execute(
                 "UPDATE users SET role = ? WHERE username = ?",
@@ -295,9 +361,19 @@ def update_user(
     if disabled is not None:
         if actor and actor == username and disabled:
             raise ValueError("cannot disable your own account")
-        if disabled and get_user(username) and get_user(username)["role"] == "admin":
-            if admin_count(include_disabled=False) <= 1:
-                raise ValueError("cannot disable the last active admin")
+        target = get_user(username)
+        if disabled and target:
+            target_role = _norm_role(target["role"])
+            if (
+                target_role == ROLE_SUPERADMIN
+                and superadmin_count(include_disabled=False) <= 1
+            ):
+                raise ValueError("cannot disable the last active superadmin")
+            if (
+                target_role in (ROLE_ADMIN, ROLE_SUPERADMIN)
+                and portal_admin_count(include_disabled=False) <= 1
+            ):
+                raise ValueError("cannot disable the last active portal admin")
         with _connect() as conn:
             conn.execute(
                 "UPDATE users SET disabled = ? WHERE username = ?",

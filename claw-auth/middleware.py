@@ -64,7 +64,7 @@ def require_admin(view):
         user = current_user()
         if not user:
             abort(401)
-        if user.get("role") != "admin":
+        if user.get("role") not in ("admin", "superadmin"):
             abort(403)
         return view(*args, **kwargs)
 

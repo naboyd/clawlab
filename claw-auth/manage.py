@@ -16,7 +16,12 @@ def main() -> int:
 
     create = sub.add_parser("create-user", help="Create a user")
     create.add_argument("username")
-    create.add_argument("--role", default="admin")
+    create.add_argument(
+        "--role",
+        default="admin",
+        choices=sorted(store.VALID_ROLES),
+        help="operator, admin, or superadmin",
+    )
 
     sub.add_parser("list-users", help="List users")
 

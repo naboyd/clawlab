@@ -154,7 +154,7 @@ def _internal_or_admin_authorized() -> bool:
         return True
     if claw_auth:
         user = claw_auth.current_user()
-        if user and (user.get("role") or "").strip().lower() == "admin":
+        if user and (user.get("role") or "").strip().lower() in ("admin", "superadmin"):
             return True
     return False
 

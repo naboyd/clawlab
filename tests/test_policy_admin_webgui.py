@@ -27,6 +27,14 @@ class PolicyAdminRbacTests(unittest.TestCase):
             role="admin", username="admin", action="Policy enforcement reload"
         )
 
+    @patch.object(rbac, "rbac_enabled", return_value=True)
+    def test_superadmin_allowed(self, _enabled) -> None:
+        rbac.check_policy_admin(
+            role="superadmin",
+            username="root",
+            action="Policy enforcement reload",
+        )
+
 
 class PolicyReloadApiTests(unittest.TestCase):
     @patch.dict(

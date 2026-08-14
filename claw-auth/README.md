@@ -10,7 +10,7 @@ via `claw-portals/install-portals.sh`.
 - **Server-side sessions** — HttpOnly cookie, configurable TTL (default 24h)
 - **nginx auth_request** integration — one login flow per portal port
 - **User admin UI** at `http://127.0.0.1:8780/admin/users`
-- **OpenClaw device pairing UI** at `/admin/openclaw-devices` (portal hub tab; **admin role only**)
+- **OpenClaw device pairing UI** at `/admin/openclaw-devices` (portal hub tab; **admin or superadmin**)
 - **CLI** for non-interactive user management
 
 Passwords are hashed with Werkzeug's scrypt-based hasher (via Flask).
@@ -48,9 +48,20 @@ python3 manage.py set-webex-email bob bob@cisco.com   # link Webex personEmail f
 
 Admins can **edit** users at `/admin/users` → **edit** (role, password, Webex email, disabled).
 
+## Roles
+
+| Role | Portal user admin | MCP ssh-ops RBAC | Cross-user MCP tokens |
+|------|-------------------|------------------|------------------------|
+| `operator` | — | read/filtered show, propose changes | own tokens only |
+| `admin` | yes | full admin (show run, policy, upload) | own tokens only |
+| `superadmin` | yes (+ assign superadmin) | same as admin | create/revoke any user's tokens |
+
+On upgrade, the legacy user **`admin`** is automatically promoted to **`superadmin`**.
+
 **MCP personal access tokens:** portal hub → **MCP tokens** (`/mcp/tokens/ui`) or REST
 `POST/GET /mcp/tokens`, `DELETE /mcp/tokens/{id}`. Tokens use the `skops_` prefix;
 use as `Authorization: Bearer skops_…` in Cursor and other MCP clients.
+Each user can create/revoke their own tokens; **superadmin** can manage tokens for all users.
 
 Each user may have an optional **Webex email** (`webex_email` column). ssh-ops maps
 Webex `personEmail` from adaptive-card button clicks to a claw-auth username. Set it in
