@@ -21,7 +21,12 @@ _CLAWLAB_REPO="$(cd "$_SCRIPT_DIR/.." && pwd)"
 PROJECT_DIR="${SSH_OPS_DIR:-${_CLAWLAB_REPO}/ssh-ops-mcp}"
 IMAGE="${SSH_OPS_IMAGE:-ssh-ops:latest}"
 DATA_DIR="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
-SSH_DIR="${SSH_OPS_SSH:-$HOME/.ssh}"
+# Prefer dedicated ssh-ops automation keys when present (setup-sshops-mcp-auth.sh).
+if [[ -z "${SSH_OPS_SSH:-}" && -f "$HOME/.clawlab/ssh-ops/keys/ssh-ops-mcp" ]]; then
+  SSH_DIR="$HOME/.clawlab/ssh-ops/keys"
+else
+  SSH_DIR="${SSH_OPS_SSH:-$HOME/.ssh}"
+fi
 CLAWLAB_REPO="${CLAWLAB_REPO:-$_CLAWLAB_REPO}"
 GUI_PUBLISH="${SSH_OPS_GUI_PUBLISH:-127.0.0.1:8765:8765}"
 MCP_PUBLISH="${SSH_OPS_MCP_PUBLISH:-127.0.0.1:8766:8766}"
