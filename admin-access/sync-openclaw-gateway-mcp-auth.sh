@@ -97,14 +97,19 @@ oc.write_text(json.dumps(cfg, indent=2) + "\n")
 print("openclaw.json ssh-ops MCP auth synced")
 PY
 
-# Identity proxy must reach MCP on loopback (podman publishes 127.0.0.1:8766).
-OVERRIDE_DIR="$HOME/.config/systemd/user/mcp-identity-proxy.service.d"
-mkdir -p "$OVERRIDE_DIR"
-cat >"$OVERRIDE_DIR/upstream.conf" <<'EOF'
+# Identity proxy: same data dir + upstream as the MCP container (podctl.sh).
+UNIT_DIR="$HOME/.config/systemd/user"
+OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
+install -d -m 0755 "$UNIT_DIR" "$OVERRIDE_DIR"
+install -m 0644 "$REPO/systemd-user/mcp-identity-proxy.service" "$UNIT_DIR/"
+cat >"$OVERRIDE_DIR/clawlab.conf" <<EOF
 [Service]
 Environment=SSH_OPS_MCP_UPSTREAM=https://127.0.0.1:8766
+Environment=SSH_OPS_ENV=${DATA_DIR}/.env
+Environment=SSH_OPS_KEYFILE=${DATA_DIR}/master.key
 EOF
-say "Identity proxy upstream -> https://127.0.0.1:8766"
+rm -f "$OVERRIDE_DIR/upstream.conf"
+say "Identity proxy -> upstream :8766, secrets ${DATA_DIR}"
 
 systemctl --user daemon-reload
 systemctl --user restart mcp-identity-proxy.service openclaw-gateway.service

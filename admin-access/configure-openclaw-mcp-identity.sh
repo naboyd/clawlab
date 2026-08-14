@@ -56,13 +56,19 @@ if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
     | head -1 | sed -E 's/.*PublishPort=([^:]+):8766.*/\1/')"
 fi
 MCP_HOST="${MCP_HOST:-127.0.0.1}"
+SSH_OPS_DATA="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
 install -d -m 0755 "$OVERRIDE_DIR"
-cat >"$OVERRIDE_DIR/upstream.conf" <<EOF
+cat >"$OVERRIDE_DIR/clawlab.conf" <<EOF
 [Service]
 Environment=SSH_OPS_MCP_UPSTREAM=https://${MCP_HOST}:8766
+Environment=SSH_OPS_ENV=${SSH_OPS_DATA}/.env
+Environment=SSH_OPS_KEYFILE=${SSH_OPS_DATA}/master.key
 EOF
 echo "  mcp-identity-proxy upstream = https://${MCP_HOST}:8766"
+echo "  mcp-identity-proxy secrets  = ${SSH_OPS_DATA}"
+# Remove legacy upstream-only drop-in if present.
+rm -f "$OVERRIDE_DIR/upstream.conf"
 
 systemctl --user daemon-reload
 systemctl --user enable --now mcp-identity-proxy.service
