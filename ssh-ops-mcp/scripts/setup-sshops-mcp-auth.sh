@@ -135,11 +135,11 @@ remote_exec() {
     printf '%s\n' "$body" | sudo bash
   else
     if [[ "$DRY_RUN" -eq 1 ]]; then
-      printf '[dry-run] ssh -t %s@%s sudo bash -s <<SETUP\n%s\nSETUP\n' "$user" "$host" "$body"
+      printf '[dry-run] ssh -tt %s@%s sudo bash -s <<SETUP\n%s\nSETUP\n' "$user" "$host" "$body"
       return 0
     fi
-    # -t required so remote sudo can prompt for naboyd password during bootstrap.
-    ssh -t -o ConnectTimeout=15 "${user}@${host}" 'sudo bash -s' <<REMOTE_SCRIPT
+    # -tt forces a PTY even when stdin is a heredoc; remote sudo reads password from the PTY.
+    ssh -tt -o ConnectTimeout=15 "${user}@${host}" 'sudo bash -s' <<REMOTE_SCRIPT
 ${body}
 REMOTE_SCRIPT
   fi
