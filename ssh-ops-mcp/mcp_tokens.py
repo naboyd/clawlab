@@ -79,13 +79,30 @@ def _token_prefix(raw: str) -> str:
     return raw[:10] if len(raw) >= 10 else raw[: len(raw)]
 
 
+def _touch_pat_last_used(token_id: int) -> None:
+    """Best-effort audit update; ignored when DB is read-only (MCP container)."""
+    conn = _connect(write=True)
+    if conn is None:
+        return
+    try:
+        conn.execute(
+            "UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?",
+            (_iso(_now()), int(token_id)),
+        )
+        conn.commit()
+    except sqlite3.Error:
+        pass
+    finally:
+        conn.close()
+
+
 def validate_pat(raw: str | None) -> dict | None:
     """Return {username, role} when PAT is valid."""
     token = (raw or "").strip()
     if not token.startswith(PAT_PREFIX):
         return None
     ensure_schema()
-    conn = _connect(write=True)
+    conn = _connect(write=False)
     if conn is None:
         return None
     try:
@@ -108,15 +125,12 @@ def validate_pat(raw: str | None) -> dict | None:
             if expires <= _now():
                 log.info("pat_reject prefix=%s reason=expired", _token_prefix(token))
                 return None
-        conn.execute(
-            "UPDATE mcp_tokens SET last_used_at = ? WHERE id = ?",
-            (_iso(_now()), row["id"]),
-        )
-        conn.commit()
-        return {
+        identity = {
             "username": row["username"],
             "role": str(row["role"] or "operator").strip().lower(),
         }
+        _touch_pat_last_used(row["id"])
+        return identity
     except sqlite3.Error as exc:
         log.info("pat_reject prefix=%s reason=db_error detail=%s", _token_prefix(token), exc)
         return None

@@ -91,6 +91,16 @@ class McpPatTests(unittest.TestCase):
         rows = mcp_tokens.list_all_pats()
         self.assertEqual(len(rows), 2)
         self.assertEqual({r["username"] for r in rows}, {"alice", "bob"})
+
+    def test_validate_pat_readonly_db(self) -> None:
+        import os
+        import stat
+
+        os.chmod(self.db, stat.S_IRUSR)
+        raw = mcp_tokens.issue_pat("alice", "ro-test")
+        os.chmod(self.db, stat.S_IRUSR | stat.S_IWUSR)
+        got = mcp_tokens.validate_pat(raw)
+        self.assertEqual(got, {"username": "alice", "role": "operator"})
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.db = Path(self._tmp.name) / "users.db"
