@@ -94,6 +94,7 @@ def _kind_prefix(kind: str) -> str:
 
 def set_secret(host: str, kind: str, password: str) -> None:
     """Encrypt and store a secret of `kind` for `host` (sudo|login|enable)."""
+    password = password.replace("\r", "").replace("\n", "").strip()
     token = _fernet().encrypt(password.encode()).decode()
     data = _read_env()
     data[_kind_prefix(kind) + host] = token
@@ -234,7 +235,7 @@ if __name__ == "__main__":  # tiny self-test / CLI
     elif len(sys.argv) == 3 and sys.argv[1] == "del":
         delete_all_secrets(sys.argv[2])
         print("deleted")
-    elif len(sys.argv) == 3 and sys.argv[1] == "list":
+    elif sys.argv[1] == "list":
         kind = sys.argv[2] if len(sys.argv) > 2 else "sudo"
         print("\n".join(hosts_with_secret(kind)) or "(none)")
     else:

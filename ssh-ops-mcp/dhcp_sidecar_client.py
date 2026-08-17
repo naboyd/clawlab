@@ -57,6 +57,8 @@ def get_sidecar_token(host_name: str) -> str:
         token = secrets_store.get_secret(host_name, "sidecar")
     except secrets_store.DecryptionError as exc:
         raise RuntimeError(str(exc)) from exc
+    if token:
+        token = token.replace("\r", "").replace("\n", "").strip()
     if not token:
         raise RuntimeError(
             f"No dhcp sidecar token for '{host_name}'. "
