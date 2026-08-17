@@ -36,7 +36,10 @@ def is_dhcp_host(host: dict[str, Any]) -> bool:
     sidecar = host.get("dhcp_sidecar")
     if isinstance(sidecar, dict) and sidecar:
         return True
-    return inventory.has_tag(host, "dhcp")
+    if inventory.has_tag(host, "dhcp"):
+        return True
+    services = host.get("allowed_services") or []
+    return any(str(s).strip() == "isc-dhcp-server" for s in services)
 
 
 def sidecar_port(host: dict[str, Any]) -> int:
