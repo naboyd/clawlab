@@ -287,7 +287,13 @@ SUDOERS_INNER
   if [[ -n "\${APT}" ]]; then
     SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_APT"
   fi
-  printf '%s ALL=(root) NOPASSWD: %s\n' "\${SSHOPS_USER}" "\${SUDO_PARTS}"
+  cat <<SUDOERS_INNER
+Cmnd_Alias SSHOPS_DHCP_SIDECAR = \\
+  /bin/bash /tmp/clawlab/dhcp-sidecar/install-dhcp-sidecar.sh, \\
+  /bin/bash /opt/clawlab/dhcp-sidecar/install-dhcp-sidecar.sh
+SUDOERS_INNER
+  SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_DHCP_SIDECAR"
+  printf '%s ALL=(root) NOPASSWD: SETENV: %s\n' "\${SSHOPS_USER}" "\${SUDO_PARTS}"
 } > "\${TMP}"
 chmod 440 "\${TMP}"
 visudo -cf "\${TMP}"
