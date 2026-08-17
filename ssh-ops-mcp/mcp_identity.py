@@ -43,6 +43,9 @@ def bearer_token(headers: dict[str, str]) -> str:
     ).strip()
     if hdr.lower().startswith("bearer "):
         return hdr[7:].strip()
+    # Some MCP clients (mcp-remote) send the raw token without a Bearer prefix.
+    if hdr.startswith(mcp_tokens.PAT_PREFIX):
+        return hdr
     return ""
 
 

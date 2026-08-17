@@ -426,12 +426,26 @@ clients should use a **personal access token (PAT)**:
 }
 ```
 
-Example (remote lab with TLS):
+Example (Claude Desktop via identity proxy on the lab LAN, TLS):
 
-```text
-https://icecream.example.com:8766/mcp
-Authorization: Bearer skops_…
+```json
+{
+  "mcpServers": {
+    "ssh-ops": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://icecream.example.com:8767/mcp",
+        "--header", "Authorization: Bearer skops_YOUR_TOKEN_HERE"
+      ]
+    }
+  }
+}
 ```
+
+Use port **8767** (identity proxy), not `:8766` (raw MCP). After enabling TLS on the
+proxy, the URL must be `https://` — plain `http://` will fail with an empty reply.
+The `Bearer ` prefix is required in the header value.
 
 **Migration:** if you previously used the shared MCP bearer token plus a self-asserted
 `X-Auth-User` header, switch to a PAT — spoofed identity headers from untrusted clients
