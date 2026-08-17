@@ -218,8 +218,8 @@ def ensure_mcp_token() -> str:
 if __name__ == "__main__":  # tiny self-test / CLI
     import sys
 
-    if len(sys.argv) >= 5 and sys.argv[1] == "set":
-        set_secret(sys.argv[2], sys.argv[3], sys.argv[4])
+    if len(sys.argv) >= 5 and sys.argv[1] == "set" and sys.argv[2] in KIND_PREFIX:
+        set_secret(sys.argv[3], sys.argv[2], sys.argv[4])
         print(f"stored {sys.argv[2]} secret for {sys.argv[3]} in {ENV_FILE}")
     elif len(sys.argv) == 4 and sys.argv[1] == "set":
         set_sudo_password(sys.argv[2], sys.argv[3])
