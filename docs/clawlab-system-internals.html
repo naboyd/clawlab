@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clawlab — How It Works</title>
+  <style>
+    body { margin: 0; background: #e8e4dc; font-family: system-ui, sans-serif; color: #2c2825; }
+    header { padding: 12px 20px; background: #fffdf8; border-bottom: 2px solid #3d3832; }
+    header a { color: #4338ca; margin-right: 16px; }
+    main { padding: 16px; text-align: center; max-width: 1500px; margin: 0 auto; }
+    img { max-width: 100%; height: auto; border: 2px solid #3d3832; border-radius: 8px; }
+    p { font-size: 14px; color: #5c5650; text-align: left; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Clawlab diagrams</strong>
+    <a href="USER-GUIDE.md">Usage guide</a>
+    <a href="clawlab-user-journey.html">User journey</a>
+    <a href="clawlab-architecture-overview.html">Component map</a>
+    <a href="clawlab-policy-enforcement-flow.html">Policy flow</a>
+  </header>
+  <main>
+    <h1>How it works — auth &amp; data flow</h1>
+    <p>Technical view: portal session auth, OpenClaw gateway token path, MCP identity proxy on
+    <code>:8767</code>, DefenseClaw guardrails, and ssh-ops fleet operations.</p>
+    <img src="clawlab-system-internals.png" width="1480" height="1720" alt="Clawlab system internals">
+    <p>Regenerate: <code>python3 admin-access/render-system-internals-diagram.py</code></p>
+  </main>
+</body>
+</html>

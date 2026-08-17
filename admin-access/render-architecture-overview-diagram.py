@@ -171,9 +171,9 @@ def compute_layout() -> tuple[dict[str, Rect], dict[str, dict], list[tuple[str, 
 
     add_layer("Identity")
     add_box(
-        "auth", "auth", "claw-auth", ":8780 loopback",
-        "Sessions · four-eyes identity · device admin",
-        center_x(300), 300, 108,
+        "auth", "auth", "claw-auth + MCP proxy", ":8780 · :8767",
+        "Portal sessions · PATs · clawBind · identity proxy",
+        center_x(380), 380, 108,
     )
 
     add_layer("Agent plane")
@@ -198,7 +198,7 @@ def compute_layout() -> tuple[dict[str, Rect], dict[str, dict], list[tuple[str, 
     total = 2 * ow + gap
     x0 = (W - total) // 2
     ops = [
-        ("mcp", "mcp", "ssh-ops MCP", "MCP :8766 · GUI :8765 · Podman", "Write gate · propose · approve · apply"),
+        ("mcp", "mcp", "ssh-ops MCP", "MCP :8766 · proxy :8767 · GUI :8765", "Identity proxy · propose · approve · apply"),
         ("policy", "data", "Policy & inventory", "hosts.yaml · ios-xe-policy.yaml", "60 allow_groups · fleet targets"),
     ]
     for i, (nid, kind, name, ports, blurb) in enumerate(ops):
@@ -335,7 +335,7 @@ def main() -> None:
     draw_grid(img)
     draw = ImageDraw.Draw(img)
 
-    title = "Clawlab — System Architecture"
+    title = "Clawlab — Component Map"
     tw = FONT_TITLE.getlength(title)
     draw.text(((W - tw) / 2, MARGIN), title, fill=INK, font=FONT_TITLE)
 
@@ -356,7 +356,10 @@ def main() -> None:
     ):
         draw_component(draw, specs[nid])
 
-    foot = "Detail: docs/clawlab-policy-enforcement-flow.png  ·  Regenerate: python3 admin-access/render-architecture-overview-diagram.py"
+    foot = (
+        "User journey: docs/clawlab-user-journey.png  ·  Internals: docs/clawlab-system-internals.png  ·  "
+        "Regenerate: python3 admin-access/render-architecture-overview-diagram.py"
+    )
     fw = FONT_BLURB.getlength(foot)
     draw.text(((W - fw) / 2, H - MARGIN - 8), foot, fill=INK_MUTED, font=FONT_BLURB)
 

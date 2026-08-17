@@ -4,23 +4,37 @@ Self-hosted AI-ops lab on a **Linux lab host** (`lab.example.com`, LAN
 `192.168.1.10`). Governed OpenClaw agent, Cisco DefenseClaw policy enforcement,
 hardened ssh-ops MCP, and a unified HTTPS admin portal.
 
+> **How to use clawlab:** see **[USER-GUIDE.md](USER-GUIDE.md)** (operators and admins).
+> This document is the technical reference — ports, services, auth mechanics, policy layers.
+
 > **Secrets never live in git.** Tokens, API keys, Fernet keys, and LE private keys
 > stay on the host under `~/.openclaw`, `~/.defenseclaw`, `~/.claw-auth`, etc.
 
 ---
 
-## High-level view
+## Diagrams
 
-**System component diagram:** [clawlab-architecture-overview.png](clawlab-architecture-overview.png)
-(whiteboard layout). **Command flow (pass vs judge deny):**
-[clawlab-command-flow-pass-deny.png](clawlab-command-flow-pass-deny.png).
-**Demo & policy-test matrix:**
-[clawlab-demo-test-matrix.png](clawlab-demo-test-matrix.png).
-Regenerate: `python3 admin-access/render-architecture-overview-diagram.py`,
-`python3 admin-access/render-command-flow-diagram.py`, and
-`python3 admin-access/render-demo-test-matrix-diagram.py`.
-Detailed enforcement steps: [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) or
-[clawlab-policy-enforcement-flow.html](clawlab-policy-enforcement-flow.html).
+| View | Audience | File |
+|------|----------|------|
+| **User journey** | Operators — what to click | [clawlab-user-journey.png](clawlab-user-journey.png) |
+| **How it works** | Integrators — auth & data flow | [clawlab-system-internals.png](clawlab-system-internals.png) |
+| **Component map** | Whiteboard overview | [clawlab-architecture-overview.png](clawlab-architecture-overview.png) |
+| **Policy flow** | Change governance detail | [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) |
+| **Command pass/deny** | DefenseClaw decisions | [clawlab-command-flow-pass-deny.png](clawlab-command-flow-pass-deny.png) |
+| **Demo test matrix** | Test scenarios | [clawlab-demo-test-matrix.png](clawlab-demo-test-matrix.png) |
+
+Regenerate:
+
+```bash
+python3 admin-access/render-user-journey-diagram.py
+python3 admin-access/render-system-internals-diagram.py
+python3 admin-access/render-architecture-overview-diagram.py
+python3 admin-access/render-command-flow-diagram.py
+python3 admin-access/render-demo-test-matrix-diagram.py
+python3 admin-access/render-policy-flow-diagram.py
+```
+
+Interactive HTML versions live alongside each PNG in `docs/`.
 
 ```text
                          Internet / LAN
@@ -53,7 +67,8 @@ loopback only.
 | **8443** | LAN / FQDN (nginx + LE TLS) | Unified portal hub |
 | 18789 | `127.0.0.1` only | OpenClaw gateway + Control UI |
 | 8765 | `127.0.0.1` only | ssh-ops admin GUI (Podman) |
-| 8766 | HTTPS (MCP bearer token) | ssh-ops MCP API |
+| 8766 | `127.0.0.1` / internal | ssh-ops MCP API (raw — not for external clients) |
+| **8767** | HTTPS (LAN when remote MCP enabled) | **MCP identity proxy** — PAT, clawBind, shared bearer |
 | 8770 | `127.0.0.1` only | DefenseClaw policy editor |
 | 8780 | `127.0.0.1` only | claw-auth (login + verify) |
 | 4000 | `127.0.0.1` | DefenseClaw guardrail proxy |
@@ -95,33 +110,50 @@ bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=cla
 
 ## Authentication
 
+See **[USER-GUIDE.md — MCP authentication](USER-GUIDE.md#mcp-authentication-important)** for
+operator-facing steps. Summary:
+
 ```mermaid
-flowchart LR
-  subgraph portal [Portal :8443]
-    Hub[claw-auth hub]
-    MCP[/ssh-ops/]
-    DC[/defenseclaw/]
-    OC[/openclaw/]
+flowchart TB
+  subgraph portal_auth [Portal session]
+    Browser -->|cookie| nginx
+    nginx -->|auth_request| clawauth[claw-auth /verify]
+    clawauth --> AuthDB[(users.db)]
   end
 
-  Browser --> Hub
-  Browser --> MCP
-  Browser --> DC
-  Browser --> OC
+  subgraph mcp_auth [MCP identity :8767]
+    OC[OpenClaw agent] -->|clawBind or shared bearer| Proxy[MCP identity proxy]
+    Cursor[External MCP] -->|PAT skops_| Proxy
+    Proxy -->|X-Auth-User + bearer| RawMCP[ssh-ops MCP :8766]
+  end
 
-  Hub -->|session cookie| AuthDB[(~/.claw-auth/users.db)]
-  MCP -->|auth_request| AuthVerify[claw-auth /verify]
-  DC -->|auth_request| AuthVerify
-  OC -->|gateway token + device pair| GW[OpenClaw :18789]
+  subgraph oc_ui [OpenClaw Control UI]
+    UI[Browser] -->|gateway token + pairing| GW[OpenClaw :18789]
+  end
 ```
 
 | Component | Auth mechanism |
 |-----------|----------------|
 | **claw-auth** | SQLite users, HttpOnly session cookie, `/_claw_auth/verify` for nginx |
 | **ssh-ops GUI** | claw-auth + `X-Auth-User` from nginx; direct `:8765` → 403 |
-| **ssh-ops MCP** | Bearer token on `:8766` (separate from portal session) |
+| **MCP identity proxy** | `:8767` — validates PAT (`skops_…`), `clawBind`, or shared bearer; forwards identity headers |
+| **ssh-ops MCP (raw)** | `:8766` — bearer from proxy only; clients must not connect directly |
 | **DefenseClaw GUI** | claw-auth via nginx |
-| **OpenClaw Control UI** | `OPENCLAW_GATEWAY_TOKEN` via `#token=` URL fragment; one-time device pairing |
+| **OpenClaw Control UI** | `OPENCLAW_GATEWAY_TOKEN` via `#token=` URL fragment; device pairing |
+
+**OpenClaw MCP identity (recommended):** hub link appends `clawBind=` →
+`clawlab-mcp-identity` plugin sends `X-Claw-Mcp-Bind` → proxy validates against
+`mcp_binds` table → RBAC on `propose_change`.
+
+**External MCP clients:** portal **MCP tokens** → `Authorization: Bearer skops_…` on
+`:8767/mcp`.
+
+Install wiring:
+
+```bash
+bash admin-access/configure-portal-mcp-auth.sh   # after install-portals.sh
+bash admin-access/set-openclaw-mcp-pat.sh        # bookmarked OpenClaw URLs only
+```
 
 OpenClaw uses **token mode** (not trusted-proxy). Same-host nginx → loopback does not
 satisfy trusted-proxy for the Control UI, and token + trusted-proxy are mutually
@@ -228,9 +260,12 @@ or `tests/policy-test.sh` to verify enforcement.
 ## ssh-ops MCP
 
 ```text
-OpenClaw agent ──MCP HTTPS :8766──► ssh-ops MCP (Podman)
+OpenClaw / Cursor ──HTTPS :8767──► MCP identity proxy
+                                         │ validate PAT / clawBind / bearer
+                                         ▼
+                                    ssh-ops MCP :8766 (Podman)
                                          │
-                                    Fernet creds (~/.ssh-ops-mcp/)
+                                    Fernet creds (~/.clawlab/ssh-ops/data/)
                                          │
                                     SSH to fleet hosts (hosts.yaml)
 ```
@@ -303,7 +338,7 @@ proxy on `:4000`.
 | `config-templates/` | Sanitized sample configs |
 | `quadlets/` | Rootless Podman units for ssh-ops |
 | `systemd-user/` | Gateway, cert renewal, shim heal, webex bridge |
-| `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater` |
+| `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater`, `ios-config-drift` |
 | `tests/` | Layered policy test harness |
 
 clawlab ships **editors and installers**, not rule-pack YAML. Policy content is seeded
@@ -332,6 +367,7 @@ by the DefenseClaw CLI into `~/.defenseclaw/policies/`.
 |------|------|
 | `openclaw-gateway` | OpenClaw + DefenseClaw plugin |
 | `claw-auth` | Portal authentication |
+| `mcp-identity-proxy` | MCP identity proxy `:8767` |
 | `defenseclaw-webgui` | Policy editor |
 | `ssh-ops-gui` | MCP admin (Podman) |
 | `dc-webex-bridge` | Audit → Webex |
@@ -375,22 +411,16 @@ See **[Troubleshooting scripts.md](Troubleshooting%20scripts.md)** for the full 
 
 ## Demo one-pager
 
+See **[USER-GUIDE.md](USER-GUIDE.md)** for the full walkthrough. Summary:
+
 **URL:** `https://lab.example.com:8443/`
 
 1. Sign in (claw-auth).
 2. **MCP Admin** — ssh-ops host inventory and tokens (iframe).
 3. **DefenseClaw** — guardrail rules, suppressions, audit (iframe).
-4. **Open OpenClaw ↗** — governed agent chat (new window; token + pairing).
+4. **Open OpenClaw ↗** — governed agent chat (new window; token + pairing + clawBind).
 
-**What enforces policy:** DefenseClaw guardrail (regex + judge), exec shims, tool-call
-inspection, ssh-ops `ios-xe-policy.yaml` (`always_block` + 60 granular `allow_groups` with
-deny/approve/allow modes), four-eyes change approval, OPA admission actions.
-
-**What alerts:** Webex bridge on HIGH/CRITICAL audit events; ssh-ops change workflow
-(proposed → needs approval, approved, applied, self-approval blocked) when webhook
-`events` includes `change`.
-
-**Diagrams:** [System overview PNG](clawlab-architecture-overview.png) ·
-[Command flow pass/deny PNG](clawlab-command-flow-pass-deny.png) ·
-[Demo & policy-test matrix PNG](clawlab-demo-test-matrix.png) ·
-[Policy flow HTML](clawlab-policy-enforcement-flow.html) · [Policy flow PNG](clawlab-policy-enforcement-flow.png)
+**Diagrams:** [User journey](clawlab-user-journey.png) ·
+[How it works](clawlab-system-internals.png) ·
+[Component map](clawlab-architecture-overview.png) ·
+[Policy flow](clawlab-policy-enforcement-flow.html)

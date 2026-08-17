@@ -543,6 +543,17 @@ fi
 install_backend_services
 deploy_nginx
 
+if [[ "$AUTH_MODE" == "claw-auth" && -f "$REPO/admin-access/configure-portal-mcp-auth.sh" ]]; then
+  echo "==> MCP identity proxy + OpenClaw MCP auth"
+  bash "$REPO/admin-access/configure-portal-mcp-auth.sh"
+fi
+
+if [[ -f "$REPO/admin-access/install-clawlab-extras.sh" ]]; then
+  echo "==> OpenClaw skills + IOS config archive"
+  bash "$REPO/admin-access/install-clawlab-extras.sh" \
+    || echo "WARN: install-clawlab-extras failed — run: bash $REPO/admin-access/install-clawlab-extras.sh"
+fi
+
 cat <<EOF
 
 Done.
@@ -572,4 +583,9 @@ OpenClaw Control UI (subpath /openclaw/):
   python3 $REPO/claw-portals/apply-openclaw-portal.py
   systemctl --user restart openclaw-gateway
   For OpenClaw behind this portal (same-host nginx): python3 $REPO/admin-access/apply-token-portal.py
+
+MCP authentication (identity proxy :8767):
+  OpenClaw: open from hub ↗ (clawBind) — or PAT: bash $REPO/admin-access/set-openclaw-mcp-pat.sh
+  Cursor / external clients: hub → MCP tokens → Bearer skops_… at $(scheme_for_mode)://${DOMAIN}:8767/mcp
+  Re-sync after changes: bash $REPO/admin-access/configure-portal-mcp-auth.sh
 EOF

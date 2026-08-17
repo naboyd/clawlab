@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # Sync OpenClaw gateway token files + ssh-ops MCP bearer in openclaw.json, then restart services.
+#
+# MCP auth model (see admin-access/configure-portal-mcp-auth.sh):
+#   • OpenClaw + portal hub: clawBind via clawlab-mcp-identity (no PAT required)
+#   • OpenClaw + bookmarked chat URL: set-openclaw-mcp-pat.sh (skops_…)
+#   • This script: shared bearer + :8767 identity proxy URL (machine auth to proxy)
+#   • Cursor / external: portal MCP tokens → skops_… on :8767 (never :8766 direct)
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

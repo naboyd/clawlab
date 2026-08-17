@@ -247,9 +247,9 @@ Quadlet unit — see `podman/ssh-ops-gui.container` for the install steps.
 Notes for Podman on Linux:
 
 - **Remote MCP:** set `SSH_OPS_MCP_REMOTE=1` before `./podctl.sh --recreate` to
-  publish on `0.0.0.0:8766` with TLS (auto-detects lego certs from `DOMAIN` in
-  `~/.claw-portals/config.env`). Clients use `https://your-host:8766/mcp` with a
-  Bearer token from the ssh-ops admin GUI.
+  publish raw MCP on `:8766` (internal). **Clients must use the identity proxy
+  `:8767`** with a PAT (`skops_…` from portal **MCP tokens**), not the shared
+  GUI bearer on `:8766`.
 - **`:Z`** on volume mounts relabels them for SELinux (needed on Fedora/RHEL).
   Drop it on non-SELinux systems if it causes trouble.
 - **LAN reachability:** rootless Podman's default network (pasta/slirp4netns)
@@ -420,14 +420,18 @@ MCP change.
 | `~/.clawlab/ssh-ops/data/ios-config-archive/` | Baselines, snapshots, diffs on icecream |
 | `check_ios_config_drift` MCP tool | On-demand check (all hosts or one) |
 | `get_ios_config_archive_status` | Paths + last run summary |
-| `scripts/ios-config-drift-check.py` | CLI for systemd timer |
+| `admin-access/install-clawlab-extras.sh` | Skills symlink + archive scheduler (installers call this) |
+| `scripts/ios-config-drift-check.py` | CLI for timer / manual runs |
 | `skills/ios-config-drift/SKILL.md` | OpenClaw skill |
 
-Install the daily timer on the lab host:
+Install skills + daily scheduler (also run automatically by `install-clawstack.sh`):
 
 ```bash
+bash admin-access/install-clawlab-extras.sh
+# or archive only:
 bash admin-access/install-ios-config-archive.sh
-journalctl --user -u ios-config-archive.service -n 30
+journalctl --user -u ios-config-archive.service -n 30   # Linux
+tail -30 ~/.clawlab/run/ios-config-archive.log          # macOS LaunchAgent
 ```
 
 Webex alerts use DefenseClaw webhooks whose `events` include `drift`, `change`, or

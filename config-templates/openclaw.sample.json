@@ -43,11 +43,8 @@
  "mcp": {
   "servers": {
    "ssh-ops": {
-    "headers": {
-     "Authorization": "Bearer <SSH_OPS_MCP_TOKEN>"
-    },
     "transport": "streamable-http",
-    "url": "https://lab.example.com:8766/mcp"
+    "url": "https://lab.example.com:8767/mcp"
    }
   }
  },
@@ -400,10 +397,14 @@
  },
  "plugins": {
   "allow": [
-   "defenseclaw"
+   "defenseclaw",
+   "clawlab-mcp-identity"
   ],
   "entries": {
    "defenseclaw": {
+    "enabled": true
+   },
+   "clawlab-mcp-identity": {
     "enabled": true
    },
    "ollama": {
@@ -412,7 +413,8 @@
   },
   "load": {
    "paths": [
-    "/home/clawlab/.openclaw/extensions/defenseclaw"
+    "/home/clawlab/.openclaw/extensions/defenseclaw",
+    "/home/clawlab/.openclaw/extensions/clawlab-mcp-identity"
    ]
   }
  },

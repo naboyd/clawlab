@@ -60,11 +60,13 @@ Python packages install into **`~/.clawlab/venv`** (avoids PEP 668 system pip er
 
 1. Bookmark **`CLAW_PORTAL_HUB_URL`** from `~/.claw-portals/config.env`
 2. Create additional users: `python3 ../claw-auth/manage.py create-user NAME`
-3. For OpenClaw Control UI behind the proxy, run
-   `python3 admin-access/apply-token-portal.py` (same-host nginx cannot use
-   trusted-proxy; the hub passes `#token=` to the Control UI).
-4. Rebuild ssh-ops after pull: `podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp && systemctl --user restart ssh-ops-gui`
-5. Run the `defenseclaw-canary` skill to verify policy enforcement.
+3. **`install-portals.sh`** runs `admin-access/configure-portal-mcp-auth.sh` automatically
+   (identity proxy `:8767`, clawlab-mcp-identity plugin, shared bearer sync).
+4. **OpenClaw MCP identity:** launch from hub ↗ (`clawBind`); for bookmarked chat URLs use
+   `bash admin-access/set-openclaw-mcp-pat.sh` with a PAT from hub → **MCP tokens**.
+5. **External MCP clients** (Cursor): PAT `skops_…` on `https://<host>:8767/mcp`.
+6. Rebuild ssh-ops after pull: `podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp && ~/clawlab/ssh-ops-mcp/podctl.sh --recreate`
+7. Run the `defenseclaw-canary` skill to verify policy enforcement.
 
 ## Config file
 

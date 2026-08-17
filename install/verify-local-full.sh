@@ -149,6 +149,19 @@ if clawlab_local_full_supported; then
   fi
 fi
 
+if [[ -f "$REPO/ssh-ops-mcp/scripts/ios-config-drift-check.py" ]]; then
+  ok "ios-config-drift-check.py present"
+else
+  bad "ios-config-drift-check.py missing (update clawlab repo)"
+fi
+
+if [[ -L "$HOME/.openclaw/workspace/skills/ios-config-drift" ]] \
+  || [[ -d "$HOME/.openclaw/workspace/skills/ios-config-drift" ]]; then
+  ok "ios-config-drift skill linked in OpenClaw workspace"
+else
+  warn "ios-config-drift skill not linked — bash admin-access/install-clawlab-skills.sh"
+fi
+
 if [[ "$MCP_PING" -eq 1 && -x "$REPO/tests/mcp-ping.sh" ]]; then
   echo
   echo "--- mcp-ping ---"

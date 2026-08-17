@@ -15,7 +15,7 @@
 #   KEEP here     — OpenClaw/DefenseClaw build, provider+MCP loops, gateway bind,
 #                   guardrail rules, Webex webhook, shim-heal + dc-webex-bridge assets
 #   REPLACE       — server nginx :8444 PAM → claw-portals/install-portals.sh (:8443)
-#   MERGE later   — MCP identity proxy, refresh-clawlab-policies, ssh-ops quadlets
+#   MERGED        — MCP identity proxy via configure-portal-mcp-auth.sh / configure-openclaw-mcp-identity.sh
 #   macOS         — local mode + source builds; server TLS/nginx → use Linux lab host
 #
 # Usage:
@@ -363,18 +363,18 @@ PY
 # ================================================= 6. MCP SERVERS (iterative) =
 echo
 if [[ "$AUTO_DEFAULTS" -eq 1 && "$MODE" == "local-full" ]]; then
-  log "MCP servers (local-full auto-registers ssh-ops at http://127.0.0.1:8766/mcp)"
+  log "MCP servers (local-full auto-registers ssh-ops at http://127.0.0.1:8767/mcp identity proxy)"
 elif [[ "$AUTO_DEFAULTS" -eq 1 ]]; then
   log "MCP servers (skipped in default mode — re-run without --yes to add)"
 elif [[ "$MODE" == "local-full" ]]; then
   log "MCP servers (ssh-ops auto-registers after stack start)"
-  info "  ssh-ops GUI :8765  ·  MCP API http://127.0.0.1:8766/mcp  ·  portal /ssh-ops/ on :${LOCAL_FULL_PORT:-8083}"
+  info "  ssh-ops GUI :8765  ·  MCP identity proxy http://127.0.0.1:8767/mcp  ·  portal /ssh-ops/ on :${LOCAL_FULL_PORT:-8083}"
   if yesno "Manually register additional MCP servers now?" n; then
     while true; do
       echo
       MNAME="$(ask 'MCP name (blank = done)')"
       [ -z "$MNAME" ] && break
-      MURL="$(ask "  URL for $MNAME" 'http://127.0.0.1:8766/mcp')"
+      MURL="$(ask "  URL for $MNAME" 'http://127.0.0.1:8767/mcp')"
       MTRANS="$(ask "  Transport" 'streamable-http')"
       MTOK="$(ask_secret "  Bearer token for $MNAME (blank if none)")"
       oc_json "$MNAME" "$MURL" "$MTRANS" "$MTOK" <<'PY'
@@ -396,7 +396,7 @@ else
     echo
     MNAME="$(ask 'MCP name (blank = done)')"
     [ -z "$MNAME" ] && break
-    MURL="$(ask "  URL for $MNAME (e.g. https://host:8766/mcp)")"
+    MURL="$(ask "  URL for $MNAME (e.g. https://host:8767/mcp — use PAT skops_… from portal MCP tokens)")"
     MTRANS="$(ask "  Transport" 'streamable-http')"
     MTOK="$(ask_secret "  Bearer token for $MNAME (blank if none)")"
     oc_json "$MNAME" "$MURL" "$MTRANS" "$MTOK" <<'PY'
@@ -630,13 +630,13 @@ EOF
   "mcpServers": {
     "ssh-ops": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "https://${FQDN}:8766/mcp", "--header", "Authorization:\${AUTH_HEADER}"],
-      "env": { "AUTH_HEADER": "Bearer <YOUR_MCP_TOKEN>" }
+      "args": ["-y", "mcp-remote", "https://${FQDN}:8767/mcp", "--header", "Authorization:\${AUTH_HEADER}"],
+      "env": { "AUTH_HEADER": "Bearer skops_YOUR_PAT_FROM_PORTAL_MCP_TOKENS" }
     }
   }
 }
 EOF
-  info "  External MCP clients: merge ~/clawstack-mcp-client.json into their config (uses npx mcp-remote over HTTPS)."
+  info "  External MCP clients: merge ~/clawstack-mcp-client.json (create PAT at portal hub → MCP tokens)."
 fi
 
 # ==================================================== 11. START + SUMMARY =====
@@ -644,7 +644,7 @@ echo
 if [[ "$MODE" == "local-full" && "$AUTO_DEFAULTS" -eq 0 ]]; then
   log "Local-full portal layout (loopback hub + nginx)"
   info "  Portal hub :${LOCAL_FULL_PORT:-8083}  ·  OpenClaw gateway :18789"
-  info "  ssh-ops Admin GUI :8765  ·  MCP API :8766  ·  DefenseClaw :8770"
+  info "  ssh-ops Admin GUI :8765  ·  MCP identity proxy :8767  ·  DefenseClaw :8770"
   LOCAL_FULL_DOMAIN="$(ask 'Portal bind address' '127.0.0.1')"
   LOCAL_FULL_PORT="$(ask 'Portal hub port (nginx listens here)' '8083')"
   export LOCAL_FULL_DOMAIN LOCAL_FULL_PORT
@@ -660,6 +660,12 @@ elif [[ "$MODE" == "local" ]]; then
 else
   log "Enabling services"
   clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+fi
+
+if [[ "$MODE" != "local-full" ]]; then
+  log "OpenClaw skills + IOS config archive (optional extras)"
+  bash "$CLAWLAB_REPO/admin-access/install-clawlab-extras.sh" \
+    || warn "install-clawlab-extras failed — run manually: bash admin-access/install-clawlab-extras.sh"
 fi
 
 echo

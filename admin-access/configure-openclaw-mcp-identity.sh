@@ -77,3 +77,4 @@ systemctl --user enable --now mcp-identity-proxy.service
 
 echo "Restart OpenClaw gateway: systemctl --user restart openclaw-gateway"
 echo "Open OpenClaw from the portal hub (link includes clawBind= for chat identity)."
+echo "Bookmarked chat URLs: bash admin-access/set-openclaw-mcp-pat.sh  # skops_… PAT"

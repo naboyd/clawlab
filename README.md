@@ -10,9 +10,11 @@ portal (**claw-auth**), and **Webex** alerting on policy violations.
 
 ![Policy enforcement flow](docs/clawlab-policy-enforcement-flow.png)
 
-System overview: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
-Demo & test matrix: [docs/clawlab-demo-test-matrix.png](docs/clawlab-demo-test-matrix.png) ·
-Policy flow detail: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png).
+**Start here:** [docs/USER-GUIDE.md](docs/USER-GUIDE.md) ·
+User journey: [docs/clawlab-user-journey.png](docs/clawlab-user-journey.png) ·
+How it works: [docs/clawlab-system-internals.png](docs/clawlab-system-internals.png) ·
+Component map: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
+Policy flow: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png)
 
 See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for ports, auth model, LLM routing,
 and the full operational runbook.
@@ -81,9 +83,14 @@ bash claw-portals/install-portals.sh
 For install checks, portal diagnostics, and policy refresh helpers, see
 **[docs/Troubleshooting scripts.md](docs/Troubleshooting%20scripts.md)**.
 
+**Full usage guide:** **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)** — sign-in, OpenClaw pairing,
+MCP auth, roles, change approval, troubleshooting.
+
 ---
 
 ## First login & OpenClaw device pairing
+
+> Covered in detail in **[docs/USER-GUIDE.md](docs/USER-GUIDE.md)**. Quick reference:
 
 > **Do this once per browser** after install. Same flow on **`local-full`** (`http://127.0.0.1:8083/`) and
 > **lab server** (`https://<host>:8443/` with `install-portals.sh` + claw-auth).
@@ -92,9 +99,19 @@ For install checks, portal diagnostics, and policy refresh helpers, see
 |------|-----|--------|
 | **1** | Admin | Create portal user if none exists: `python claw-auth/manage.py create-user admin` |
 | **2** | Anyone | Open the portal hub and sign in |
-| **3** | Anyone | **OpenClaw** tab → **Open OpenClaw ↗** (new window with gateway token) |
+| **3** | Anyone | **OpenClaw** tab → **Open OpenClaw ↗** (includes `clawBind` for MCP identity + gateway token) |
 | **4** | **Admin only** | **OpenClaw devices** tab → **Approve** the pending browser device |
 | **5** | Anyone | Return to the OpenClaw Control UI — it should connect |
+
+**MCP authentication**
+
+| Client | Auth |
+|--------|------|
+| **OpenClaw** (from hub) | Portal `clawBind` → identity proxy `:8767` (no PAT needed) |
+| **OpenClaw** (bookmarked chat URL) | Create PAT at hub → **MCP tokens** → `bash admin-access/set-openclaw-mcp-pat.sh` |
+| **Cursor / Claude Desktop** | PAT `skops_…` → `https://<host>:8767/mcp` (see [ssh-ops-mcp/README.md](ssh-ops-mcp/README.md)) |
+
+Do **not** bookmark plain `/openclaw/chat` without `clawBind` — `propose_change` requires verified identity.
 
 **Admin-only tab:** The **OpenClaw devices** tab appears only for users with role **`admin`**
 (manage roles via **Users** on the hub or `claw-auth/manage.py create-user alice --role operator`).
@@ -148,9 +165,9 @@ bash tests/policy-test.sh --no-agent   # full deterministic policy matrix
 ```bash
 cd ~/clawlab && git pull
 bash claw-portals/install-portals.sh --non-interactive --tls=https-le --auth=claw-auth
+bash admin-access/configure-portal-mcp-auth.sh
 systemctl --user restart claw-auth defenseclaw-webgui openclaw-gateway
-podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp
-systemctl --user restart ssh-ops-gui
+podman build -t ssh-ops:latest ~/clawlab/ssh-ops-mcp && ~/clawlab/ssh-ops-mcp/podctl.sh --recreate
 bash claw-auth/doctor.sh
 ```
 
@@ -205,7 +222,7 @@ Shared helpers: `install/lib/clawlab-platform.sh` (OS detection, Node/pnpm, Olla
 | `docs/` | Architecture, scenarios, **policy enforcement diagram** (`.mmd` + `.png`) |
 | `quadlets/` | Rootless Podman units for ssh-ops |
 | `systemd-user/` | Gateway, cert renewal, shim heal, Webex bridge |
-| `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater` |
+| `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater`, `ios-config-drift` |
 
 ---
 

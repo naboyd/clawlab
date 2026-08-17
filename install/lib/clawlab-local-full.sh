@@ -598,6 +598,8 @@ data = json.loads(cfg.read_text())
 mcp = data.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
 mcp["url"] = os.environ["PROXY_URL"]
 mcp.setdefault("transport", "streamable-http")
+# Preserve Authorization header if register_mcp already set shared bearer.
+mcp.setdefault("headers", {})
 plugins = data.setdefault("plugins", {})
 allow = list(plugins.setdefault("allow", []))
 if "clawlab-mcp-identity" not in allow:
@@ -632,14 +634,12 @@ clawlab_local_full_register_mcp() {
 import json, sys
 p, token = sys.argv[1], sys.argv[2]
 d = json.load(open(p))
-entry = {
-    "url": "http://127.0.0.1:8766/mcp",
-    "transport": "streamable-http",
-    "headers": {"Authorization": "Bearer " + token},
-}
-d.setdefault("mcp", {}).setdefault("servers", {})["ssh-ops"] = entry
+entry = d.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
+entry["url"] = "http://127.0.0.1:8767/mcp"
+entry["transport"] = "streamable-http"
+entry["headers"] = {"Authorization": "Bearer " + token}
 json.dump(d, open(p, "w"), indent=1)
-print("registered MCP ssh-ops -> http://127.0.0.1:8766/mcp")
+print("registered MCP ssh-ops -> http://127.0.0.1:8767/mcp (identity proxy)")
 PY
 }
 
@@ -674,12 +674,13 @@ clawlab_install_local_full() {
   clawlab_local_full_configure_mcp_identity "$repo"
   clawlab_local_full_ensure_guardrails "$repo"
   clawlab_local_full_ensure_admin_user "$repo"
+  bash "$repo/admin-access/install-clawlab-extras.sh" || warn "install-clawlab-extras failed (skills / ios archive)"
 
   info "Portal hub:  http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/"
   info "OpenClaw:    hub tab → Open OpenClaw ↗ (first visit: approve device on OpenClaw devices tab)"
   info "MCP Admin:   http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/ssh-ops/"
   info "DefenseClaw: http://${LOCAL_FULL_DOMAIN}:${LOCAL_FULL_PORT}/defenseclaw/"
-  info "MCP API:     http://127.0.0.1:8766/mcp (identity proxy :8767 when running)"
+  info "MCP API:     http://127.0.0.1:8767/mcp (identity proxy; raw MCP :8766 internal only)"
   info "Verify:      bash $repo/install/verify-local-full.sh"
   info "Doctor:      bash $ctl doctor   # Mac policy prerequisites before policy-test.sh"
   info "Policy test: cd $repo/tests && ./policy-test.sh --no-agent"

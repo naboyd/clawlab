@@ -20,6 +20,9 @@ systemctl --user restart openclaw-gateway
 5. Proxy validates bind token → forwards user/role to ssh-ops MCP.
 6. RBAC blocks sensitive reads (e.g. full `show running-config`) for non-admin roles.
 
+**Alternative:** PAT in `openclaw.json` via `admin-access/set-openclaw-mcp-pat.sh`
+(useful for bookmarked `/openclaw/chat` URLs without `clawBind`).
+
 ## Operator testing
 
 Create a non-admin user:

@@ -204,6 +204,7 @@ if [[ "$SKIP_CLAWLAB" -eq 0 && "$LOCAL_FULL" -eq 1 ]]; then
   clawlab_local_full_ensure_hosts_inventory "$REPO" || true
   clawlab_local_full_register_mcp "$REPO" || true
   clawlab_local_full_configure_mcp_identity "$REPO" || true
+  bash "$REPO/admin-access/install-clawlab-extras.sh" || true
 fi
 
 if [[ "$REBUILD_MCP" -eq 1 ]] && command -v podman >/dev/null 2>&1 \
