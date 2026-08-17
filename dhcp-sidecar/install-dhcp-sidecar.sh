@@ -20,11 +20,29 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 say "Installing dhcp-sidecar to $DEST"
 install -d -m 0755 "$DEST"
 install -m 0644 "$SRC/app.py" "$SRC/dhcp_ops.py" "$SRC/requirements.txt" "$DEST/"
-install -d -m 0755 "$DEST/venv"
-if [[ ! -x "$DEST/venv/bin/python" ]]; then
-  "$PY" -m venv "$DEST/venv"
-fi
-"$DEST/venv/bin/pip" install -q -r "$DEST/requirements.txt"
+
+ensure_venv() {
+  if [[ -x "$DEST/venv/bin/python" ]]; then
+    return 0
+  fi
+  if [[ -d "$DEST/venv" ]]; then
+    rm -rf "$DEST/venv"
+  fi
+  if ! "$PY" -m venv "$DEST/venv" 2>/dev/null; then
+    say "python3-venv missing — installing python3-venv"
+    if command -v apt-get >/dev/null 2>&1; then
+      apt-get update -qq
+      apt-get install -y python3-venv
+    else
+      die "python3-venv unavailable; install python3-venv and retry"
+    fi
+    "$PY" -m venv "$DEST/venv"
+  fi
+  [[ -x "$DEST/venv/bin/python" ]] || die "failed to create venv at $DEST/venv"
+}
+
+ensure_venv
+"$DEST/venv/bin/python" -m pip install -q -r "$DEST/requirements.txt"
 
 install -d -m 0750 /etc/dhcp-sidecar
 install -d -m 0755 /etc/dhcp/dhcpd.d
