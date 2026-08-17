@@ -31,7 +31,8 @@ ensure_clawlab_venv() {
   "$VENV_DIR/bin/pip" install -q --upgrade pip
   for req in \
     "$REPO/claw-auth/requirements.txt" \
-    "$REPO/defenseclaw-webgui/requirements.txt"; do
+    "$REPO/defenseclaw-webgui/requirements.txt" \
+    "$REPO/ssh-ops-mcp/requirements.txt"; do
     if [[ -f "$req" ]]; then
       "$VENV_DIR/bin/pip" install -q -r "$req"
     fi

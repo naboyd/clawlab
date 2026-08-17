@@ -303,26 +303,28 @@ alerts when changes appear **outside** the MCP change log (console edits, unauth
 | MCP tools | `check_ios_config_drift()`, `get_ios_config_archive_status(host=…)` |
 | Manual CLI | `python3 ssh-ops-mcp/scripts/ios-config-drift-check.py` |
 
-**Re-install extras** (skills + scheduler):
+**Re-install extras** (skills + scheduler; creates `~/.clawlab/venv` if missing):
 
 ```bash
-bash ~/clawlab/admin-access/install-clawlab-extras.sh
+cd ~/AI/clawlab
+bash admin-access/install-clawlab-extras.sh
 ```
 
 **One-off drift check:**
 
 ```bash
-~/.clawlab/venv/bin/python3 ~/clawlab/ssh-ops-mcp/scripts/ios-config-drift-check.py
-~/.clawlab/venv/bin/python3 ~/clawlab/ssh-ops-mcp/scripts/ios-config-drift-check.py --host SWITCHNAME
+cd ~/AI/clawlab
+bash claw-portals/ensure-venv.sh
+~/.clawlab/venv/bin/python3 ssh-ops-mcp/scripts/ios-config-drift-check.py
+~/.clawlab/venv/bin/python3 ssh-ops-mcp/scripts/ios-config-drift-check.py --host SWITCHNAME
 ```
 
 Hosts tagged `no_config_archive` are skipped; `config_archive` forces inclusion.
 
 **Scheduler:** systemd user timer on Linux; LaunchAgent on macOS (~04:00 local).
 
-> **Repo path:** If commands fail with “No such file”, confirm you are in the clawlab
-> clone that contains `ios-config-drift` (this workspace: `~/AI/clawlab`). A separate
-> `~/clawlab` checkout may be behind until you `git pull` or merge branches.
+> **Repo path:** Your clone is at **`~/AI/clawlab`** (there is no `~/clawlab` on this Mac).
+> Run all commands from that directory. Do not paste comment lines starting with `#`.
 
 ---
 

@@ -12,6 +12,11 @@ REPO="$(cd "$(dirname "$0")/.." && pwd)"
 source "$REPO/install/lib/clawlab-platform.sh"
 clawlab_platform_init
 
+CLAWLAB_REPO="$REPO"
+# shellcheck source=../claw-portals/ensure-venv.sh
+source "$REPO/claw-portals/ensure-venv.sh"
+ensure_clawlab_venv
+
 DATA_DIR="${SSH_OPS_DATA:-${HOME}/.clawlab/ssh-ops/data}"
 VENV_PY="${CLAW_PYTHON:-${HOME}/.clawlab/venv/bin/python3}"
 DRIFT_SCRIPT="$REPO/ssh-ops-mcp/scripts/ios-config-drift-check.py"
@@ -20,14 +25,9 @@ LAUNCH_PLIST="$HOME/Library/LaunchAgents/com.clawlab.ios-config-archive.plist"
 say() { printf '>> %s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
 
-[[ -x "$VENV_PY" ]] || {
-  echo "error: missing venv python at $VENV_PY (run install-clawstack.sh first)" >&2
-  exit 1
-}
-
 [[ -f "$DRIFT_SCRIPT" ]] || {
   echo "error: missing $DRIFT_SCRIPT" >&2
-  echo "hint: use the clawlab repo that contains commit 6fd5fb7+ (e.g. ~/AI/clawlab)" >&2
+  echo "hint: cd to your clawlab clone (this repo: ~/AI/clawlab)" >&2
   exit 1
 }
 
