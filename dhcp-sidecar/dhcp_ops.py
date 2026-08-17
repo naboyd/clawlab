@@ -193,17 +193,26 @@ def _build_test_tree(candidate_name: str, candidate_content: str) -> tuple[Path,
     """Return (temp_root, test_dhcpd_conf) with merged include set."""
     paths = _paths()
     includes_dir = paths["includes"]
-    tmp_root = Path(tempfile.mkdtemp(prefix="dhcp-sidecar-"))
+    # dhcpd AppArmor on Ubuntu blocks reads under /tmp; keep tests under dhcpd.d.
+    test_parent = includes_dir / ".sidecar-test"
+    test_parent.mkdir(parents=True, exist_ok=True)
+    tmp_root = Path(tempfile.mkdtemp(prefix="run-", dir=test_parent))
+    tmp_root.chmod(0o755)
     test_includes = tmp_root / "includes"
-    test_includes.mkdir()
+    test_includes.mkdir(mode=0o755)
     for src in _managed_include_paths(includes_dir):
-        shutil.copy2(src, test_includes / src.name)
-    (test_includes / candidate_name).write_text(candidate_content, encoding="utf-8")
+        dest = test_includes / src.name
+        shutil.copy2(src, dest)
+        dest.chmod(0o644)
+    candidate_path = test_includes / candidate_name
+    candidate_path.write_text(candidate_content, encoding="utf-8")
+    candidate_path.chmod(0o644)
     test_conf = tmp_root / "dhcpd-test.conf"
     lines = [f'include "{p}";' for p in sorted(test_includes.glob("*.conf"))]
     if not lines:
         raise DhcpSidecarError("no include files to test", code="no_includes")
     test_conf.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    test_conf.chmod(0o644)
     return tmp_root, test_conf
 
 
