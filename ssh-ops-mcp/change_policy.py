@@ -22,7 +22,11 @@ ALLOWED_CHANGE_TYPES = frozenset({
     "ios_local_user",
     "ios_interface_state",
     "ios_config_lines",
+    "dhcp_include",
 })
+
+INCLUDE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*\.conf$")
+MAX_DHCP_CONTENT_BYTES = 256 * 1024
 
 
 def validate_proposal(
@@ -38,6 +42,30 @@ def validate_proposal(
     if change_type not in ALLOWED_CHANGE_TYPES:
         errors.append(f"Unsupported change_type '{change_type}'.")
         return "high", errors, warnings
+
+    if change_type == "dhcp_include":
+        if platform not in ("linux", "unix", ""):
+            errors.append(
+                f"change_type '{change_type}' requires a Linux DHCP host (got '{platform}')."
+            )
+        include_name = str(spec.get("include_name") or spec.get("name") or "").strip()
+        if not INCLUDE_NAME_RE.fullmatch(include_name):
+            errors.append(
+                "spec.include_name must match [a-zA-Z0-9][a-zA-Z0-9._-]*.conf"
+            )
+        if include_name == "00-clawlab-includes.conf":
+            errors.append("00-clawlab-includes.conf is reserved for the sidecar manifest")
+        content = spec.get("content")
+        if not isinstance(content, str) or not content.strip():
+            errors.append("spec.content is required (non-empty include file body)")
+        elif len(content.encode("utf-8")) > MAX_DHCP_CONTENT_BYTES:
+            errors.append(
+                f"spec.content exceeds {MAX_DHCP_CONTENT_BYTES} bytes"
+            )
+        risk = "medium"
+        if errors:
+            risk = "blocked"
+        return risk, errors, warnings
 
     if platform not in ("ios", "ios-xe", "iosxe", "cisco", "cisco_ios", "cisco_xe", "nxos", "cisco_nxos"):
         errors.append(f"change_type '{change_type}' requires a Cisco-class platform (got '{platform}').")

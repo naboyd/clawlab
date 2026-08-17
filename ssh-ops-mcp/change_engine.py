@@ -15,6 +15,8 @@ import ios_change
 import ios_xe_policy
 import network_apply
 import verify_spec
+import dhcp_change
+import dhcp_sidecar_client
 
 _BACKUPS_DIR = Path(
     os.environ.get(
@@ -31,13 +33,23 @@ def _now() -> str:
 def _redact_change(change: dict[str, Any]) -> dict[str, Any]:
     out = dict(change)
     if isinstance(out.get("spec"), dict):
-        out["spec"] = ios_change.public_spec(out["spec"])
+        if change.get("change_type") == "dhcp_include":
+            out["spec"] = dhcp_change.public_spec(out["spec"])
+        else:
+            out["spec"] = ios_change.public_spec(out["spec"])
     targets = []
     for t in out.get("targets") or []:
         if not isinstance(t, dict):
             continue
         tt = dict(t)
-        if "apply" in tt:
+        if tt.get("type") == "dhcp_sidecar":
+            apply_obj = tt.get("apply")
+            if isinstance(apply_obj, dict):
+                content = str(apply_obj.get("content") or "")
+                if len(content) > 240:
+                    content = content[:240] + f"... ({len(content)} bytes total)"
+                tt["apply"] = {"content": content}
+        elif "apply" in tt:
             redacted = []
             for line in tt.get("apply") or []:
                 if " secret " in str(line):
@@ -90,6 +102,32 @@ def propose_change(
             target = ios_change.build_ios_interface_state_target(host, platform, spec)
         elif change_type == "ios_config_lines":
             target = ios_change.build_ios_config_lines_target(host, platform, spec)
+        elif change_type == "dhcp_include":
+            if not dhcp_sidecar_client.is_dhcp_host(h):
+                return {
+                    "error": f"Host '{host}' is not tagged for dhcp sidecar (add tag 'dhcp').",
+                    "risk": risk,
+                    "warnings": warnings,
+                }
+            try:
+                dhcp_sidecar_client.get_sidecar_token(host)
+            except RuntimeError as exc:
+                return {"error": str(exc), "risk": risk, "warnings": warnings}
+            target = dhcp_change.build_dhcp_include_target(host, spec)
+            try:
+                validate_result = dhcp_sidecar_client.validate_include(
+                    host,
+                    target["include_name"],
+                    str(spec.get("content") or ""),
+                )
+                warnings.append("Sidecar dhcpd -t pre-check passed.")
+                target["precheck"] = validate_result
+            except RuntimeError as exc:
+                return {
+                    "error": f"Sidecar validate failed: {exc}",
+                    "risk": "blocked",
+                    "warnings": warnings,
+                }
         else:
             return {"error": f"Unsupported change_type: {change_type}"}
     except ValueError as exc:
@@ -149,8 +187,16 @@ def propose_change(
             {
                 "name": target["name"],
                 "summary": target.get("summary"),
-                "apply_preview": target.get("apply"),
-                "rollback_preview": target.get("rollback"),
+                "apply_preview": (
+                    dhcp_change.format_apply_preview(target)
+                    if target.get("type") == "dhcp_sidecar"
+                    else target.get("apply")
+                ),
+                "rollback_preview": (
+                    dhcp_change.format_rollback_preview(target)
+                    if target.get("type") == "dhcp_sidecar"
+                    else target.get("rollback")
+                ),
                 "verify": target.get("verify"),
             }
         ],
@@ -246,8 +292,59 @@ def apply_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
 
     for target in change.get("targets") or []:
         host = target["name"]
-        apply_lines = list(target.get("apply") or [])
         tr: dict[str, Any] = {"host": host, "steps": []}
+        apply_succeeded = False
+        if target.get("type") == "dhcp_sidecar":
+            try:
+                include_name = str(target["include_name"])
+                apply_obj = target.get("apply") or {}
+                content = str(apply_obj.get("content") or "")
+                out = dhcp_sidecar_client.apply_include(
+                    host,
+                    include_name,
+                    content,
+                    change_id=change_id,
+                    actor=actor,
+                )
+                tr["steps"].append({"step": "sidecar_apply", "result": out})
+                apply_succeeded = True
+                verify_cmd = "systemctl is-active isc-dhcp-server"
+                verify_out = dhcp_sidecar_client.run_ssh(host, verify_cmd)
+                active = (verify_out.get("stdout") or "").strip() == "active"
+                tr["steps"].append(
+                    {
+                        "step": "verify",
+                        "passed": active and int(verify_out.get("exit_code", 1)) == 0,
+                        "results": [verify_out],
+                    }
+                )
+                if not active or int(verify_out.get("exit_code", 1)) != 0:
+                    all_ok = False
+                    failure_stage = failure_stage or "verify"
+                    tr["error"] = "isc-dhcp-server not active after apply"
+                    try:
+                        rb = dhcp_sidecar_client.rollback(host, change_id, actor=actor)
+                        tr["steps"].append({"step": "auto_rollback", "result": rb})
+                    except Exception as rb_exc:  # noqa: BLE001
+                        failure_stage = "rollback"
+                        tr["rollback_error"] = f"{type(rb_exc).__name__}: {rb_exc}"
+                else:
+                    tr["ok"] = True
+            except Exception as exc:  # noqa: BLE001
+                all_ok = False
+                failure_stage = failure_stage or ("verify" if apply_succeeded else "apply")
+                tr["error"] = f"{type(exc).__name__}: {exc}"
+                if apply_succeeded:
+                    try:
+                        rb = dhcp_sidecar_client.rollback(host, change_id, actor=actor)
+                        tr["steps"].append({"step": "auto_rollback", "result": rb})
+                    except Exception as rb_exc:  # noqa: BLE001
+                        failure_stage = "rollback"
+                        tr["rollback_error"] = f"{type(rb_exc).__name__}: {rb_exc}"
+            results.append(tr)
+            continue
+
+        apply_lines = list(target.get("apply") or [])
         apply_succeeded = False
         try:
             backup_dir = _BACKUPS_DIR / change_id
@@ -346,6 +443,33 @@ def rollback_change(change_id: str, *, actor: str = "mcp") -> dict[str, Any]:
     all_ok = True
     for target in change.get("targets") or []:
         host = target["name"]
+        tr: dict[str, Any] = {"host": host, "steps": []}
+        if target.get("type") == "dhcp_sidecar":
+            try:
+                out = dhcp_sidecar_client.rollback(host, change_id, actor=actor)
+                tr["steps"].append({"step": "sidecar_rollback", "result": out})
+                verify_out = dhcp_sidecar_client.run_ssh(
+                    host, "systemctl is-active isc-dhcp-server"
+                )
+                active = (verify_out.get("stdout") or "").strip() == "active"
+                tr["steps"].append(
+                    {
+                        "step": "verify",
+                        "passed": active and int(verify_out.get("exit_code", 1)) == 0,
+                        "results": [verify_out],
+                    }
+                )
+                if not active or int(verify_out.get("exit_code", 1)) != 0:
+                    all_ok = False
+                    tr["error"] = "isc-dhcp-server not active after rollback"
+                else:
+                    tr["ok"] = True
+            except Exception as exc:  # noqa: BLE001
+                all_ok = False
+                tr["error"] = f"{type(exc).__name__}: {exc}"
+            results.append(tr)
+            continue
+
         rollback_lines = list(target.get("rollback") or [])
         tr: dict[str, Any] = {"host": host, "steps": []}
         if not rollback_lines:

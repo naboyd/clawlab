@@ -633,8 +633,8 @@ must approve (four-eyes). <code>apply_change</code> runs after approval.</p>
 </tr>
 {% if c.targets %}
 <tr><td colspan="8" style="background:#fafafa">
-  <b>Apply:</b> <code>{{ c.targets[0].apply|join('; ') }}</code><br>
-  <b>Rollback:</b> <code>{{ c.targets[0].rollback|join('; ') }}</code>
+  <b>Apply:</b> <code>{% if c.targets[0].apply is mapping %}{{ c.targets[0].apply_preview or c.targets[0].apply }}{% else %}{{ c.targets[0].apply|join('; ') }}{% endif %}</code><br>
+  <b>Rollback:</b> <code>{% if c.targets[0].rollback is mapping %}{{ c.targets[0].rollback_preview or c.targets[0].rollback }}{% else %}{{ c.targets[0].rollback|join('; ') }}{% endif %}</code>
 </td></tr>
 {% endif %}
 {% else %}
@@ -932,14 +932,26 @@ def _changes_for_gui(raw_changes: list[dict], *, viewer: str | None = None) -> l
             if not isinstance(t, dict):
                 continue
             tt = dict(t)
-            redacted_apply = []
-            for line in tt.get("apply") or []:
-                if " secret " in str(line):
-                    head, _tail = str(line).split(" secret ", 1)
-                    redacted_apply.append(f"{head} secret ***")
-                else:
-                    redacted_apply.append(str(line))
-            tt["apply"] = redacted_apply
+            if tt.get("type") == "dhcp_sidecar":
+                import dhcp_change as _dhcp
+
+                tt["apply_preview"] = _dhcp.format_apply_preview(tt)
+                tt["rollback_preview"] = _dhcp.format_rollback_preview(tt)
+                apply_obj = tt.get("apply")
+                if isinstance(apply_obj, dict):
+                    content = str(apply_obj.get("content") or "")
+                    if len(content) > 240:
+                        content = content[:240] + f"... ({len(content)} bytes total)"
+                    tt["apply"] = {"content": content}
+            else:
+                redacted_apply = []
+                for line in tt.get("apply") or []:
+                    if " secret " in str(line):
+                        head, _tail = str(line).split(" secret ", 1)
+                        redacted_apply.append(f"{head} secret ***")
+                    else:
+                        redacted_apply.append(str(line))
+                tt["apply"] = redacted_apply
             targets.append(tt)
         cc["targets"] = targets
         out.append(cc)

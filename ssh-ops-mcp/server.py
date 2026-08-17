@@ -43,6 +43,7 @@ import change_engine
 import change_actor
 import network_apply
 import rbac
+import dhcp_sidecar_client
 
 # --------------------------------------------------------------------------- #
 # Configuration loading
@@ -902,6 +903,66 @@ network_apply.configure(
     connect_timeout=CONNECT_TIMEOUT,
     command_timeout=COMMAND_TIMEOUT,
 )
+dhcp_sidecar_client.configure(
+    get_host=_get_host,
+    ssh_run=_run,
+)
+
+
+def _dhcp_host_names() -> list[str]:
+    return sorted(
+        name
+        for name, h in _current_hosts().items()
+        if dhcp_sidecar_client.is_dhcp_host(h)
+    )
+
+
+@mcp.tool()
+def list_dhcp_hosts() -> list[dict[str, Any]]:
+    """List Linux DHCP hosts that expose a local isc-dhcp sidecar."""
+    sidecar_set = set(secrets_store.hosts_with_secret("sidecar"))
+    out: list[dict[str, Any]] = []
+    for name in _dhcp_host_names():
+        h = _get_host(name)
+        out.append(
+            {
+                "name": name,
+                "hostname": h.get("hostname"),
+                "sidecar_port": dhcp_sidecar_client.sidecar_port(h),
+                "has_sidecar_token": name in sidecar_set,
+            }
+        )
+    return out
+
+
+@mcp.tool()
+def list_dhcp_includes(host: str) -> dict[str, Any]:
+    """List managed include files on a DHCP host's sidecar."""
+    _audit(host, "list_dhcp_includes", "")
+    try:
+        return dhcp_sidecar_client.list_includes(host)
+    except RuntimeError as exc:
+        return {"error": str(exc), "host": host}
+
+
+@mcp.tool()
+def get_dhcp_include(host: str, name: str) -> dict[str, Any]:
+    """Read one DHCP include file from a host sidecar."""
+    _audit(host, "get_dhcp_include", name)
+    try:
+        return dhcp_sidecar_client.get_include(host, name)
+    except RuntimeError as exc:
+        return {"error": str(exc), "host": host, "name": name}
+
+
+@mcp.tool()
+def validate_dhcp_include(host: str, name: str, content: str) -> dict[str, Any]:
+    """Run ``dhcpd -t`` on a candidate include via the host sidecar (no write)."""
+    _audit(host, "validate_dhcp_include", name)
+    try:
+        return dhcp_sidecar_client.validate_include(host, name, content)
+    except RuntimeError as exc:
+        return {"error": str(exc), "host": host, "name": name}
 
 
 @mcp.tool()
@@ -920,6 +981,9 @@ def propose_change(
     * ``ios_local_user`` — spec: username, password/secret, privilege, action
       (create|delete)
     * ``ios_config_lines`` — spec: lines (list), optional group, optional rollback/verify
+    * ``dhcp_include`` — spec: include_name (or name), content (ISC dhcp include body).
+      Host must have tag ``dhcp`` and a stored sidecar token. Runs ``dhcpd -t`` via
+      the host sidecar at propose time; apply uses the same ``change_id``.
 
     For ``ios_config_lines``, ``verify`` must be one of:
 
@@ -937,7 +1001,7 @@ def propose_change(
 
     Args:
         host: Network host name from list_hosts().
-        change_type: e.g. ``ios_local_user``, ``ios_interface_state``, ``ios_config_lines``.
+        change_type: e.g. ``ios_local_user``, ``ios_interface_state``, ``ios_config_lines``, ``dhcp_include``.
         spec: Structured change parameters (see change_type docs).
         intent: Optional human-readable description.
         requested_by: Optional portal/chat username (required for four-eyes unless

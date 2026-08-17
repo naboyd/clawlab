@@ -99,5 +99,5 @@ python3 -m unittest discover -s tests -v
 ## Roadmap
 
 - **Phase B:** Web UI polish + audit viewer + install on second host
-- **Phase C:** `isc-dhcp-mcp` on icecream + change-queue integration
+- **Phase C:** `isc-dhcp-mcp` on icecream + change-queue integration — see `../isc-dhcp-mcp/README.md`
 - **Phase D:** Failover ordering (primary → secondary)
