@@ -54,18 +54,15 @@ PY
 install -d -m 0755 "$UNIT_DIR"
 install -m 0644 "$REPO/systemd-user/mcp-identity-proxy.service" "$UNIT_DIR/"
 
-MCP_HOST="${SSH_OPS_MCP_HOST:-}"
-if [[ -z "$MCP_HOST" && -f "$REPO/quadlets/ssh-ops-mcp.container" ]]; then
-  MCP_HOST="$(grep -E '^PublishPort=' "$REPO/quadlets/ssh-ops-mcp.container" \
-    | head -1 | sed -E 's/.*PublishPort=([^:]+):8766.*/\1/')"
-fi
-MCP_HOST="${MCP_HOST:-127.0.0.1}"
+# Identity proxy runs on the same host as MCP; upstream is always loopback
+# (podctl publishes 127.0.0.1:8766 regardless of quadlet PublishPort scrub IP).
+MCP_UPSTREAM="${SSH_OPS_MCP_UPSTREAM_HOST:-127.0.0.1}"
 SSH_OPS_DATA="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 
-mcp_proxy_write_dropin "$MCP_HOST" "$PROXY_BIND" "$SSH_OPS_DATA"
+mcp_proxy_write_dropin "$MCP_UPSTREAM" "$PROXY_BIND" "$SSH_OPS_DATA"
 
 echo "  mcp-identity-proxy listen   = ${PROXY_BIND}:8767"
-echo "  mcp-identity-proxy upstream = https://${MCP_HOST}:8766"
+echo "  mcp-identity-proxy upstream = https://${MCP_UPSTREAM}:8766"
 echo "  mcp-identity-proxy secrets  = ${SSH_OPS_DATA}"
 if mcp_proxy_resolve_tls >/dev/null; then
   echo "  mcp-identity-proxy TLS      = lego ($(mcp_proxy_portal_domain))"

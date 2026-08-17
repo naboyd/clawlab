@@ -44,6 +44,7 @@ import change_actor
 import network_apply
 import rbac
 import dhcp_sidecar_client
+import ios_config_archive
 
 # --------------------------------------------------------------------------- #
 # Configuration loading
@@ -907,6 +908,18 @@ dhcp_sidecar_client.configure(
     get_host=_get_host,
     ssh_run=_run,
 )
+ios_config_archive.configure_runtime(
+    get_host=_get_host,
+    platform_fn=_platform,
+    netmiko_type_fn=_netmiko_type,
+    expand_fn=_expand,
+    connect_timeout=CONNECT_TIMEOUT,
+    command_timeout=max(COMMAND_TIMEOUT, 120),
+)
+
+
+def _network_host_names() -> list[str]:
+    return ios_config_archive.list_archive_hosts(_current_hosts())
 
 
 def _dhcp_host_names() -> list[str]:
@@ -963,6 +976,69 @@ def validate_dhcp_include(host: str, name: str, content: str) -> dict[str, Any]:
         return dhcp_sidecar_client.validate_include(host, name, content)
     except RuntimeError as exc:
         return {"error": str(exc), "host": host, "name": name}
+
+
+@mcp.tool()
+def check_ios_config_drift(host: str = "") -> dict[str, Any]:
+    """Archive IOS running-config and detect unexplained drift vs baseline.
+
+    Compares live ``show running-config`` to the on-disk baseline. If the diff
+    is not explained by an applied MCP change since the baseline was updated,
+    archives the diff + new config and sends a Webex alert (when configured).
+
+    Args:
+        host: Optional inventory host name. Empty string checks all in-scope
+            network devices (respects ``config_archive`` / ``no_config_archive`` tags).
+    """
+    target = (host or "").strip()
+    _audit(target or "—", "check_ios_config_drift", target or "all")
+    try:
+        if target:
+            return ios_config_archive.check_host_drift(target, notify=True)
+        return ios_config_archive.run_daily_check(_current_hosts(), notify=True)
+    except Exception as exc:  # noqa: BLE001
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+@mcp.tool()
+def get_ios_config_archive_status(host: str = "") -> dict[str, Any]:
+    """Return IOS config archive paths and the last daily run summary.
+
+    Args:
+        host: Optional host name for per-host baseline/snapshot paths.
+    """
+    _audit((host or "").strip() or "—", "get_ios_config_archive_status", host or "summary")
+    archive_dir = ios_config_archive.ARCHIVE_DIR
+    last_run = archive_dir / "last-run.json"
+    out: dict[str, Any] = {
+        "archive_dir": str(archive_dir),
+        "in_scope_hosts": _network_host_names(),
+    }
+    if last_run.is_file():
+        try:
+            import json as _json
+
+            out["last_run"] = _json.loads(last_run.read_text())
+        except Exception as exc:  # noqa: BLE001
+            out["last_run_error"] = str(exc)
+    name = (host or "").strip()
+    if name:
+        meta_file = ios_config_archive.meta_path(name)
+        out["host"] = name
+        out["baseline"] = str(ios_config_archive.baseline_path(name))
+        out["meta_path"] = str(meta_file)
+        if meta_file.is_file():
+            try:
+                import json as _json
+
+                out["meta"] = _json.loads(meta_file.read_text())
+            except Exception as exc:  # noqa: BLE001
+                out["meta_error"] = str(exc)
+        snap_dir = archive_dir / name / "snapshots"
+        if snap_dir.is_dir():
+            snaps = sorted(snap_dir.glob("*.txt"), reverse=True)
+            out["latest_snapshot"] = str(snaps[0]) if snaps else None
+    return out
 
 
 @mcp.tool()

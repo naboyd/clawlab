@@ -32,7 +32,9 @@ def _load_env(path: Path) -> dict[str, str]:
     return env
 
 
-def _load_webhooks() -> list[dict[str, Any]]:
+def _load_webhooks(*match_events: str) -> list[dict[str, Any]]:
+    """Return Webex webhooks whose events include at least one of *match_events."""
+    required = set(match_events) if match_events else {"change"}
     cfg_path = DC_HOME / "config.yaml"
     if not cfg_path.is_file():
         return []
@@ -54,7 +56,7 @@ def _load_webhooks() -> list[dict[str, Any]]:
         if not token or not wh.get("room_id"):
             continue
         events = set(wh.get("events") or ["block", "drift", "guardrail"])
-        if "change" not in events:
+        if not required.intersection(events):
             continue
         out.append({
             "name": wh.get("name", "webex"),
@@ -103,7 +105,7 @@ def _dispatch_change_webhooks(markdown: str, *, log_tag: str, change_id: str) ->
     if os.environ.get("SSH_OPS_NOTIFY_CHANGES", "1").lower() in ("0", "false", "no", "off"):
         return {"skipped": True, "reason": "SSH_OPS_NOTIFY_CHANGES disabled"}
 
-    webhooks = _load_webhooks()
+    webhooks = _load_webhooks("change")
     if not webhooks:
         return {
             "skipped": True,
@@ -244,3 +246,53 @@ def notify_self_approval_blocked(
         f"- **Detail:** {detail}",
     ])
     return _dispatch_change_webhooks(md, log_tag="self_approval_blocked", change_id=str(cid))
+
+
+def _dispatch_drift_webhooks(markdown: str, *, log_tag: str, host: str) -> dict[str, Any]:
+    if os.environ.get("SSH_OPS_NOTIFY_DRIFT", "1").lower() in ("0", "false", "no", "off"):
+        return {"skipped": True, "reason": "SSH_OPS_NOTIFY_DRIFT disabled"}
+
+    webhooks = _load_webhooks("drift", "change", "config_drift")
+    if not webhooks:
+        return {
+            "skipped": True,
+            "reason": "No Webex webhook with events including drift/change/config_drift",
+        }
+
+    results = []
+    for wh in webhooks:
+        ok, info = _post_webex(wh, markdown)
+        results.append({"webhook": wh["name"], "ok": ok, "detail": info})
+        log.info("ios_drift_notify %s host=%s -> %s %s", log_tag, host, wh["name"], info)
+
+    return {"notified": True, "results": results}
+
+
+def notify_ios_config_oob_drift(
+    host_name: str,
+    *,
+    diff_text: str,
+    artifacts: dict[str, str],
+) -> dict[str, Any]:
+    """Alert when running-config drift is not explained by the gated change log."""
+    preview_lines = diff_text.splitlines()[:35]
+    preview = "\n".join(f"  `{ln}`" for ln in preview_lines)
+    if len(diff_text.splitlines()) > 35:
+        preview += "\n  `…`"
+
+    portal = _changes_portal_url()
+    portal_line = f"- **Change log:** [MCP Admin Changes]({portal})\n" if portal else ""
+
+    md = "\n".join([
+        f"⚠️ **IOS config changed out of band** on **{HOSTID}**",
+        f"- **Host:** `{host_name}`",
+        "- **Cause:** running-config differs from baseline with **no matching applied change**",
+        f"- **Diff archive:** `{artifacts.get('diff', '—')}`",
+        f"- **New config archive:** `{artifacts.get('new_config', '—')}`",
+        portal_line.rstrip(),
+        "- **Diff preview:**",
+        preview or "  —",
+        "- **Action:** investigate console/SSH access; changes should use propose → approve → apply.",
+    ]).strip()
+
+    return _dispatch_drift_webhooks(md, log_tag="oob_drift", host=host_name)

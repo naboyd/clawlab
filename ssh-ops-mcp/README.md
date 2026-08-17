@@ -409,6 +409,30 @@ the same four-eyes rules as the Webex card.
 python3 tests/test_webex_approval.py
 ```
 
+## IOS config archive and out-of-band drift
+
+Daily (or on-demand) pull of `show running-config` for network hosts, diff against
+a stored baseline, and Webex alert when drift is **not** explained by an applied
+MCP change.
+
+| Path / tool | Purpose |
+|-------------|---------|
+| `~/.clawlab/ssh-ops/data/ios-config-archive/` | Baselines, snapshots, diffs on icecream |
+| `check_ios_config_drift` MCP tool | On-demand check (all hosts or one) |
+| `get_ios_config_archive_status` | Paths + last run summary |
+| `scripts/ios-config-drift-check.py` | CLI for systemd timer |
+| `skills/ios-config-drift/SKILL.md` | OpenClaw skill |
+
+Install the daily timer on the lab host:
+
+```bash
+bash admin-access/install-ios-config-archive.sh
+journalctl --user -u ios-config-archive.service -n 30
+```
+
+Webex alerts use DefenseClaw webhooks whose `events` include `drift`, `change`, or
+`config_drift`. Tag a host `no_config_archive` to skip; `config_archive` to force.
+
 ## Connecting other AI tools (Cursor, Claude Desktop, …)
 
 OpenClaw uses short-lived `X-Claw-Mcp-Bind` tokens from the portal hub. Other MCP

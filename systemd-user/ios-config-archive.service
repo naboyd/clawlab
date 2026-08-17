@@ -1,0 +1,24 @@
+[Unit]
+Description=IOS running-config archive and out-of-band drift check
+Documentation=file:%h/clawlab/ssh-ops-mcp/scripts/ios-config-drift-check.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=%h
+Environment=SSH_OPS_CONFIG=%h/.clawlab/ssh-ops/data/hosts.yaml
+Environment=SSH_OPS_ENV=%h/.clawlab/ssh-ops/data/.env
+Environment=SSH_OPS_KEYFILE=%h/.clawlab/ssh-ops/data/master.key
+Environment=SSH_OPS_CHANGES_DIR=%h/.clawlab/ssh-ops/data/changes
+Environment=SSH_OPS_IOS_ARCHIVE_DIR=%h/.clawlab/ssh-ops/data/ios-config-archive
+Environment=DEFENSECLAW_HOME=%h/.defenseclaw
+ExecStart=%h/.clawlab/venv/bin/python3 %h/clawlab/ssh-ops-mcp/scripts/ios-config-drift-check.py
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
