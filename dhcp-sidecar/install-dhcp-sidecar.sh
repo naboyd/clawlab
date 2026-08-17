@@ -51,6 +51,24 @@ install -d -m 0750 /etc/dhcp-sidecar
 install -d -m 0755 /etc/dhcp/dhcpd.d
 install -d -m 0750 /var/lib/dhcp-sidecar
 
+wire_dhcpd_conf() {
+  local conf="/etc/dhcp/dhcpd.conf"
+  local manifest_line='include "/etc/dhcp/dhcpd.d/00-clawlab-includes.conf";'
+  [[ -f "$conf" ]] || die "missing $conf"
+  if grep -q 'dhcpd\.d/\*\.conf' "$conf" 2>/dev/null; then
+    sed -i '/dhcpd\.d\/\*\.conf/d' "$conf"
+    say "Removed invalid glob include from $conf (ISC dhcpd does not expand *)"
+  fi
+  if ! grep -q '00-clawlab-includes.conf' "$conf" 2>/dev/null; then
+    printf '\n%s\n' "$manifest_line" >>"$conf"
+    say "Appended manifest include to $conf"
+  fi
+  ( cd "$DEST" && DHCP_INCLUDES_DIR=/etc/dhcp/dhcpd.d "$DEST/venv/bin/python" -c 'import dhcp_ops; dhcp_ops.regenerate_includes_manifest()' )
+  dhcpd -t -cf "$conf"
+}
+
+wire_dhcpd_conf
+
 if [[ ! -f "$ENV_FILE" ]]; then
   token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
   secret="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"

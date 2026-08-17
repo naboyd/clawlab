@@ -53,6 +53,18 @@ class DhcpOpsTests(unittest.TestCase):
         with self.assertRaises(dhcp_ops.DhcpSidecarError):
             dhcp_ops.validate_include_name("no-extension")
 
+    def test_manifest_reserved_name(self) -> None:
+        with self.assertRaises(dhcp_ops.DhcpSidecarError):
+            dhcp_ops.validate_include_name(dhcp_ops.INCLUDES_MANIFEST_NAME)
+
+    def test_regenerate_includes_manifest(self) -> None:
+        (self.includes / "a.conf").write_text("subnet 10.0.0.0 netmask 255.255.255.0 {}\n")
+        manifest = dhcp_ops.regenerate_includes_manifest()
+        text = manifest.read_text(encoding="utf-8")
+        self.assertIn('include "', text)
+        self.assertIn("a.conf", text)
+        self.assertEqual(len(dhcp_ops.list_includes()), 1)
+
     def test_list_and_read(self) -> None:
         (self.includes / "a.conf").write_text("subnet 10.0.0.0 netmask 255.255.255.0 {}\n")
         rows = dhcp_ops.list_includes()

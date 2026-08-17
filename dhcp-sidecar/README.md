@@ -29,11 +29,15 @@ Creates:
 | `/var/lib/dhcp-sidecar/` | Staging, backups, audit |
 | `/etc/systemd/system/dhcp-sidecar.service` | systemd unit |
 
-Ensure main `dhcpd.conf` includes the drop-in directory, e.g.:
+Ensure main `dhcpd.conf` includes the sidecar manifest (installer appends this if missing):
 
 ```conf
-include "/etc/dhcp/dhcpd.d/*.conf";
+include "/etc/dhcp/dhcpd.d/00-clawlab-includes.conf";
 ```
+
+ISC dhcpd **does not** expand globs — `include ".../*.conf"` fails. The sidecar
+regenerates `00-clawlab-includes.conf` with explicit `include` lines whenever
+you apply or rollback a managed file.
 
 ## API
 
@@ -82,7 +86,7 @@ Open `http://127.0.0.1:9080/` on the server (or via SSH tunnel). Paste the API t
 
 - Binds **127.0.0.1** by default — reach via SSH tunnel or internal orchestrator only.
 - Include names must match `[a-zA-Z0-9][a-zA-Z0-9._-]*.conf` — no path traversal.
-- No shell execution; only `dhcpd -t` and `systemctl reload isc-dhcp-server`.
+- No shell execution; only `dhcpd -t` and `systemctl reload` (or `restart` if reload unsupported).
 - Phase B will add icecream approval verification before apply.
 
 ## Tests
