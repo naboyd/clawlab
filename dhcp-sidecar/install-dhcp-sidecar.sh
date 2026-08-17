@@ -22,23 +22,26 @@ install -d -m 0755 "$DEST"
 install -m 0644 "$SRC/app.py" "$SRC/dhcp_ops.py" "$SRC/requirements.txt" "$DEST/"
 
 ensure_venv() {
-  if [[ -x "$DEST/venv/bin/python" ]]; then
+  if [[ -x "$DEST/venv/bin/python" ]] && "$DEST/venv/bin/python" -m pip --version >/dev/null 2>&1; then
     return 0
   fi
   if [[ -d "$DEST/venv" ]]; then
     rm -rf "$DEST/venv"
   fi
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq
+    apt-get install -y python3-venv python3-pip
+  fi
   if ! "$PY" -m venv "$DEST/venv" 2>/dev/null; then
-    say "python3-venv missing — installing python3-venv"
-    if command -v apt-get >/dev/null 2>&1; then
-      apt-get update -qq
-      apt-get install -y python3-venv
-    else
-      die "python3-venv unavailable; install python3-venv and retry"
-    fi
-    "$PY" -m venv "$DEST/venv"
+    die "python3-venv unavailable; install python3-venv and retry"
   fi
   [[ -x "$DEST/venv/bin/python" ]] || die "failed to create venv at $DEST/venv"
+  if ! "$DEST/venv/bin/python" -m pip --version >/dev/null 2>&1; then
+    "$DEST/venv/bin/python" -m ensurepip --upgrade 2>/dev/null \
+      || "$DEST/venv/bin/python" -m ensurepip --default-pip
+  fi
+  "$DEST/venv/bin/python" -m pip --version >/dev/null 2>&1 \
+    || die "pip unavailable in venv; install python3-pip and retry"
 }
 
 ensure_venv
