@@ -10,6 +10,10 @@ import shutil
 import sys
 from pathlib import Path
 
+LIB = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(LIB))
+from openclaw_config import load_openclaw_json, save_openclaw_json  # noqa: E402
+
 OC_HOME = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")).expanduser()
 CONFIG_PATH = OC_HOME / "openclaw.json"
 ENV_PATH = OC_HOME / ".env"
@@ -100,7 +104,7 @@ def main() -> int:
         print(f"Missing {CONFIG_PATH}", file=sys.stderr)
         return 1
 
-    c = json.loads(CONFIG_PATH.read_text())
+    c, _repaired = load_openclaw_json(CONFIG_PATH)
     gw = c.setdefault("gateway", {})
     auth = gw.setdefault("auth", {})
 
@@ -151,6 +155,8 @@ def main() -> int:
     ui["allowInsecureAuth"] = True
 
     CONFIG_PATH.write_text(json.dumps(c, indent=2) + "\n")
+    if _repaired:
+        print("Repaired invalid JSON control characters in", CONFIG_PATH)
     print("token auth enabled; backup:", str(CONFIG_PATH) + ".pre-token-portal.bak")
     print("mode =", auth.get("mode"), "| token =", auth.get("token"))
     print("trustedProxy removed:", "trustedProxy" not in auth)

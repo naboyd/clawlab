@@ -99,19 +99,22 @@ SSH_OPS_ENV="$DATA_DIR/.env" \
 SSH_OPS_KEYFILE="$DATA_DIR/master.key" \
 SSH_OPS_MCP_PROXY_URL="$PROXY_URL" \
 PYTHONPATH="$REPO/ssh-ops-mcp" \
-  "$VENV_PY" - <<'PY'
+  "$VENV_PY" - <<PY
 import json, os, sys
 from pathlib import Path
+
+sys.path.insert(0, "$REPO/admin-access/lib")
 import secrets_store
+from openclaw_config import load_openclaw_json, save_openclaw_json
 
 oc = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")) / "openclaw.json"
 token = secrets_store.ensure_mcp_token()
-cfg = json.loads(oc.read_text())
+cfg, _repaired = load_openclaw_json(oc)
 entry = cfg.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
 entry["url"] = os.environ.get("SSH_OPS_MCP_PROXY_URL", "http://127.0.0.1:8767/mcp")
 entry["transport"] = "streamable-http"
 entry["headers"] = {"Authorization": f"Bearer {token}"}
-oc.write_text(json.dumps(cfg, indent=2) + "\n")
+save_openclaw_json(oc, cfg)
 print("openclaw.json ssh-ops MCP auth synced")
 PY
 

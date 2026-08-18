@@ -16,6 +16,8 @@ if [[ ! -f "$CONFIG" ]]; then
   exit 1
 fi
 
+PYTHONPATH="$REPO/admin-access/lib" "$VENV_PY" "$REPO/admin-access/repair-openclaw-json.py" || exit 1
+
 EXT_SRC="$REPO/clawlab-extensions/clawlab-mcp-identity"
 EXT_DST="$OC_HOME/extensions/clawlab-mcp-identity"
 mkdir -p "$OC_HOME/extensions"
@@ -26,10 +28,14 @@ PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-127.0.0.1}}"
 PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
 
 "$VENV_PY" - <<PY
-import json
+import sys
 from pathlib import Path
 
-cfg = json.loads(Path("$CONFIG").read_text())
+sys.path.insert(0, "$REPO/admin-access/lib")
+from openclaw_config import load_openclaw_json, save_openclaw_json
+
+path = Path("$CONFIG")
+cfg, _repaired = load_openclaw_json(path)
 mcp = cfg.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
 mcp["url"] = "$PROXY_URL"
 mcp.setdefault("transport", "streamable-http")
@@ -46,8 +52,8 @@ ext = "$EXT_DST"
 if ext not in paths:
     paths.append(ext)
 load["paths"] = paths
-Path("$CONFIG").write_text(json.dumps(cfg, indent=2) + "\n")
-print("Updated", "$CONFIG")
+save_openclaw_json(path, cfg)
+print("Updated", path)
 print("  mcp.servers.ssh-ops.url =", mcp["url"])
 PY
 

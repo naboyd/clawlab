@@ -39,17 +39,20 @@ if [[ ! "$pat" =~ ^skops_ ]]; then
   exit 1
 fi
 
-"$VENV_PY" - "$CONFIG" "$PROXY_URL" "$pat" <<'PY'
-import json, sys
+"$VENV_PY" - "$REPO" "$CONFIG" "$PROXY_URL" "$pat" <<'PY'
+import sys
 from pathlib import Path
 
-cfg_path, url, pat = sys.argv[1], sys.argv[2], sys.argv[3]
-cfg = json.loads(Path(cfg_path).read_text())
+repo, cfg_path, url, pat = sys.argv[1], Path(sys.argv[2]), sys.argv[3], sys.argv[4]
+sys.path.insert(0, str(Path(repo) / "admin-access" / "lib"))
+from openclaw_config import load_openclaw_json, save_openclaw_json
+
+cfg, _repaired = load_openclaw_json(cfg_path)
 entry = cfg.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
 entry["url"] = url
 entry["transport"] = "streamable-http"
 entry["headers"] = {"Authorization": f"Bearer {pat}"}
-Path(cfg_path).write_text(json.dumps(cfg, indent=2) + "\n")
+save_openclaw_json(cfg_path, cfg)
 print("Updated", cfg_path)
 print("  mcp.servers.ssh-ops.url =", url)
 print("  Authorization = Bearer skops_… (PAT)")
