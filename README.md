@@ -8,17 +8,36 @@ portal (**claw-auth**), and **Webex** alerting on policy violations.
 > OpenClaw + DefenseClaw + ssh-ops MCP. It is **not** a supported Cisco product.
 > Run on isolated lab networks; see [SECURITY.md](SECURITY.md).
 
-![Policy enforcement flow](docs/clawlab-policy-enforcement-flow.png)
-
 **Start here:** [docs/USER-GUIDE.md](docs/USER-GUIDE.md) ·
-User journey: [docs/clawlab-user-journey.png](docs/clawlab-user-journey.png) ·
-How it works: **[docs/clawlab-system-internals.html](docs/clawlab-system-internals.html)** (interactive) ·
-[PNG thumbnail](docs/clawlab-system-internals.png) ·
-Component map: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
-Policy flow: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png)
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
+**[Interactive diagrams](#diagrams)** (HTML)
 
-See **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** for ports, auth model, LLM routing,
-and the full operational runbook.
+---
+
+## Diagrams
+
+Open these in a browser after clone (tabbed flows work best locally — e.g.
+`open docs/clawlab-system-internals.html` on macOS).
+
+| Diagram | Interactive (HTML) | Static (PNG) |
+|---------|-------------------|--------------|
+| **How it works** — auth, MCP identity, gateway | [clawlab-system-internals.html](docs/clawlab-system-internals.html) | [PNG](docs/clawlab-system-internals.png) |
+| **User journey** — install → sign-in → first change | [clawlab-user-journey.html](docs/clawlab-user-journey.html) | [PNG](docs/clawlab-user-journey.png) |
+| **Architecture** — components and ports | [clawlab-architecture-overview.html](docs/clawlab-architecture-overview.html) | [PNG](docs/clawlab-architecture-overview.png) |
+| **Policy enforcement** — propose → inspect → apply | [clawlab-policy-enforcement-flow.html](docs/clawlab-policy-enforcement-flow.html) | [PNG](docs/clawlab-policy-enforcement-flow.png) |
+| **Command flow** — pass vs deny paths | [clawlab-command-flow-pass-deny.html](docs/clawlab-command-flow-pass-deny.html) | [PNG](docs/clawlab-command-flow-pass-deny.png) |
+| **Demo & test matrix** — scenarios and expectations | [clawlab-demo-test-matrix.html](docs/clawlab-demo-test-matrix.html) | [PNG](docs/clawlab-demo-test-matrix.png) |
+
+Regenerate after diagram edits:
+
+```bash
+python3 admin-access/render-system-internals-diagram.py
+python3 admin-access/render-user-journey-diagram.py
+python3 admin-access/render-architecture-overview-diagram.py
+python3 admin-access/render-policy-flow-diagram.py
+python3 admin-access/render-command-flow-diagram.py
+python3 admin-access/render-demo-test-matrix-diagram.py
+```
 
 > **Secrets never live here.** Tokens, API keys, Fernet keys, and LE private keys stay
 > on the host under `~/.openclaw`, `~/.defenseclaw`, `~/.claw-auth`, etc. Sanitized
@@ -41,11 +60,7 @@ and the full operational runbook.
 bad tool/prompt patterns → ssh-ops validates IOS-XE allow groups → human approves
 (four-eyes) → `apply_change` pushes config → Webex notifies on apply or block.
 
-Regenerate the diagram after edits:
-
-```bash
-python3 admin-access/render-policy-flow-diagram.py
-```
+See **[Diagrams](#diagrams)** for all interactive HTML views and regenerate commands.
 
 ---
 
@@ -230,7 +245,7 @@ Shared helpers: `install/lib/clawlab-platform.sh` (OS detection, Node/pnpm, Olla
 | `admin-access/` | Guardrail rules install, policy refresh, diagram render |
 | `config-templates/` | Sanitized `openclaw.sample.json`, `defenseclaw.sample.yaml`, IOS-XE policy |
 | `tests/` | Policy harness (`policy-test.sh`), scenario scripts |
-| `docs/` | Architecture, scenarios, **policy enforcement diagram** (`.mmd` + `.png`) |
+| `docs/` | Architecture, scenarios, **interactive diagrams** (`.html` + `.png`) |
 | `quadlets/` | Rootless Podman units for ssh-ops |
 | `systemd-user/` | Gateway, cert renewal, shim heal, Webex bridge |
 | `skills/` | `defenseclaw-canary`, `fleet-update`, `system-updater`, `ios-config-drift` |
