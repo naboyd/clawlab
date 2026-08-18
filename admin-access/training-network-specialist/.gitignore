@@ -1,5 +1,0 @@
-# Generated training rows (may contain lab-specific captures). Regenerate locally:
-#   python3 generate_clawlab_ssh_ops_training.py
-#   python3 convert_iosxe_to_ssh_ops.py
-clawlab_ssh_ops_training.jsonl
-iosxe_ssh_ops_converted.jsonl

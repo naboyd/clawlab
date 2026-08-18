@@ -3,9 +3,10 @@
 Shell helpers for **pre-beta testers** — install checks, portal/OpenClaw diagnostics,
 policy refresh, and stack control. Run from the repo root unless noted.
 
-Maintainer-only scripts (legacy lab redeploy and maintainer training benches,
-diagram render wrapper, fleet `claw-sysupdate` installer) were moved to **`_archive/`**
-(local, gitignored). Restore from there if you need them.
+Maintainer-only scripts (legacy lab redeploy, training benches, DHCP sidecar deploy,
+trusted-proxy helpers, duplicate PAM/nginx snippets) live in **`_archive/`**
+(gitignored except `_archive/README.md`). Restore with
+`bash admin-access/populate-maintainer-archive.sh` or copy paths from `_archive/`.
 
 ---
 
@@ -309,14 +310,29 @@ bash claw-auth/doctor.sh
 
 ## Archived (maintainer local only)
 
-These paths are copied to **`_archive/`** (gitignored) and removed from the beta tree:
+These paths are copied to **`_archive/`** (gitignored) and removed from the public tree.
+Regenerate the local archive after checkout:
+
+```bash
+bash admin-access/populate-maintainer-archive.sh   # from a tree that still has the files
+# or copy from _archive/README.md restore examples
+```
 
 | Path | Why archived |
 |------|----------------|
-| `admin-access/setup-admin-access.sh` | Superseded by `claw-portals/install-portals.sh` + claw-auth |
-| `admin-access/reset-lab-portal.sh` | Lab-host-specific; use portal installer + doctor instead |
-| `admin-access/fetch-ios-xe-command-reference.sh` | Large PDF fetch for policy authors |
-| `admin-access/render-architecture-diagram.sh` | Wrapper; use `python3 admin-access/render-policy-flow-diagram.py` |
-| `admin-access/alice/**` (selected `.sh`/`.md`) | Alice v1 training/benchmark tooling |
-| `admin-access/training-network-specialist/**` (selected `.sh`/`.md`) | Maintainer network-specialist training tooling |
-| `claw-sysupdate/*.sh` | Fleet host updater install (optional; units remain in repo) |
+| `admin-access/setup-admin-access.sh` | Superseded by `claw-portals/install-portals.sh` + claw-auth (already removed) |
+| `admin-access/reset-lab-portal.sh` | Lab-host-specific; use portal installer + doctor instead (already removed) |
+| `admin-access/fetch-ios-xe-command-reference.sh` | Large PDF fetch for policy authors (already removed) |
+| `admin-access/render-architecture-diagram.sh` | Wrapper; use `python3 admin-access/render-*-diagram.py` (already removed) |
+| `admin-access/alice/**` | Alice v1 training/benchmark tooling |
+| `admin-access/training-network-specialist/**` | Maintainer network-specialist training tooling |
+| `admin-access/scrub-public-release.py` | One-shot personal/lab identifier scrub before publish |
+| `admin-access/apply-trusted-proxy.py` | Legacy OpenClaw trusted-proxy mode (clawlab uses `apply-token-portal.py`) |
+| `admin-access/openclaw.trusted-proxy.json5` | Sample for trusted-proxy (not used with claw-auth portal) |
+| `admin-access/pam-openclaw-admin` | Duplicate of `pam/openclaw-admin` |
+| `admin-access/openclaw-admin.nginx.conf` | Duplicate of `nginx/openclaw-admin.conf` |
+| `dhcp-sidecar/**` | Optional ISC DHCP sidecar deploy (Phase A); MCP DHCP tools remain in `ssh-ops-mcp/` |
+| `isc-dhcp-mcp/README.md` | Phase C integration notes (superseded by `ssh-ops-mcp` DHCP tools) |
+| `mcp-port/**` | Legacy quadlet path; use `quadlets/` or `ssh-ops-mcp/podctl.sh` |
+| `model-tiering/**` | Unused OpenClaw model tiering sample |
+| `claw-sysupdate/*.sh` | Fleet host updater install scripts (optional; systemd units remain in repo) |

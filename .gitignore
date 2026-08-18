@@ -33,7 +33,10 @@ __pycache__/
 docs/reference/*.pdf
 
 # Local maintainer archive (not shipped to beta testers)
-_archive/
+# Run: bash admin-access/populate-maintainer-archive.sh
+_archive/*
+!_archive/README.md
+!_archive/MANIFEST.txt
 
 # ---- local certs / lego ----
 acme/lego/
