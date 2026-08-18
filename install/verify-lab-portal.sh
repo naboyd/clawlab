@@ -34,16 +34,59 @@ ok() { printf '  OK   %s\n' "$*"; PASS=$((PASS + 1)); }
 bad() { printf '  FAIL %s\n' "$*"; FAIL=$((FAIL + 1)); }
 
 port_open() {
-  python3 - "$1" <<'PY'
+  python3 - "$1" "${2:-127.0.0.1}" <<'PY'
 import socket, sys
+host, port = sys.argv[2], int(sys.argv[1])
 s = socket.socket(); s.settimeout(0.4)
 try:
-    s.connect(("127.0.0.1", int(sys.argv[1]))); sys.exit(0)
+    s.connect((host, port)); sys.exit(0)
 except OSError:
     sys.exit(1)
 finally:
     s.close()
 PY
+}
+
+mcp_proxy_bind() {
+  local dropin="$HOME/.config/systemd/user/mcp-identity-proxy.service.d/clawlab.conf"
+  local bind=""
+  if [[ -f "$dropin" ]]; then
+    bind="$(grep -E '^Environment=SSH_OPS_MCP_PROXY_HOST=' "$dropin" 2>/dev/null \
+      | head -1 | sed 's/^Environment=SSH_OPS_MCP_PROXY_HOST=//' || true)"
+  fi
+  printf '%s' "${bind:-${LAN_IP:-127.0.0.1}}"
+}
+
+journal_hint() {
+  local unit="$1" n="${2:-8}"
+  journalctl --user -u "$unit" -n "$n" --no-pager 2>/dev/null | sed 's/^/       /' || true
+}
+
+check_port() {
+  local label="$1" p="$2" host="${3:-127.0.0.1}"
+  if port_open "$p" "$host"; then
+    if [[ "$host" == "127.0.0.1" ]]; then
+      ok "$label :$p"
+    else
+      ok "$label :$p on $host"
+    fi
+  else
+    bad "$label :$p on $host"
+  fi
+}
+
+check_port_either() {
+  local label="$1" p="$2" host_a="$3" host_b="$4"
+  if port_open "$p" "$host_a"; then
+    ok "$label :$p on $host_a"
+    return 0
+  fi
+  if [[ "$host_b" != "$host_a" ]] && port_open "$p" "$host_b"; then
+    ok "$label :$p on $host_b (not on $host_a)"
+    return 0
+  fi
+  bad "$label :$p (not on $host_a or $host_b)"
+  return 1
 }
 
 if [[ -f "$CONFIG_FILE" ]]; then
@@ -67,12 +110,9 @@ curl_portal=(curl -fsS -o /dev/null -w '%{http_code}')
 
 echo "=== lab portal verification (${portal_url}) ==="
 echo "  config: ${CONFIG_FILE}"
+PROXY_BIND="$(mcp_proxy_bind)"
+echo "  mcp proxy bind: ${PROXY_BIND}:8767"
 echo
-
-check_port() {
-  local label="$1" p="$2"
-  if port_open "$p"; then ok "$label :$p"; else bad "$label :$p"; fi
-}
 
 for unit in claw-auth openclaw-gateway mcp-identity-proxy defenseclaw-webgui; do
   if systemctl --user is-active "$unit.service" >/dev/null 2>&1; then
@@ -95,10 +135,29 @@ else
 fi
 
 check_port claw-auth 8780
-check_port openclaw-gateway 18789
+if port_open 18789; then
+  ok "openclaw-gateway :18789"
+else
+  bad "openclaw-gateway :18789"
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "       recent openclaw-gateway journal:"
+    journal_hint openclaw-gateway.service 12
+    echo "       fix: python3 $REPO/admin-access/repair-openclaw-json.py"
+    echo "            bash $REPO/admin-access/apply-token-portal.py"
+    echo "            systemctl --user restart openclaw-gateway"
+  fi
+fi
 check_port ssh-ops-gui 8765
 check_port ssh-ops-mcp 8766
-check_port mcp-identity-proxy 8767
+if check_port_either mcp-identity-proxy 8767 "127.0.0.1" "$PROXY_BIND"; then
+  :
+else
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "       recent mcp-identity-proxy journal:"
+    journal_hint mcp-identity-proxy.service 12
+    echo "       fix: bash $REPO/admin-access/configure-portal-mcp-auth.sh"
+  fi
+fi
 check_port defenseclaw-webgui 8770
 
 if command -v podman >/dev/null 2>&1; then
