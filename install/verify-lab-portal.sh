@@ -135,6 +135,15 @@ else
 fi
 
 check_port claw-auth 8780
+MCP_IDENTITY_EXT="$HOME/.openclaw/extensions/clawlab-mcp-identity/openclaw.plugin.json"
+if [[ -f "$MCP_IDENTITY_EXT" ]]; then
+  ok "clawlab-mcp-identity extension installed"
+else
+  bad "clawlab-mcp-identity extension missing ($MCP_IDENTITY_EXT)"
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "       fix: bash $REPO/admin-access/configure-openclaw-mcp-identity.sh"
+  fi
+fi
 if port_open 18789; then
   ok "openclaw-gateway :18789"
 else
@@ -142,8 +151,8 @@ else
   if [[ "$QUIET" -eq 0 ]]; then
     echo "       recent openclaw-gateway journal:"
     journal_hint openclaw-gateway.service 12
-    echo "       fix: python3 $REPO/admin-access/repair-openclaw-json.py"
-    echo "            bash $REPO/admin-access/apply-token-portal.py"
+    echo "       fix: bash $REPO/admin-access/configure-openclaw-mcp-identity.sh"
+    echo "            # or: cp -a $REPO/clawlab-extensions/clawlab-mcp-identity ~/.openclaw/extensions/"
     echo "            systemctl --user restart openclaw-gateway"
   fi
 fi

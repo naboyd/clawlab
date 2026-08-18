@@ -20,9 +20,23 @@ PYTHONPATH="$REPO/admin-access/lib" "$VENV_PY" "$REPO/admin-access/repair-opencl
 
 EXT_SRC="$REPO/clawlab-extensions/clawlab-mcp-identity"
 EXT_DST="$OC_HOME/extensions/clawlab-mcp-identity"
-mkdir -p "$OC_HOME/extensions"
-rm -rf "$EXT_DST"
-cp -a "$EXT_SRC" "$EXT_DST"
+
+install_clawlab_mcp_identity_extension() {
+  if [[ ! -d "$EXT_SRC" ]]; then
+    echo "Missing extension source: $EXT_SRC" >&2
+    return 1
+  fi
+  mkdir -p "$OC_HOME/extensions"
+  rm -rf "$EXT_DST"
+  cp -a "$EXT_SRC" "$EXT_DST"
+  if [[ ! -f "$EXT_DST/openclaw.plugin.json" ]]; then
+    echo "Extension install failed: $EXT_DST" >&2
+    return 1
+  fi
+  echo "Installed clawlab-mcp-identity → $EXT_DST"
+}
+
+install_clawlab_mcp_identity_extension || exit 1
 
 PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-127.0.0.1}}"
 PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
@@ -81,6 +95,11 @@ rm -f "$UNIT_DIR/mcp-identity-proxy.service.d/upstream.conf"
 systemctl --user daemon-reload
 systemctl --user enable --now mcp-identity-proxy.service
 
-echo "Restart OpenClaw gateway: systemctl --user restart openclaw-gateway"
+if [[ -f "$OC_HOME/openclaw.json" ]]; then
+  echo "Restarting openclaw-gateway (plugin + MCP URL updated)…"
+  systemctl --user restart openclaw-gateway.service 2>/dev/null \
+    || echo "WARN: restart openclaw-gateway manually"
+fi
+
 echo "Open OpenClaw from the portal hub (link includes clawBind= for chat identity)."
 echo "Bookmarked chat URLs: bash admin-access/set-openclaw-mcp-pat.sh  # skops_… PAT"

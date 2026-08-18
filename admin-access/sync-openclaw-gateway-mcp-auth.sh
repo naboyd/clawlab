@@ -85,6 +85,14 @@ print("DefenseClaw gateway tokens synced")
 PY
 
 say "Syncing ssh-ops MCP bearer from secrets store -> openclaw.json"
+REPO_EXT="$REPO/clawlab-extensions/clawlab-mcp-identity"
+OC_EXT="$OC_HOME/extensions/clawlab-mcp-identity"
+if [[ -d "$REPO_EXT" && ! -f "$OC_EXT/openclaw.plugin.json" ]]; then
+  say "Installing missing clawlab-mcp-identity extension (gateway requires this path)"
+  mkdir -p "$OC_HOME/extensions"
+  rm -rf "$OC_EXT"
+  cp -a "$REPO_EXT" "$OC_EXT"
+fi
 UNIT_DIR="$HOME/.config/systemd/user"
 OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
 PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-}}"
