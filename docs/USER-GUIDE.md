@@ -11,7 +11,7 @@ change-approval workflow.
 | View | PNG | HTML |
 |------|-----|------|
 | **User journey** (start here) | [clawlab-user-journey.png](clawlab-user-journey.png) | [clawlab-user-journey.html](clawlab-user-journey.html) |
-| **How it works** (auth & data flow) | [clawlab-system-internals.png](clawlab-system-internals.png) | [clawlab-system-internals.html](clawlab-system-internals.html) |
+| **How it works** (auth & data flow) | [clawlab-system-internals.png](clawlab-system-internals.png) (layer grid) | **[clawlab-system-internals.html](clawlab-system-internals.html)** (interactive) |
 | Component map | [clawlab-architecture-overview.png](clawlab-architecture-overview.png) | [clawlab-architecture-overview.html](clawlab-architecture-overview.html) |
 | Policy enforcement | [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) | [clawlab-policy-enforcement-flow.html](clawlab-policy-enforcement-flow.html) |
 

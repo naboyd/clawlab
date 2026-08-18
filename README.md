@@ -12,7 +12,8 @@ portal (**claw-auth**), and **Webex** alerting on policy violations.
 
 **Start here:** [docs/USER-GUIDE.md](docs/USER-GUIDE.md) ·
 User journey: [docs/clawlab-user-journey.png](docs/clawlab-user-journey.png) ·
-How it works: [docs/clawlab-system-internals.png](docs/clawlab-system-internals.png) ·
+How it works: **[docs/clawlab-system-internals.html](docs/clawlab-system-internals.html)** (interactive) ·
+[PNG thumbnail](docs/clawlab-system-internals.png) ·
 Component map: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
 Policy flow: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png)
 

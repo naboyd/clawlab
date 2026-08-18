@@ -17,7 +17,7 @@ hardened ssh-ops MCP, and a unified HTTPS admin portal.
 | View | Audience | File |
 |------|----------|------|
 | **User journey** | Operators — what to click | [clawlab-user-journey.png](clawlab-user-journey.png) |
-| **How it works** | Integrators — auth & data flow | [clawlab-system-internals.png](clawlab-system-internals.png) |
+| **How it works** | Integrators — auth & data flow | [clawlab-system-internals.html](clawlab-system-internals.html) (interactive) · [PNG](clawlab-system-internals.png) |
 | **Component map** | Whiteboard overview | [clawlab-architecture-overview.png](clawlab-architecture-overview.png) |
 | **Policy flow** | Change governance detail | [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) |
 | **Command pass/deny** | DefenseClaw decisions | [clawlab-command-flow-pass-deny.png](clawlab-command-flow-pass-deny.png) |

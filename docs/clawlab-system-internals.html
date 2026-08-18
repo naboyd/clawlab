@@ -5,28 +5,576 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Clawlab — How It Works</title>
   <style>
-    body { margin: 0; background: #e8e4dc; font-family: system-ui, sans-serif; color: #2c2825; }
-    header { padding: 12px 20px; background: #fffdf8; border-bottom: 2px solid #3d3832; }
-    header a { color: #4338ca; margin-right: 16px; }
-    main { padding: 16px; text-align: center; max-width: 1500px; margin: 0 auto; }
-    img { max-width: 100%; height: auto; border: 2px solid #3d3832; border-radius: 8px; }
-    p { font-size: 14px; color: #5c5650; text-align: left; line-height: 1.5; }
+    :root {
+      --bg: #e8e4dc;
+      --panel: #fffdf8;
+      --ink: #2c2825;
+      --muted: #5c5650;
+      --border: #3d3832;
+      --accent: #4338ca;
+      --flow: #3d3832;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); font-family: system-ui, -apple-system, sans-serif; color: var(--ink); }
+    header {
+      padding: 12px 20px; background: var(--panel); border-bottom: 2px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+    }
+    header strong { margin-right: 8px; }
+    header a { color: var(--accent); text-decoration: none; margin-right: 14px; font-size: 14px; }
+    header a:hover { text-decoration: underline; }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 40px; }
+    h1 { font-size: 1.6rem; margin: 0 0 6px; font-weight: 650; }
+    .lead { color: var(--muted); margin: 0 0 20px; line-height: 1.55; max-width: 720px; }
+    .tabs {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+    }
+    .tab {
+      border: 2px solid var(--border); background: var(--panel); color: var(--ink);
+      padding: 8px 14px; border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 600;
+    }
+    .tab[aria-selected="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .layout {
+      display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start;
+    }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    .canvas {
+      background: var(--panel); border: 2px solid var(--border); border-radius: 12px;
+      padding: 20px; min-height: 420px;
+    }
+    .flow-title { font-size: 1.1rem; font-weight: 650; margin: 0 0 4px; }
+    .flow-sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+    .lanes { display: flex; flex-direction: column; gap: 18px; }
+    .lane-label {
+      font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin-bottom: 8px; text-align: center;
+    }
+    .lane-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+    .node {
+      border: 2px solid; border-radius: 12px; padding: 10px 12px; min-width: 160px; max-width: 220px;
+      cursor: pointer; transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .node:hover, .node.active { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+    .node.dim { opacity: 0.35; }
+    .node-name { font-weight: 650; font-size: 15px; margin-bottom: 2px; }
+    .node-ports { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+    .node-hint { font-size: 12px; color: var(--muted); line-height: 1.35; }
+    .steps { display: flex; flex-direction: column; align-items: center; gap: 0; }
+    .step-row { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 360px; }
+    .step-arrow {
+      display: flex; flex-direction: column; align-items: center; color: var(--muted); font-size: 12px;
+      padding: 6px 0; width: 100%;
+    }
+    .step-arrow::before {
+      content: ''; width: 2px; height: 20px; background: var(--flow); margin-bottom: 4px;
+    }
+    .step-arrow::after {
+      content: ''; width: 0; height: 0;
+      border-left: 7px solid transparent; border-right: 7px solid transparent;
+      border-top: 10px solid var(--flow);
+    }
+    .step-label {
+      background: #f4f1ea; border: 1px solid #ccc5b8; border-radius: 6px; padding: 4px 10px;
+      font-size: 12px; font-weight: 600; margin-top: 4px; text-align: center;
+    }
+    .flow-note {
+      margin-top: 20px; padding: 10px 14px; background: #fef3c7; border: 1px solid #d97706;
+      border-radius: 8px; font-size: 13px; color: #78350f;
+    }
+    .detail {
+      background: var(--panel); border: 2px solid var(--border); border-radius: 12px;
+      padding: 16px; position: sticky; top: 16px;
+    }
+    .detail h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 10px; }
+    .detail .pick { color: var(--muted); font-size: 14px; line-height: 1.5; }
+    .detail-name { font-size: 1.15rem; font-weight: 700; margin: 0 0 4px; }
+    .detail-ports { font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+    .detail-body { font-size: 14px; line-height: 1.55; color: var(--ink); }
+    .legend {
+      margin-top: 20px; font-size: 13px; color: var(--muted); line-height: 1.5;
+      padding-top: 16px; border-top: 1px solid #ccc5b8;
+    }
+    footer { margin-top: 24px; font-size: 13px; color: var(--muted); }
+    code { background: #f4f1ea; padding: 1px 5px; border-radius: 4px; font-size: 0.92em; }
   </style>
 </head>
 <body>
   <header>
     <strong>Clawlab diagrams</strong>
     <a href="USER-GUIDE.md">Usage guide</a>
+    <a href="ARCHITECTURE.md">Architecture</a>
     <a href="clawlab-user-journey.html">User journey</a>
     <a href="clawlab-architecture-overview.html">Component map</a>
     <a href="clawlab-policy-enforcement-flow.html">Policy flow</a>
   </header>
-  <main>
+  <div class="wrap">
     <h1>How it works — auth &amp; data flow</h1>
-    <p>Technical view: portal session auth, OpenClaw gateway token path, MCP identity proxy on
-    <code>:8767</code>, DefenseClaw guardrails, and ssh-ops fleet operations.</p>
-    <img src="clawlab-system-internals.png" width="1480" height="1720" alt="Clawlab system internals">
-    <p>Regenerate: <code>python3 admin-access/render-system-internals-diagram.py</code></p>
-  </main>
+    <p class="lead">Interactive view of clawlab internals. Pick a flow tab to see one path at a time
+    (no crossing lines). Click any component for details.</p>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="layout">
+      <div class="canvas" id="canvas" role="tabpanel"></div>
+      <aside class="detail" id="detail">
+        <h2>Component</h2>
+        <p class="pick">Click a box to see ports and role in this stack.</p>
+      </aside>
+    </div>
+    <p class="legend">
+      <strong>Rules of thumb:</strong> Portal = session cookie · OpenClaw MCP = clawBind or shared bearer on
+      <code>:8767</code> · External MCP = PAT <code>skops_…</code> on <code>:8767</code> only ·
+      Raw MCP <code>:8766</code> is internal.
+    </p>
+    <footer>Regenerate: <code>python3 admin-access/render-system-internals-diagram.py</code>
+    · Static grid PNG: <code>clawlab-system-internals.png</code></footer>
+  </div>
+  <script id="flows-data" type="application/json">[
+  {
+    &quot;id&quot;: &quot;overview&quot;,
+    &quot;title&quot;: &quot;Overview&quot;,
+    &quot;subtitle&quot;: &quot;Components by layer \u2014 use other tabs for step-by-step paths.&quot;,
+    &quot;steps&quot;: [],
+    &quot;lanes&quot;: [
+      {
+        &quot;label&quot;: &quot;Clients&quot;,
+        &quot;nodes&quot;: [
+          {
+            &quot;id&quot;: &quot;browser&quot;,
+            &quot;kind&quot;: &quot;client&quot;,
+            &quot;name&quot;: &quot;Browser&quot;,
+            &quot;ports&quot;: &quot;HTTPS&quot;,
+            &quot;detail&quot;: &quot;Portal hub, MCP Admin iframe, DefenseClaw iframe.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;oc_ui&quot;,
+            &quot;kind&quot;: &quot;client&quot;,
+            &quot;name&quot;: &quot;OpenClaw UI&quot;,
+            &quot;ports&quot;: &quot;WSS /openclaw/&quot;,
+            &quot;detail&quot;: &quot;New window from hub. Gateway token + device pairing.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;cursor&quot;,
+            &quot;kind&quot;: &quot;client&quot;,
+            &quot;name&quot;: &quot;External MCP&quot;,
+            &quot;ports&quot;: &quot;Cursor \u00b7 Claude&quot;,
+            &quot;detail&quot;: &quot;Bearer skops_ PAT \u2014 never connect to raw :8766.&quot;
+          }
+        ]
+      },
+      {
+        &quot;label&quot;: &quot;Edge &amp; identity&quot;,
+        &quot;nodes&quot;: [
+          {
+            &quot;id&quot;: &quot;nginx&quot;,
+            &quot;kind&quot;: &quot;edge&quot;,
+            &quot;name&quot;: &quot;nginx portal&quot;,
+            &quot;ports&quot;: &quot;:8443 / :8083&quot;,
+            &quot;detail&quot;: &quot;Single public listener. auth_request on protected paths.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;auth&quot;,
+            &quot;kind&quot;: &quot;auth&quot;,
+            &quot;name&quot;: &quot;claw-auth&quot;,
+            &quot;ports&quot;: &quot;:8780&quot;,
+            &quot;detail&quot;: &quot;SQLite sessions, users, MCP tokens, device admin API.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;proxy&quot;,
+            &quot;kind&quot;: &quot;auth&quot;,
+            &quot;name&quot;: &quot;MCP identity proxy&quot;,
+            &quot;ports&quot;: &quot;:8767 TLS&quot;,
+            &quot;detail&quot;: &quot;PAT, clawBind, shared bearer \u2192 X-Auth-User to MCP.&quot;
+          }
+        ]
+      },
+      {
+        &quot;label&quot;: &quot;Agent &amp; guardrails&quot;,
+        &quot;nodes&quot;: [
+          {
+            &quot;id&quot;: &quot;gateway&quot;,
+            &quot;kind&quot;: &quot;service&quot;,
+            &quot;name&quot;: &quot;OpenClaw gateway&quot;,
+            &quot;ports&quot;: &quot;:18789&quot;,
+            &quot;detail&quot;: &quot;Agent, MCP client, clawlab-mcp-identity plugin.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;dc&quot;,
+            &quot;kind&quot;: &quot;guard&quot;,
+            &quot;name&quot;: &quot;DefenseClaw&quot;,
+            &quot;ports&quot;: &quot;:4000 proxy&quot;,
+            &quot;detail&quot;: &quot;Prompt/tool inspect \u2014 regex + optional LLM judge.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;ollama&quot;,
+            &quot;kind&quot;: &quot;service&quot;,
+            &quot;name&quot;: &quot;Ollama&quot;,
+            &quot;ports&quot;: &quot;:11434&quot;,
+            &quot;detail&quot;: &quot;Agent LLM and local judge model.&quot;
+          }
+        ]
+      },
+      {
+        &quot;label&quot;: &quot;Operations&quot;,
+        &quot;nodes&quot;: [
+          {
+            &quot;id&quot;: &quot;mcp&quot;,
+            &quot;kind&quot;: &quot;service&quot;,
+            &quot;name&quot;: &quot;ssh-ops MCP&quot;,
+            &quot;ports&quot;: &quot;:8766 internal&quot;,
+            &quot;detail&quot;: &quot;run_command, propose_change, apply_change, RBAC.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;gui&quot;,
+            &quot;kind&quot;: &quot;service&quot;,
+            &quot;name&quot;: &quot;ssh-ops GUI&quot;,
+            &quot;ports&quot;: &quot;:8765&quot;,
+            &quot;detail&quot;: &quot;Hosts, changes, policy tab \u2014 portal auth only.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;policy&quot;,
+            &quot;kind&quot;: &quot;data&quot;,
+            &quot;name&quot;: &quot;Policy store&quot;,
+            &quot;ports&quot;: &quot;ios-xe-policy.yaml&quot;,
+            &quot;detail&quot;: &quot;Allow groups, four-eyes, IOS line validation.&quot;
+          }
+        ]
+      },
+      {
+        &quot;label&quot;: &quot;Targets &amp; alerts&quot;,
+        &quot;nodes&quot;: [
+          {
+            &quot;id&quot;: &quot;fleet&quot;,
+            &quot;kind&quot;: &quot;fleet&quot;,
+            &quot;name&quot;: &quot;Network fleet&quot;,
+            &quot;ports&quot;: &quot;SSH IOS-XE&quot;,
+            &quot;detail&quot;: &quot;Backup, push, verify \u2014 gated changes only.&quot;
+          },
+          {
+            &quot;id&quot;: &quot;webex&quot;,
+            &quot;kind&quot;: &quot;data&quot;,
+            &quot;name&quot;: &quot;Webex &amp; audit&quot;,
+            &quot;ports&quot;: &quot;audit.db&quot;,
+            &quot;detail&quot;: &quot;Blocks, approvals, drift alerts.&quot;
+          }
+        ]
+      }
+    ]
+  },
+  {
+    &quot;id&quot;: &quot;portal&quot;,
+    &quot;title&quot;: &quot;Portal session&quot;,
+    &quot;subtitle&quot;: &quot;claw-auth cookie protects MCP Admin and DefenseClaw tabs.&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;from&quot;: &quot;browser&quot;,
+        &quot;to&quot;: &quot;nginx&quot;,
+        &quot;label&quot;: &quot;HTTPS :8443 hub login&quot;
+      },
+      {
+        &quot;from&quot;: &quot;nginx&quot;,
+        &quot;to&quot;: &quot;auth&quot;,
+        &quot;label&quot;: &quot;auth_request \u2192 /verify&quot;
+      },
+      {
+        &quot;from&quot;: &quot;auth&quot;,
+        &quot;to&quot;: &quot;gui&quot;,
+        &quot;label&quot;: &quot;session OK \u2192 proxy /ssh-ops/ + X-Auth-User&quot;
+      }
+    ],
+    &quot;note&quot;: &quot;DefenseClaw /defenseclaw/ uses the same claw-auth session. Direct http://127.0.0.1:8765/ returns 403 when CLAW_AUTH_REQUIRED=1.&quot;
+  },
+  {
+    &quot;id&quot;: &quot;openclaw&quot;,
+    &quot;title&quot;: &quot;OpenClaw + MCP&quot;,
+    &quot;subtitle&quot;: &quot;Control UI via gateway token; agent MCP via identity proxy (clawBind).&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;from&quot;: &quot;browser&quot;,
+        &quot;to&quot;: &quot;nginx&quot;,
+        &quot;label&quot;: &quot;hub \u2192 Open OpenClaw \u2197&quot;
+      },
+      {
+        &quot;from&quot;: &quot;nginx&quot;,
+        &quot;to&quot;: &quot;gateway&quot;,
+        &quot;label&quot;: &quot;WSS /openclaw/ (no nginx auth)&quot;
+      },
+      {
+        &quot;from&quot;: &quot;gateway&quot;,
+        &quot;to&quot;: &quot;proxy&quot;,
+        &quot;label&quot;: &quot;MCP client \u2192 :8767 + clawBind&quot;
+      },
+      {
+        &quot;from&quot;: &quot;proxy&quot;,
+        &quot;to&quot;: &quot;mcp&quot;,
+        &quot;label&quot;: &quot;X-Auth-User + bearer \u2192 :8766&quot;
+      }
+    ],
+    &quot;note&quot;: &quot;In parallel: gateway \u2192 DefenseClaw :4000 \u2192 Ollama judge on tool/prompt calls. First browser visit: admin approves device on OpenClaw devices tab.&quot;
+  },
+  {
+    &quot;id&quot;: &quot;external&quot;,
+    &quot;title&quot;: &quot;External MCP&quot;,
+    &quot;subtitle&quot;: &quot;Cursor / Claude Desktop \u2014 PAT on :8767 only.&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;from&quot;: &quot;cursor&quot;,
+        &quot;to&quot;: &quot;proxy&quot;,
+        &quot;label&quot;: &quot;Bearer skops_\u2026 on :8767/mcp&quot;
+      },
+      {
+        &quot;from&quot;: &quot;proxy&quot;,
+        &quot;to&quot;: &quot;auth&quot;,
+        &quot;label&quot;: &quot;validate PAT (users.db)&quot;
+      },
+      {
+        &quot;from&quot;: &quot;proxy&quot;,
+        &quot;to&quot;: &quot;mcp&quot;,
+        &quot;label&quot;: &quot;forward identity \u2192 :8766&quot;
+      }
+    ],
+    &quot;note&quot;: &quot;Create PAT at portal hub \u2192 MCP tokens. Never expose :8766 to clients.&quot;
+  },
+  {
+    &quot;id&quot;: &quot;changes&quot;,
+    &quot;title&quot;: &quot;Gated changes&quot;,
+    &quot;subtitle&quot;: &quot;propose \u2192 policy \u2192 human approve \u2192 apply \u2192 fleet.&quot;,
+    &quot;steps&quot;: [
+      {
+        &quot;from&quot;: &quot;gateway&quot;,
+        &quot;to&quot;: &quot;mcp&quot;,
+        &quot;label&quot;: &quot;propose_change (verified MCP user)&quot;
+      },
+      {
+        &quot;from&quot;: &quot;mcp&quot;,
+        &quot;to&quot;: &quot;policy&quot;,
+        &quot;label&quot;: &quot;ios-xe allow_groups check&quot;
+      },
+      {
+        &quot;from&quot;: &quot;policy&quot;,
+        &quot;to&quot;: &quot;gui&quot;,
+        &quot;label&quot;: &quot;pending change in MCP Admin&quot;
+      },
+      {
+        &quot;from&quot;: &quot;gui&quot;,
+        &quot;to&quot;: &quot;mcp&quot;,
+        &quot;label&quot;: &quot;operator approves (four-eyes)&quot;
+      },
+      {
+        &quot;from&quot;: &quot;mcp&quot;,
+        &quot;to&quot;: &quot;fleet&quot;,
+        &quot;label&quot;: &quot;apply_change over SSH&quot;
+      },
+      {
+        &quot;from&quot;: &quot;fleet&quot;,
+        &quot;to&quot;: &quot;webex&quot;,
+        &quot;label&quot;: &quot;notify apply / config drift&quot;
+      }
+    ],
+    &quot;note&quot;: &quot;DefenseClaw may block dangerous tool calls before MCP. Blocks also notify Webex.&quot;
+  }
+]</script>
+  <script id="nodes-data" type="application/json">{
+  &quot;browser&quot;: {
+    &quot;id&quot;: &quot;browser&quot;,
+    &quot;kind&quot;: &quot;client&quot;,
+    &quot;name&quot;: &quot;Browser&quot;,
+    &quot;ports&quot;: &quot;HTTPS&quot;,
+    &quot;detail&quot;: &quot;Portal hub, MCP Admin iframe, DefenseClaw iframe.&quot;
+  },
+  &quot;oc_ui&quot;: {
+    &quot;id&quot;: &quot;oc_ui&quot;,
+    &quot;kind&quot;: &quot;client&quot;,
+    &quot;name&quot;: &quot;OpenClaw UI&quot;,
+    &quot;ports&quot;: &quot;WSS /openclaw/&quot;,
+    &quot;detail&quot;: &quot;New window from hub. Gateway token + device pairing.&quot;
+  },
+  &quot;cursor&quot;: {
+    &quot;id&quot;: &quot;cursor&quot;,
+    &quot;kind&quot;: &quot;client&quot;,
+    &quot;name&quot;: &quot;External MCP&quot;,
+    &quot;ports&quot;: &quot;Cursor \u00b7 Claude&quot;,
+    &quot;detail&quot;: &quot;Bearer skops_ PAT \u2014 never connect to raw :8766.&quot;
+  },
+  &quot;nginx&quot;: {
+    &quot;id&quot;: &quot;nginx&quot;,
+    &quot;kind&quot;: &quot;edge&quot;,
+    &quot;name&quot;: &quot;nginx portal&quot;,
+    &quot;ports&quot;: &quot;:8443 / :8083&quot;,
+    &quot;detail&quot;: &quot;Single public listener. auth_request on protected paths.&quot;
+  },
+  &quot;auth&quot;: {
+    &quot;id&quot;: &quot;auth&quot;,
+    &quot;kind&quot;: &quot;auth&quot;,
+    &quot;name&quot;: &quot;claw-auth&quot;,
+    &quot;ports&quot;: &quot;:8780&quot;,
+    &quot;detail&quot;: &quot;SQLite sessions, users, MCP tokens, device admin API.&quot;
+  },
+  &quot;proxy&quot;: {
+    &quot;id&quot;: &quot;proxy&quot;,
+    &quot;kind&quot;: &quot;auth&quot;,
+    &quot;name&quot;: &quot;MCP identity proxy&quot;,
+    &quot;ports&quot;: &quot;:8767 TLS&quot;,
+    &quot;detail&quot;: &quot;PAT, clawBind, shared bearer \u2192 X-Auth-User to MCP.&quot;
+  },
+  &quot;gateway&quot;: {
+    &quot;id&quot;: &quot;gateway&quot;,
+    &quot;kind&quot;: &quot;service&quot;,
+    &quot;name&quot;: &quot;OpenClaw gateway&quot;,
+    &quot;ports&quot;: &quot;:18789&quot;,
+    &quot;detail&quot;: &quot;Agent, MCP client, clawlab-mcp-identity plugin.&quot;
+  },
+  &quot;dc&quot;: {
+    &quot;id&quot;: &quot;dc&quot;,
+    &quot;kind&quot;: &quot;guard&quot;,
+    &quot;name&quot;: &quot;DefenseClaw&quot;,
+    &quot;ports&quot;: &quot;:4000 proxy&quot;,
+    &quot;detail&quot;: &quot;Prompt/tool inspect \u2014 regex + optional LLM judge.&quot;
+  },
+  &quot;ollama&quot;: {
+    &quot;id&quot;: &quot;ollama&quot;,
+    &quot;kind&quot;: &quot;service&quot;,
+    &quot;name&quot;: &quot;Ollama&quot;,
+    &quot;ports&quot;: &quot;:11434&quot;,
+    &quot;detail&quot;: &quot;Agent LLM and local judge model.&quot;
+  },
+  &quot;mcp&quot;: {
+    &quot;id&quot;: &quot;mcp&quot;,
+    &quot;kind&quot;: &quot;service&quot;,
+    &quot;name&quot;: &quot;ssh-ops MCP&quot;,
+    &quot;ports&quot;: &quot;:8766 internal&quot;,
+    &quot;detail&quot;: &quot;run_command, propose_change, apply_change, RBAC.&quot;
+  },
+  &quot;gui&quot;: {
+    &quot;id&quot;: &quot;gui&quot;,
+    &quot;kind&quot;: &quot;service&quot;,
+    &quot;name&quot;: &quot;ssh-ops GUI&quot;,
+    &quot;ports&quot;: &quot;:8765&quot;,
+    &quot;detail&quot;: &quot;Hosts, changes, policy tab \u2014 portal auth only.&quot;
+  },
+  &quot;policy&quot;: {
+    &quot;id&quot;: &quot;policy&quot;,
+    &quot;kind&quot;: &quot;data&quot;,
+    &quot;name&quot;: &quot;Policy store&quot;,
+    &quot;ports&quot;: &quot;ios-xe-policy.yaml&quot;,
+    &quot;detail&quot;: &quot;Allow groups, four-eyes, IOS line validation.&quot;
+  },
+  &quot;fleet&quot;: {
+    &quot;id&quot;: &quot;fleet&quot;,
+    &quot;kind&quot;: &quot;fleet&quot;,
+    &quot;name&quot;: &quot;Network fleet&quot;,
+    &quot;ports&quot;: &quot;SSH IOS-XE&quot;,
+    &quot;detail&quot;: &quot;Backup, push, verify \u2014 gated changes only.&quot;
+  },
+  &quot;webex&quot;: {
+    &quot;id&quot;: &quot;webex&quot;,
+    &quot;kind&quot;: &quot;data&quot;,
+    &quot;name&quot;: &quot;Webex &amp; audit&quot;,
+    &quot;ports&quot;: &quot;audit.db&quot;,
+    &quot;detail&quot;: &quot;Blocks, approvals, drift alerts.&quot;
+  }
+}</script>
+  <script id="palette-data" type="application/json">{&quot;client&quot;: [&quot;#dbeafe&quot;, &quot;#2563eb&quot;], &quot;edge&quot;: [&quot;#e0e7ff&quot;, &quot;#4338ca&quot;], &quot;auth&quot;: [&quot;#fce7f3&quot;, &quot;#db2777&quot;], &quot;service&quot;: [&quot;#d1fae5&quot;, &quot;#059669&quot;], &quot;guard&quot;: [&quot;#ffedd5&quot;, &quot;#ea580c&quot;], &quot;data&quot;: [&quot;#f3f4f6&quot;, &quot;#6b7280&quot;], &quot;fleet&quot;: [&quot;#cffafe&quot;, &quot;#0891b2&quot;]}</script>
+  <script>
+    const FLOWS = JSON.parse(document.getElementById('flows-data').textContent);
+    const NODES = JSON.parse(document.getElementById('nodes-data').textContent);
+    const PALETTE = JSON.parse(document.getElementById('palette-data').textContent);
+
+    let activeFlow = FLOWS[0].id;
+    let activeNode = null;
+
+    function nodeStyle(kind) {
+      const [fill, border] = PALETTE[kind] || PALETTE.data;
+      return `background:${fill};border-color:${border}`;
+    }
+
+    function renderNode(n, { highlight = false, dim = false } = {}) {
+      const cls = ['node'];
+      if (highlight) cls.push('active');
+      if (dim) cls.push('dim');
+      return `<div class="${cls.join(' ')}" data-id="${n.id}" style="${nodeStyle(n.kind)}" tabindex="0">
+        <div class="node-name">${n.name}</div>
+        <div class="node-ports">${n.ports}</div>
+        <div class="node-hint">${n.detail}</div>
+      </div>`;
+    }
+
+    function involvedInFlow(flow) {
+      const ids = new Set();
+      (flow.steps || []).forEach(s => { ids.add(s.from); ids.add(s.to); });
+      return ids;
+    }
+
+    function renderOverview(flow) {
+      let html = `<p class="flow-title">${flow.title}</p><p class="flow-sub">${flow.subtitle}</p><div class="lanes">`;
+      for (const lane of flow.lanes) {
+        html += `<div><div class="lane-label">${lane.label}</div><div class="lane-row">`;
+        for (const n of lane.nodes) {
+          html += renderNode(n, { highlight: activeNode === n.id });
+        }
+        html += '</div></div>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function renderFlowSteps(flow) {
+      let html = `<p class="flow-title">${flow.title}</p><p class="flow-sub">${flow.subtitle}</p><div class="steps">`;
+      flow.steps.forEach((step, i) => {
+        if (i === 0) {
+          html += `<div class="step-row">${renderNode(NODES[step.from], { highlight: activeNode === step.from })}</div>`;
+        }
+        html += `<div class="step-arrow"><span class="step-label">${step.label}</span></div>`;
+        html += `<div class="step-row">${renderNode(NODES[step.to], { highlight: activeNode === step.to })}</div>`;
+      });
+      html += '</div>';
+      if (flow.note) html += `<div class="flow-note">${flow.note}</div>`;
+      return html;
+    }
+
+    function showDetail(id) {
+      const panel = document.getElementById('detail');
+      if (!id || !NODES[id]) {
+        panel.innerHTML = '<h2>Component</h2><p class="pick">Click a box to see ports and role in this stack.</p>';
+        return;
+      }
+      const n = NODES[id];
+      panel.innerHTML = `<h2>Component</h2>
+        <div class="detail-name">${n.name}</div>
+        <div class="detail-ports">${n.ports}</div>
+        <div class="detail-body">${n.detail}</div>`;
+    }
+
+    function renderCanvas() {
+      const flow = FLOWS.find(f => f.id === activeFlow);
+      const canvas = document.getElementById('canvas');
+      if (flow.lanes) canvas.innerHTML = renderOverview(flow);
+      else canvas.innerHTML = renderFlowSteps(flow);
+      canvas.querySelectorAll('.node').forEach(el => {
+        el.addEventListener('click', () => {
+          activeNode = el.dataset.id;
+          showDetail(activeNode);
+          renderCanvas();
+        });
+      });
+    }
+
+    function renderTabs() {
+      const tabs = document.getElementById('tabs');
+      tabs.innerHTML = FLOWS.map(f =>
+        `<button class="tab" role="tab" aria-selected="${f.id === activeFlow}" data-id="${f.id}">${f.title}</button>`
+      ).join('');
+      tabs.querySelectorAll('.tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeFlow = btn.dataset.id;
+          activeNode = null;
+          showDetail(null);
+          renderTabs();
+          renderCanvas();
+        });
+      });
+    }
+
+    renderTabs();
+    renderCanvas();
+  </script>
 </body>
 </html>
