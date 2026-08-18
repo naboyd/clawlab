@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# install-linux.sh — greenfield Linux local-full install wrapper
+# install-linux.sh — greenfield Linux local-full install wrapper (loopback :8083)
+#
+# For a production HTTPS lab host (:8443 + Let's Encrypt), use install-linux-lab.sh.
 #
 # Usage:
 #   bash install/install-linux.sh           # preinstall --fix + install --local-full + verify

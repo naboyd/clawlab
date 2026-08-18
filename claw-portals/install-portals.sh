@@ -12,6 +12,11 @@ set -Eeuo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$SRC/.." && pwd)"
+# shellcheck source=../install/lib/clawlab-install-log.sh
+source "$REPO/install/lib/clawlab-install-log.sh"
+clawlab_install_log_begin "install-portals" "$@"
+trap 'clawlab_install_log_end install-portals $?' EXIT
+
 CONFIG_DIR="$HOME/.claw-portals"
 CONFIG_FILE="$CONFIG_DIR/config.env"
 UNIT_DIR="$HOME/.config/systemd/user"

@@ -37,6 +37,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/lib/clawlab-platform.sh"
 # shellcheck source=lib/clawlab-local-full.sh
 source "$SCRIPT_DIR/lib/clawlab-local-full.sh"
+# shellcheck source=lib/clawlab-install-log.sh
+source "$SCRIPT_DIR/lib/clawlab-install-log.sh"
+
+clawlab_install_log_begin "install-clawstack" "$@"
+trap 'clawlab_install_log_end install-clawstack $?' EXIT
 
 CLAWLAB_REPO="$(clawlab_repo_root "$0")"
 export CLAWSTACK_ASSETS="${CLAWSTACK_ASSETS:-$CLAWLAB_REPO}"

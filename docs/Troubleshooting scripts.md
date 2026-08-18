@@ -65,17 +65,36 @@ bash install/local-full-ctl.sh restart
 
 ### `claw-auth/doctor.sh`
 
-claw-auth health: systemd/journal, `/healthz`, `/verify`, user list, nginx sites.
+claw-auth health plus optional **lab portal** verification (`:8443` / `install-portals.sh`).
+Each run is appended to `~/.clawlab/run/claw-auth-doctor.log`.
 
 | Flag / env | Description |
 |------------|-------------|
-| *(none)* | Full diagnostic dump |
+| *(none)* | claw-auth checks; auto-runs lab portal verify when `~/.claw-portals/config.env` is HTTPS / `:8443` |
+| `--verify-lab-portal` | Force lab portal checks (`install/verify-lab-portal.sh`) |
+| `--no-log` | Print only; do not append to doctor log |
+| `CLAWLAB_DOCTOR_LOG` | Doctor log path (default `~/.clawlab/run/claw-auth-doctor.log`) |
 | `CLAWLAB_VENV` | Python venv path (default `~/.clawlab/venv`) |
 | `CLAW_AUTH_HOME` | Auth data dir (default `~/.claw-auth`) |
 
 ```bash
 bash claw-auth/doctor.sh
+bash claw-auth/doctor.sh --verify-lab-portal
 ```
+
+### `install/verify-lab-portal.sh`
+
+Standalone lab portal post-install checks (systemd, podman, nginx, portal HTTP, MCP ports).
+Used by `claw-auth/doctor.sh --verify-lab-portal`.
+
+```bash
+bash install/verify-lab-portal.sh
+```
+
+### Install log
+
+`install-clawstack.sh` and `install-portals.sh` append output to **`~/.clawlab/run/install.log`**
+(session headers per run). Override with `CLAWLAB_INSTALL_LOG`.
 
 ### `admin-access/diagnose-openclaw-portal.sh`
 

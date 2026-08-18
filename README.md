@@ -48,35 +48,45 @@ python3 admin-access/render-policy-flow-diagram.py
 
 ---
 
-## Install order (3 scripts)
+## Install order
 
-Run these in order on a **new host**. Each step is idempotent (safe to re-run).
+Run on a **new host**. Each step is idempotent (safe to re-run).
 
-| Step | Script | What it does | When |
-|------|--------|--------------|------|
-| **1** | `install/preinstall-check.sh` | Read-only checklist: Node, pnpm, Ollama models, DefenseClaw config, portal, podman | Before anything else; use `--fix` for conservative apt/brew/pnpm fixes |
-| **2** | `install/install-clawstack.sh` | OpenClaw + DefenseClaw, providers, MCP, guardrail + judge backend; **`local-full`** adds portal `:8083` + ssh-ops MCP/GUI | Every new stack; **`local-full`** default on macOS (self-contained desktop); **`local`** = agent-only; **`server`** = legacy Linux |
-| **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, portal tabs, LE TLS (optional) | **Linux lab host** after step 2 (Linux HTTPS production path) |
+### One-command wrappers (recommended)
+
+| Platform | Script | Portal URL |
+|----------|--------|------------|
+| **macOS** | `bash install/install-mac.sh` | `http://127.0.0.1:8083/` |
+| **Linux** (loopback dev) | `bash install/install-linux.sh` | `http://127.0.0.1:8083/` |
+| **Linux lab server** | `bash install/install-linux-lab.sh` | `https://<host>:8443/` |
+
+Add `--yes` for non-interactive installs. Linux lab: set `DOMAIN`, `LE_EMAIL`, and `LAN_IP`
+before `install-linux-lab.sh --yes`.
+
+### Manual steps (same result)
+
+| Step | Script | What it does |
+|------|--------|--------------|
+| **1** | `install/preinstall-check.sh` | Node, pnpm, Ollama, DefenseClaw, podman checklist (`--fix` for apt/brew) |
+| **2** | `install/install-clawstack.sh` | OpenClaw + DefenseClaw + guardrails; **`local-full`** = loopback portal `:8083`; **`local`** = agent only (pair with step 3 on lab hosts) |
+| **3** | `claw-portals/install-portals.sh` | HTTPS nginx `:8443`, claw-auth, MCP identity `:8767`, skills + IOS archive | **Linux lab only** |
 
 ```bash
 git clone https://github.com/naboyd/clawlab.git ~/clawlab
 cd ~/clawlab
 
-# 1 — prerequisites (optional --fix)
-bash install/preinstall-check.sh --fix
+# macOS desktop (or Linux loopback dev)
+bash install/install-mac.sh          # or: install-linux.sh on Linux
+# non-interactive: bash install/install-mac.sh --yes
 
-# 2 — full desktop stack on Mac (interactive; Enter accepts defaults)
-bash install/install-clawstack.sh --local-full
-# non-interactive: bash install/install-clawstack.sh --local-full --yes
-# or interactive: bash install/install-clawstack.sh  (default mode local-full on macOS)
-
-# 3 — production HTTPS portal on Linux lab host (skip on Mac local-full)
-bash claw-portals/install-portals.sh
+# Linux HTTPS lab host (icecream-style)
+DOMAIN=lab.example.com LE_EMAIL=you@example.com LAN_IP=192.168.1.10 \
+  bash install/install-linux-lab.sh --yes
 ```
 
-**macOS (self-contained, like lab-host without LE):** steps **1 → 2 with `local-full`** — bookmark `http://127.0.0.1:8083/`
+**macOS:** `install-mac.sh` → bookmark `http://127.0.0.1:8083/`
 
-**Linux lab server:** steps **1 → 2 (`local` or `local-full`) → 3** for `:8443` HTTPS + Let's Encrypt
+**Linux lab server:** `install-linux-lab.sh` → bookmark `https://<host>:8443/` (Let's Encrypt via step 3 inside the wrapper)
 
 **DefenseClaw scan backend** (step 2 prompt): **local** (Ollama Foundation-Sec judge), **cisco** (AI Defense API), or **both**.
 

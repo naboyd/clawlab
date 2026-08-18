@@ -48,26 +48,50 @@ Behind the scenes: **OpenClaw** runs the agent, **DefenseClaw** inspects prompts
 
 ## Install (new host)
 
-Run in order:
+### Recommended wrappers
+
+| Platform | Command | Portal |
+|----------|---------|--------|
+| **macOS** | `bash install/install-mac.sh` | `http://127.0.0.1:8083/` |
+| **Linux** (loopback) | `bash install/install-linux.sh` | `http://127.0.0.1:8083/` |
+| **Linux lab server** | `bash install/install-linux-lab.sh` | `https://<host>:8443/` |
+
+Add `--yes` to skip prompts. For a lab host:
 
 ```bash
 git clone https://github.com/naboyd/clawlab.git ~/clawlab
 cd ~/clawlab
 
-bash install/preinstall-check.sh --fix
-bash install/install-clawstack.sh --local-full    # Mac desktop
-# or: bash install/install-clawstack.sh           # Linux agent stack
-
-bash claw-portals/install-portals.sh              # Linux HTTPS :8443 (skip on Mac local-full)
+DOMAIN=lab.example.com LE_EMAIL=admin@example.com LAN_IP=192.168.1.10 \
+  bash install/install-linux-lab.sh --yes
 ```
 
-| Platform | Portal URL | Install path |
-|----------|------------|--------------|
-| **macOS** | `http://127.0.0.1:8083/` | Steps 1 → 2 with `--local-full` |
-| **Linux lab** | `https://<host>:8443/` | Steps 1 → 2 → 3 |
+### Manual steps (equivalent)
 
-After Linux portal install, MCP auth is wired automatically when using **claw-auth**
-(`configure-portal-mcp-auth.sh` runs at the end of `install-portals.sh`).
+```bash
+bash install/preinstall-check.sh --fix
+bash install/install-clawstack.sh --local-full    # Mac / Linux loopback
+# or: bash install/install-clawstack.sh --local   # Linux agent only, then portals
+
+bash claw-portals/install-portals.sh              # Linux HTTPS :8443 only
+```
+
+| Platform | Portal URL | Stack |
+|----------|------------|-------|
+| **macOS** | `http://127.0.0.1:8083/` | `install-mac.sh` or clawstack `--local-full` |
+| **Linux lab** | `https://<host>:8443/` | `install-linux-lab.sh` or clawstack `--local` + `install-portals.sh` |
+
+**Post-install checks**
+
+| Layout | Verify |
+|--------|--------|
+| local-full (`:8083`) | `bash install/verify-local-full.sh` |
+| lab server (`:8443`) | `bash claw-auth/doctor.sh --verify-lab-portal` · `bash install/verify-lab-portal.sh` |
+
+**Troubleshooting logs:** `~/.clawlab/run/install.log` (installers) · `~/.clawlab/run/claw-auth-doctor.log` (doctor runs)
+
+Installers also run **`install-clawlab-extras.sh`** (OpenClaw skills + IOS config archive timer) and,
+on lab hosts with claw-auth, **`configure-portal-mcp-auth.sh`** (MCP identity proxy `:8767`).
 
 ---
 
