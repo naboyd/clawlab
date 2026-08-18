@@ -89,6 +89,39 @@ check_port_either() {
   return 1
 }
 
+wait_port_open() {
+  local p="$1" host="${2:-127.0.0.1}" tries="${3:-12}"
+  local i=0
+  while [[ "$i" -lt "$tries" ]]; do
+    if port_open "$p" "$host"; then
+      return 0
+    fi
+    sleep 0.5
+    i=$((i + 1))
+  done
+  return 1
+}
+
+check_mcp_proxy_port() {
+  local label="$1" p="$2"
+  local -a hosts=("127.0.0.1")
+  if [[ -n "$LAN_IP" && "$LAN_IP" != "127.0.0.1" ]]; then
+    hosts+=("$LAN_IP")
+  fi
+  if [[ -n "$PROXY_BIND" && "$PROXY_BIND" != "127.0.0.1" && "$PROXY_BIND" != "$LAN_IP" ]]; then
+    hosts+=("$PROXY_BIND")
+  fi
+  local h
+  for h in "${hosts[@]}"; do
+    if port_open "$p" "$h"; then
+      ok "$label :$p on $h"
+      return 0
+    fi
+  done
+  bad "$label :$p (checked: ${hosts[*]})"
+  return 1
+}
+
 if [[ -f "$CONFIG_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$CONFIG_FILE"
@@ -111,7 +144,7 @@ curl_portal=(curl -fsS -o /dev/null -w '%{http_code}')
 echo "=== lab portal verification (${portal_url}) ==="
 echo "  config: ${CONFIG_FILE}"
 PROXY_BIND="$(mcp_proxy_bind)"
-echo "  mcp proxy bind: ${PROXY_BIND}:8767"
+echo "  mcp proxy bind (dropin): ${PROXY_BIND}:8767 · LAN_IP=${LAN_IP}"
 echo
 
 for unit in claw-auth openclaw-gateway mcp-identity-proxy defenseclaw-webgui; do
@@ -144,7 +177,7 @@ else
     echo "       fix: bash $REPO/admin-access/configure-openclaw-mcp-identity.sh"
   fi
 fi
-if port_open 18789; then
+if wait_port_open 18789 "127.0.0.1" 12; then
   ok "openclaw-gateway :18789"
 else
   bad "openclaw-gateway :18789"
@@ -152,15 +185,12 @@ else
     echo "       recent openclaw-gateway journal:"
     journal_hint openclaw-gateway.service 12
     echo "       fix: bash $REPO/admin-access/configure-openclaw-mcp-identity.sh"
-    echo "            # or: cp -a $REPO/clawlab-extensions/clawlab-mcp-identity ~/.openclaw/extensions/"
     echo "            systemctl --user restart openclaw-gateway"
   fi
 fi
 check_port ssh-ops-gui 8765
 check_port ssh-ops-mcp 8766
-if check_port_either mcp-identity-proxy 8767 "127.0.0.1" "$PROXY_BIND"; then
-  :
-else
+if ! check_mcp_proxy_port mcp-identity-proxy 8767; then
   if [[ "$QUIET" -eq 0 ]]; then
     echo "       recent mcp-identity-proxy journal:"
     journal_hint mcp-identity-proxy.service 12
