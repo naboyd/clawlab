@@ -101,7 +101,12 @@ def validate_pat(raw: str | None) -> dict | None:
     token = (raw or "").strip()
     if not token.startswith(PAT_PREFIX):
         return None
-    ensure_schema()
+    if not _db_path().is_file():
+        return None
+    try:
+        ensure_schema()
+    except (sqlite3.Error, OSError):
+        pass
     conn = _connect(write=False)
     if conn is None:
         return None

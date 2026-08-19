@@ -176,6 +176,21 @@ start_container() {
     *) die "unknown container mode '$mode'";;
   esac
   say "(re)started $name ($mode)"
+  if [[ "$mode" == "mcp" ]]; then
+    wait_mcp_listen || warn "MCP :8766 not accepting connections yet — check: podman logs $name"
+  fi
+}
+
+wait_mcp_listen() {
+  local i=0
+  while [[ "$i" -lt 30 ]]; do
+    if python3 -c "import socket; s=socket.socket(); s.settimeout(0.3); s.connect(('127.0.0.1',8766)); s.close()" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+    i=$((i + 1))
+  done
+  return 1
 }
 
 ensure_up() {

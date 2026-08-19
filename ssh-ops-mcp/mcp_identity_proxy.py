@@ -150,12 +150,19 @@ async def _proxy(request: Request) -> Response:
         headers["X-Claw-Mcp-Bind"] = bind_hdr
 
     body = await request.body()
-    async with httpx.AsyncClient(verify=VERIFY_TLS, timeout=120.0) as client:
-        upstream = await client.request(
-            request.method,
-            upstream_url,
-            headers=headers,
-            content=body,
+    try:
+        async with httpx.AsyncClient(verify=VERIFY_TLS, timeout=120.0) as client:
+            upstream = await client.request(
+                request.method,
+                upstream_url,
+                headers=headers,
+                content=body,
+            )
+    except httpx.HTTPError as exc:
+        log.warning("upstream request failed url=%s err=%s", upstream_url, exc)
+        return JSONResponse(
+            {"error": "upstream unavailable", "detail": str(exc)},
+            status_code=502,
         )
     return Response(
         content=upstream.content,

@@ -32,9 +32,14 @@ fi
 ok "HTTP $code on POST initialize (401 without auth is OK)"
 
 step "3) Authenticated initialize + session"
+if ! mcp_wait_port 8766; then
+  warn "ssh-ops-mcp :8766 not listening — check: podman logs ssh-ops-mcp · bash ~/clawlab/ssh-ops-mcp/doctor.sh"
+fi
 if ! mcp_session_start; then
-  if [[ "${MCP_LAST_ERR:-}" == *"HTTP 500"* ]] && ! python3 -c "import socket; s=socket.socket(); s.settimeout(0.3); s.connect(('127.0.0.1',8766)); s.close()" 2>/dev/null; then
-    fail "${MCP_LAST_ERR:-MCP session init failed} — ssh-ops-mcp :8766 down (run: ~/clawlab/ssh-ops-mcp/podctl.sh --recreate)"
+  if [[ "${MCP_LAST_ERR:-}" == *"HTTP 502"* ]] || [[ "${MCP_LAST_ERR:-}" == *"HTTP 500"* ]]; then
+    if ! mcp_wait_port 8766 4; then
+      fail "${MCP_LAST_ERR:-MCP session init failed} — ssh-ops-mcp :8766 down (run: ~/clawlab/ssh-ops-mcp/podctl.sh --recreate; then podman logs ssh-ops-mcp)"
+    fi
   fi
   fail "${MCP_LAST_ERR:-MCP session init failed}"
 fi

@@ -111,6 +111,19 @@ mcp_portal_domain() {
   grep -E '^DOMAIN=' "$cfg" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs
 }
 
+mcp_wait_port() {
+  local port="$1" host="${2:-127.0.0.1}" tries="${3:-24}"
+  local i=0
+  while [[ "$i" -lt "$tries" ]]; do
+    if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(0.3); s.connect((sys.argv[1],int(sys.argv[2]))); s.close()" "$host" "$port" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+    i=$((i + 1))
+  done
+  return 1
+}
+
 # Pick a reachable MCP URL: openclaw.json, domain :8767 (TLS), LAN/loopback :8767, then :8766.
 mcp_resolve_mcp_url() {
   local auth="${1:-}" primary="${2:-}"
