@@ -95,12 +95,7 @@ if [[ -d "$REPO_EXT" && ! -f "$OC_EXT/openclaw.plugin.json" ]]; then
 fi
 UNIT_DIR="$HOME/.config/systemd/user"
 OVERRIDE_DIR="$UNIT_DIR/mcp-identity-proxy.service.d"
-PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-}}"
-if [[ -z "$PROXY_BIND" && -f "$OVERRIDE_DIR/clawlab.conf" ]]; then
-  PROXY_BIND="$(grep -E '^Environment=SSH_OPS_MCP_PROXY_HOST=' "$OVERRIDE_DIR/clawlab.conf" \
-    | head -1 | sed 's/^Environment=SSH_OPS_MCP_PROXY_HOST=//' || true)"
-fi
-PROXY_BIND="${PROXY_BIND:-127.0.0.1}"
+PROXY_BIND="$(mcp_proxy_resolve_bind)"
 PROXY_URL="${SSH_OPS_MCP_GATEWAY_URL:-${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_gateway_url "$PROXY_BIND")}}"
 SSH_OPS_CONFIG="$DATA_DIR/hosts.yaml" \
 SSH_OPS_ENV="$DATA_DIR/.env" \

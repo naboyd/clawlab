@@ -32,6 +32,28 @@ mcp_proxy_scheme() {
   fi
 }
 
+# Resolve identity-proxy listen address (drop-in → portal LAN_IP → 127.0.0.1).
+mcp_proxy_resolve_bind() {
+  local bind="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-}}"
+  local dropin portal_env
+  if [[ -z "$bind" ]]; then
+    dropin="${HOME}/.config/systemd/user/mcp-identity-proxy.service.d/clawlab.conf"
+    if [[ -f "$dropin" ]]; then
+      bind="$(grep -E '^Environment=SSH_OPS_MCP_PROXY_HOST=' "$dropin" 2>/dev/null \
+        | head -1 | sed 's/^Environment=SSH_OPS_MCP_PROXY_HOST=//' || true)"
+    fi
+  fi
+  if [[ -z "$bind" ]]; then
+    portal_env="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+    if [[ -f "$portal_env" ]]; then
+      # shellcheck disable=SC1090
+      source "$portal_env" 2>/dev/null || true
+      bind="${LAN_IP:-}"
+    fi
+  fi
+  printf '%s' "${bind:-127.0.0.1}"
+}
+
 # External clients (Cursor, Claude Desktop): portal domain + TLS when lego cert exists.
 mcp_proxy_public_url() {
   local bind="${1:-127.0.0.1}" port="${2:-8767}"

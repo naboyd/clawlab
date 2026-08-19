@@ -16,7 +16,7 @@ source "$REPO/admin-access/lib/mcp-proxy-env.sh"
 OC_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CONFIG="$OC_HOME/openclaw.json"
 VENV_PY="${CLAW_PYTHON:-$HOME/.clawlab/venv/bin/python}"
-PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-127.0.0.1}}"
+PROXY_BIND="$(mcp_proxy_resolve_bind)"
 PROXY_URL="${SSH_OPS_MCP_GATEWAY_URL:-${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_gateway_url "$PROXY_BIND")}}"
 
 [[ -f "$CONFIG" ]] || {

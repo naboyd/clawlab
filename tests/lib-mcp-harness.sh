@@ -23,8 +23,33 @@ mcp_ssh_ops_data_dir() {
 }
 
 # Source of truth for MCP bearer auth (matches ssh-ops MCP server + Admin UI).
+mcp_harness_repo() {
+  if [[ -n "${REPO:-}" ]]; then
+    printf '%s' "$REPO"
+  else
+    cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
+  fi
+}
+
+mcp_harness_python() {
+  local py="${CLAW_PYTHON:-$HOME/.clawlab/venv/bin/python}"
+  if [[ -x "$py" ]]; then
+    printf '%s' "$py"
+  else
+    printf 'python3'
+  fi
+}
+
 mcp_openclaw_auth_header() {
-  python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization']" 2>/dev/null || true
+  local repo py
+  repo="$(mcp_harness_repo)"
+  py="$(mcp_harness_python)"
+  PYTHONPATH="$repo/admin-access/lib" "$py" - <<'PY' 2>/dev/null || true
+from openclaw_config import default_config_path, load_openclaw_json, mcp_authorization_header
+
+cfg, _repaired = load_openclaw_json(default_config_path())
+print(mcp_authorization_header(cfg))
+PY
 }
 
 mcp_auth_is_pat() {
