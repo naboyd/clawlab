@@ -299,7 +299,8 @@ bash ~/clawlab/tests/policy-test.sh --no-agent   # deterministic policy matrix
 | OpenClaw WebSocket fails | Use hub link; confirm `/openclaw/` not redirected; `apply-token-portal.py` |
 | Device never connects | Admin must approve on **OpenClaw devices** tab |
 | MCP 401 invalid token | Use `:8767` not `:8766`; PAT from hub; token not expired |
-| propose_change denied identity | Open from hub (`clawBind`) or set PAT via `set-openclaw-mcp-pat.sh` |
+| propose_change denied identity | Open from hub (`clawBind`) or set PAT via `set-openclaw-mcp-pat.sh`; on `:8767` run `git pull` + `podctl --recreate` (PAT must reach upstream MCP) |
+| PAT reverted in openclaw.json | `sync-openclaw-gateway-mcp-auth.sh` and `mcp-ping.sh` now preserve `skops_`; re-run `set-openclaw-mcp-pat.sh` |
 | Policy change not enforced | Policy tab → Reload; or `refresh-clawlab-policies.sh` |
 
 Full script index: [Troubleshooting scripts.md](Troubleshooting%20scripts.md)

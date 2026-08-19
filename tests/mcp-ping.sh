@@ -18,7 +18,11 @@ mcp_load_config
 [ -n "${MCP_URL:-}" ] || fail "MCP_URL empty (openclaw.json missing ssh-ops entry?)"
 [ -n "${MCP_AUTH:-}" ] || fail "MCP auth empty (ssh-ops secrets or openclaw.json)"
 ok "MCP_URL=$MCP_URL"
-ok "Authorization=${MCP_AUTH:0:20}..."
+if [[ "$MCP_AUTH" == *skops_* ]]; then
+  ok "Authorization=PAT skops_… (propose_change identity enabled)"
+else
+  ok "Authorization=shared bearer … (use hub clawBind or set-openclaw-mcp-pat.sh for changes)"
+fi
 
 step "2) TCP reachability"
 code="$(curl -sS -m5 -o /dev/null -w '%{http_code}' -X POST "$MCP_URL" \
@@ -103,6 +107,32 @@ if [ -n "$net" ]; then
   ok "network host in inventory: $net"
 else
   warn "no network host in inventory (sections 2b/2c will skip)"
+fi
+
+step "7) propose_change identity (optional)"
+if [[ "$MCP_AUTH" != *skops_* ]]; then
+  warn "skipped — shared bearer only (no skops_ PAT); run set-openclaw-mcp-pat.sh for gated changes"
+else
+  net="${net:-$(mcp_pick_network_host "${CLAWLAB_SWITCH:-}" 2>/dev/null || true)}"
+  if [ -z "$net" ]; then
+    warn "skipped — no network host for propose probe"
+  else
+    r="$(mcp_tool_call propose_change \
+      "$(jq -n \
+        --arg h "$net" \
+        --arg user "${MCP_PAT_USER:-naboyd}" \
+        '{host:$h,change_type:"ios_config_lines",requested_by:$user,intent:"mcp-ping identity probe",spec:{group:"interface_l2",lines:["interface Gi1/0/99"," description mcp-ping-probe"," shutdown"]}}')" \
+      "${MCP_PAT_USER:-naboyd}" admin 2>/dev/null || true)"
+    if echo "$r" | grep -qi 'missing_identity\|"code"\s*:\s*"missing_identity"'; then
+      fail "propose_change missing identity — restart mcp-identity-proxy + podctl --recreate after git pull"
+    elif echo "$r" | grep -qiE 'change_id|"status"\s*:\s*"proposed"|auto-approved'; then
+      ok "propose_change accepted identity for ${MCP_PAT_USER:-naboyd} on $net"
+    elif echo "$r" | grep -qi 'identity_mismatch'; then
+      fail "propose_change identity_mismatch — requested_by must match PAT user"
+    else
+      warn "propose probe inconclusive on $net (policy may block probe lines): $(echo "$r" | head -c 160)"
+    fi
+  fi
 fi
 
 printf '\nMCP ping complete.\n'

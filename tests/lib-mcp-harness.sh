@@ -23,6 +23,15 @@ mcp_ssh_ops_data_dir() {
 }
 
 # Source of truth for MCP bearer auth (matches ssh-ops MCP server + Admin UI).
+mcp_openclaw_auth_header() {
+  python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization']" 2>/dev/null || true
+}
+
+mcp_auth_is_pat() {
+  local auth="${1:-}"
+  [[ "$auth" == *skops_* ]]
+}
+
 mcp_load_ssh_ops_token() {
   local repo="${REPO:-}" data token py
   data="$(mcp_ssh_ops_data_dir)"
@@ -49,6 +58,9 @@ mcp_load_ssh_ops_token() {
 mcp_sync_openclaw_auth() {
   local auth="${1:-}"
   [[ -n "$auth" ]] || return 1
+  if mcp_auth_is_pat "$(mcp_openclaw_auth_header)"; then
+    return 0
+  fi
   python3 - "$auth" <<'PY' 2>/dev/null || return 1
 import json, os, sys
 auth = sys.argv[1]
@@ -57,6 +69,9 @@ if not os.path.isfile(p):
     raise SystemExit(1)
 d = json.load(open(p))
 entry = d.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
+existing = (entry.get("headers") or {}).get("Authorization") or ""
+if existing.startswith("Bearer skops_") or existing.startswith("skops_"):
+    raise SystemExit(0)
 entry.setdefault("url", "http://127.0.0.1:8766/mcp")
 entry.setdefault("transport", "streamable-http")
 entry["headers"] = {"Authorization": auth}
@@ -65,12 +80,14 @@ print("synced openclaw.json ssh-ops MCP auth")
 PY
 }
 
-# Load MCP auth/url from ssh-ops secrets (preferred) then openclaw.json.
+# Load MCP auth/url — skops_ PAT in openclaw.json wins over secrets-store bearer.
 mcp_load_config() {
   local oc_auth="" file_auth=""
-  oc_auth=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['headers']['Authorization'])" 2>/dev/null || true)
+  oc_auth="$(mcp_openclaw_auth_header)"
   file_auth=$(mcp_load_ssh_ops_token || true)
-  if [[ -n "$file_auth" ]]; then
+  if mcp_auth_is_pat "$oc_auth"; then
+    MCP_AUTH="$oc_auth"
+  elif [[ -n "$file_auth" ]]; then
     MCP_AUTH="$file_auth"
     if [[ -n "$oc_auth" && "$oc_auth" != "$file_auth" ]]; then
       mcp_sync_openclaw_auth "$file_auth" >/dev/null || true

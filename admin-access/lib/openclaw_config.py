@@ -14,6 +14,32 @@ def default_config_path() -> Path:
     return home / "openclaw.json"
 
 
+MCP_PAT_PREFIX = "skops_"
+
+
+def ssh_ops_mcp_entry(cfg: dict) -> dict:
+    entry = (cfg.get("mcp") or {}).get("servers", {}).get("ssh-ops")
+    return entry if isinstance(entry, dict) else {}
+
+
+def mcp_authorization_header(cfg: dict) -> str:
+    headers = ssh_ops_mcp_entry(cfg).get("headers") or {}
+    if not isinstance(headers, dict):
+        return ""
+    return str(headers.get("Authorization") or headers.get("authorization") or "").strip()
+
+
+def mcp_auth_is_pat(auth_or_cfg: dict | str) -> bool:
+    """True when Authorization uses a portal personal access token (skops_…)."""
+    if isinstance(auth_or_cfg, dict):
+        auth = mcp_authorization_header(auth_or_cfg)
+    else:
+        auth = str(auth_or_cfg or "").strip()
+    if auth.lower().startswith("bearer "):
+        auth = auth[7:].strip()
+    return auth.startswith(MCP_PAT_PREFIX)
+
+
 def repair_control_chars_in_strings(raw: str) -> str:
     """Escape raw newlines/tabs/control bytes inside JSON string literals."""
     out: list[str] = []

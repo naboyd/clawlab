@@ -113,17 +113,20 @@ from pathlib import Path
 
 sys.path.insert(0, "$REPO/admin-access/lib")
 import secrets_store
-from openclaw_config import load_openclaw_json, save_openclaw_json
+from openclaw_config import load_openclaw_json, mcp_auth_is_pat, save_openclaw_json
 
 oc = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")) / "openclaw.json"
-token = secrets_store.ensure_mcp_token()
 cfg, _repaired = load_openclaw_json(oc)
 entry = cfg.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
 entry["url"] = os.environ.get("SSH_OPS_MCP_PROXY_URL", "http://127.0.0.1:8767/mcp")
 entry["transport"] = "streamable-http"
-entry["headers"] = {"Authorization": f"Bearer {token}"}
+if mcp_auth_is_pat(cfg):
+    print("openclaw.json ssh-ops MCP: preserved skops_ PAT (identity for propose_change)")
+else:
+    token = secrets_store.ensure_mcp_token()
+    entry["headers"] = {"Authorization": f"Bearer {token}"}
+    print("openclaw.json ssh-ops MCP auth synced (shared bearer + clawBind path)")
 save_openclaw_json(oc, cfg)
-print("openclaw.json ssh-ops MCP auth synced")
 PY
 
 # Identity proxy: same data dir + upstream as the MCP container (podctl.sh).

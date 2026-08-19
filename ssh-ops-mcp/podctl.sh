@@ -159,6 +159,7 @@ start_container() {
         -e CLAW_AUTH_DB=/claw-auth/users.db \
         -e DEFENSECLAW_HOME=/defenseclaw \
         -e SSH_OPS_RBAC=1 \
+        -e SSH_OPS_TRUSTED_PROXY_IPS=127.0.0.1,::1,10.0.2.2 \
         "$IMAGE" mcp >/dev/null
       ;;
     *) die "unknown container mode '$mode'";;

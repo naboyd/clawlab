@@ -136,12 +136,18 @@ async def _proxy(request: Request) -> Response:
         headers["X-Auth-Role"] = ident.role
 
     client_bearer = mcp_identity.bearer_token(original)
-    if client_bearer.startswith(mcp_tokens.PAT_PREFIX):
-        upstream_tok = _upstream_bearer()
-        if upstream_tok:
-            headers["Authorization"] = f"Bearer {upstream_tok}"
-    elif not mcp_identity.bearer_token(headers) and _upstream_bearer():
-        headers["Authorization"] = f"Bearer {_upstream_bearer()}"
+    # Forward skops_ PATs to upstream so :8766 validates proposer identity.
+    # Replacing PAT with the shared bearer drops user identity (propose_change fails).
+    if not client_bearer.startswith(mcp_tokens.PAT_PREFIX):
+        if not mcp_identity.bearer_token(headers) and _upstream_bearer():
+            headers["Authorization"] = f"Bearer {_upstream_bearer()}"
+    bind_hdr = (
+        original.get("X-Claw-Mcp-Bind")
+        or original.get("x-claw-mcp-bind")
+        or ""
+    ).strip()
+    if bind_hdr:
+        headers["X-Claw-Mcp-Bind"] = bind_hdr
 
     body = await request.body()
     async with httpx.AsyncClient(verify=VERIFY_TLS, timeout=120.0) as client:

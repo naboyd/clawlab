@@ -3,7 +3,7 @@
 #
 # - Identity proxy on LAN :8767 (TLS when lego cert present)
 # - clawlab-mcp-identity plugin (clawBind from portal hub)
-# - Shared MCP bearer in openclaw.json (optional; use set-openclaw-mcp-pat.sh for PAT)
+# - Shared MCP bearer in openclaw.json (optional; skops_ PAT from set-openclaw-mcp-pat.sh is preserved)
 set -Eeuo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"

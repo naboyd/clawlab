@@ -630,11 +630,16 @@ clawlab_local_full_register_mcp() {
     || true
   )"
   [[ -n "$token" ]] || { warn "Could not read MCP token — set in ssh-ops Admin after install"; return 0; }
-  python3 - "$oc" "$token" <<'PY'
+  PYTHONPATH="$repo/admin-access/lib" python3 - "$oc" "$token" <<'PY'
 import json, sys
+from openclaw_config import mcp_auth_is_pat
+
 p, token = sys.argv[1], sys.argv[2]
 d = json.load(open(p))
 entry = d.setdefault("mcp", {}).setdefault("servers", {}).setdefault("ssh-ops", {})
+if mcp_auth_is_pat(d):
+    print("skip register_mcp: preserving skops_ PAT in openclaw.json")
+    raise SystemExit(0)
 entry["url"] = "http://127.0.0.1:8767/mcp"
 entry["transport"] = "streamable-http"
 entry["headers"] = {"Authorization": "Bearer " + token}
