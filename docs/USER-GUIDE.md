@@ -195,13 +195,25 @@ See [ssh-ops-mcp/README.md](../ssh-ops-mcp/README.md) for client-specific steps.
 
 If you saved a plain OpenClaw chat URL without the hub link:
 
-1. Create a PAT at hub → **MCP tokens**.
+**One command (recommended):**
+
+```bash
+bash ~/clawlab/admin-access/rotate-openclaw-mcp-pat.sh
+```
+
+Or from the portal hub → **MCP tokens** → **Rotate OpenClaw PAT** (co-located lab hosts).
+
+**Manual steps:**
+
+1. Create a PAT at hub → **MCP tokens** (optionally check **Install in OpenClaw on this server**).
 2. Run:
 
    ```bash
    bash ~/clawlab/admin-access/set-openclaw-mcp-pat.sh
    systemctl --user restart openclaw-gateway
    ```
+
+Full rotation guide: [KEY-ROTATION.md](KEY-ROTATION.md)
 
 Without verified identity, `propose_change` will fail RBAC checks.
 

@@ -9,6 +9,7 @@ portal (**claw-auth**), and **Webex** alerting on policy violations.
 > Run on isolated lab networks; see [SECURITY.md](SECURITY.md).
 
 **Start here:** [docs/USER-GUIDE.md](docs/USER-GUIDE.md) ·
+[docs/KEY-ROTATION.md](docs/KEY-ROTATION.md) ·
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) ·
 **[Interactive diagrams](#diagrams)** (HTML)
 

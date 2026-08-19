@@ -39,11 +39,25 @@ if str(_AUTHD_DIR) not in sys.path:
     sys.path.insert(0, str(_AUTHD_DIR))
 if _SSH_OPS.is_dir() and str(_SSH_OPS) not in sys.path:
     sys.path.insert(0, str(_SSH_OPS))
+_ADMIN_LIB = _CLAWLAB_REPO / "admin-access" / "lib"
+if _ADMIN_LIB.is_dir() and str(_ADMIN_LIB) not in sys.path:
+    sys.path.insert(0, str(_ADMIN_LIB))
 
 try:
     import mcp_tokens
 except ImportError:
     mcp_tokens = None  # type: ignore[assignment]
+
+try:
+    from openclaw_mcp_pat import (
+        apply_pat_to_openclaw,
+        issue_pat_for_openclaw,
+        restart_openclaw_gateway,
+    )
+except ImportError:
+    apply_pat_to_openclaw = None  # type: ignore[assignment,misc]
+    issue_pat_for_openclaw = None  # type: ignore[assignment,misc]
+    restart_openclaw_gateway = None  # type: ignore[assignment,misc]
 
 try:
     import openclaw_devices
@@ -564,8 +578,30 @@ MCP_TOKENS_PAGE = """
     <label>Label</label><input type="text" name="label" placeholder="Cursor laptop" required>
     <label>TTL days <span class="hint">(optional, blank = no expiry)</span></label>
     <input type="number" name="ttl_days" min="1" placeholder="90">
+    {% if openclaw_local %}
+    <label style="display:flex;align-items:center;gap:.5rem;margin-top:.75rem">
+      <input type="checkbox" name="apply_openclaw" value="1">
+      Install in OpenClaw on this server (<code>~/.openclaw/openclaw.json</code> + restart gateway)
+    </label>
+    {% endif %}
     <div style="margin-top:1rem"><button type="submit">Create token</button></div>
   </form>
+  {% if openclaw_local %}
+  <h2>Rotate OpenClaw PAT</h2>
+  <p class="hint">Revokes active tokens labeled <code>openclaw-gateway</code>, issues a new one, updates OpenClaw, and restarts the gateway.</p>
+  <form method="post" onsubmit="return confirm('Rotate OpenClaw MCP PAT? Bookmarked chat URLs will need the new token if not using hub links.')">
+    <input type="hidden" name="action" value="rotate_openclaw">
+    {% if is_superadmin %}
+    <label>User</label>
+    <select name="target_username" required>
+      {% for u in all_users %}
+      <option value="{{ u.username }}"{% if u.username == user.username %} selected{% endif %}>{{ u.username }} ({{ u.role }})</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <div style="margin-top:1rem"><button type="submit">Rotate OpenClaw PAT</button></div>
+  </form>
+  {% endif %}
   <h2>{% if is_superadmin %}All tokens{% else %}Your tokens{% endif %}</h2>
   <table>
     <tr>{% if is_superadmin %}<th>User</th>{% endif %}<th>Label</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr>
@@ -591,6 +627,25 @@ MCP_TOKENS_PAGE = """
 </div>
 </body></html>
 """
+
+
+def _openclaw_config_exists() -> bool:
+    oc_home = Path(os.environ.get("OPENCLAW_HOME", Path.home() / ".openclaw")).expanduser()
+    return (oc_home / "openclaw.json").is_file()
+
+
+def _apply_pat_to_local_openclaw(pat: str) -> str:
+    if apply_pat_to_openclaw is None:
+        raise RuntimeError("openclaw_mcp_pat module unavailable")
+    cfg_path = apply_pat_to_openclaw(pat)
+    detail = f"Updated {cfg_path}."
+    if restart_openclaw_gateway is not None:
+        ok, gw_msg = restart_openclaw_gateway()
+        if ok:
+            detail += f" {gw_msg}."
+        else:
+            detail += f" Gateway restart: {gw_msg} — run systemctl --user restart openclaw-gateway."
+    return detail
 
 
 def _set_session_cookie(resp, token: str):
@@ -1024,6 +1079,44 @@ def mcp_tokens_ui():
                     ttl_days=ttl_days,
                 )
                 msg = f"Token created for {target} — copy it now; it will not be shown again."
+                if (
+                    request.form.get("apply_openclaw") == "1"
+                    and _openclaw_config_exists()
+                    and target == sess["username"]
+                ):
+                    try:
+                        msg += " " + _apply_pat_to_local_openclaw(new_token)
+                    except (OSError, ValueError, RuntimeError) as exc:
+                        msg += f" Could not install in OpenClaw: {exc}"
+                        msg_err = True
+                elif request.form.get("apply_openclaw") == "1" and target != sess["username"]:
+                    msg += " Install in OpenClaw skipped (only for your own token on this server)."
+            elif action == "rotate_openclaw":
+                if issue_pat_for_openclaw is None:
+                    raise RuntimeError("openclaw_mcp_pat module unavailable")
+                if not _openclaw_config_exists():
+                    raise ValueError("OpenClaw not configured on this server (~/.openclaw/openclaw.json missing)")
+                target = _resolve_pat_username(sess, request.form.get("target_username"))
+                apply_local = target == sess["username"]
+                new_token, _cfg = issue_pat_for_openclaw(
+                    target,
+                    label="openclaw-gateway",
+                    revoke_label_first=True,
+                    apply_openclaw=apply_local,
+                    actor=sess["username"],
+                    is_superadmin=_is_superadmin(sess.get("role")),
+                )
+                if apply_local:
+                    msg = f"OpenClaw PAT rotated for {target}."
+                    if restart_openclaw_gateway is not None:
+                        ok, gw_msg = restart_openclaw_gateway()
+                        msg += f" {gw_msg}." if ok else f" Gateway: {gw_msg}."
+                    msg += " Copy the new token below if you use bookmarked OpenClaw URLs."
+                else:
+                    msg = (
+                        f"PAT rotated for {target} — copy below. "
+                        "Local OpenClaw config was not changed (only applies for your own user on this server)."
+                    )
             elif action == "revoke":
                 mcp_tokens.revoke_pat(
                     int(request.form.get("token_id") or "0"),
@@ -1049,6 +1142,7 @@ def mcp_tokens_ui():
         msg=msg,
         msg_err=msg_err,
         new_token=new_token,
+        openclaw_local=_openclaw_config_exists(),
     )
 
 

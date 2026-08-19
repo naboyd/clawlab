@@ -63,6 +63,16 @@ On upgrade, the legacy user **`admin`** is automatically promoted to **`superadm
 use as `Authorization: Bearer skops_…` in Cursor and other MCP clients.
 Each user can create/revoke their own tokens; **superadmin** can manage tokens for all users.
 
+On co-located lab hosts (OpenClaw on the same machine), the MCP tokens page can
+**install a new PAT into `~/.openclaw/openclaw.json`** or **Rotate OpenClaw PAT**
+(one-click issue + apply + gateway restart). CLI equivalent:
+
+```bash
+bash admin-access/rotate-openclaw-mcp-pat.sh
+```
+
+See [docs/KEY-ROTATION.md](../docs/KEY-ROTATION.md).
+
 Each user may have an optional **Webex email** (`webex_email` column). ssh-ops maps
 Webex `personEmail` from adaptive-card button clicks to a claw-auth username. Set it in
 **Admin → Users** or via `set-webex-email`. Emails must be unique across users.
