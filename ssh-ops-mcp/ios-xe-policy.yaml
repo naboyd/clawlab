@@ -830,6 +830,7 @@ allow_groups:
     - (?i)^\s*shutdown\s*$
     - (?i)^\s*description\s+
     - (?i)^\s*security\s+
+    - (?i)^\s*no\s+security\s+
     - (?i)^\s*radio\s+
     - (?i)^\s*band-select\s+
     - (?i)^\s*client\s+vlan\s+
@@ -856,6 +857,7 @@ allow_groups:
     - (?i)^\s*shutdown\s*$
     - (?i)^\s*description\s+
     - (?i)^\s*security\s+
+    - (?i)^\s*no\s+security\s+
     - (?i)^\s*radio\s+
     - (?i)^\s*band-select\s+
     - (?i)^\s*client\s+vlan\s+

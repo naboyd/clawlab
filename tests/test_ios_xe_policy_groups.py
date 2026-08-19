@@ -132,6 +132,22 @@ class IosXePolicyGroupTests(unittest.TestCase):
         self.assertEqual(risk, "high")
         self.assertEqual(ios_xe_policy.get_group_access("wlan_create"), "approve")
 
+    def test_wlan_profile_allows_disable_dot1x(self) -> None:
+        lines = [
+            "wlan LazyOak 3 LazyOak",
+            " no security wpa akm dot1x",
+            " security wpa psk ascii 0 ExampleKey123",
+            " security wpa akm psk",
+            " no shutdown",
+        ]
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            lines,
+            group="wlan_profile",
+        )
+        self.assertFalse(errs, errs)
+        self.assertEqual(matched, "wlan_profile")
+        self.assertEqual(risk, "high")
+
 
 if __name__ == "__main__":
     unittest.main()
