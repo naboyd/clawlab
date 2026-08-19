@@ -24,17 +24,39 @@ mcp_proxy_resolve_tls() {
   fi
 }
 
+mcp_proxy_scheme() {
+  if mcp_proxy_resolve_tls >/dev/null; then
+    printf 'https'
+  else
+    printf 'http'
+  fi
+}
+
+# External clients (Cursor, Claude Desktop): portal domain + TLS when lego cert exists.
 mcp_proxy_public_url() {
   local bind="${1:-127.0.0.1}" port="${2:-8767}"
-  local domain scheme="http"
+  local domain scheme
   domain="$(mcp_proxy_portal_domain)"
-  if mcp_proxy_resolve_tls >/dev/null; then
-    scheme="https"
-  fi
+  scheme="$(mcp_proxy_scheme)"
   if [[ "$scheme" == "https" && -n "$domain" ]]; then
     printf '%s://%s:%s/mcp' "$scheme" "$domain" "$port"
   elif [[ "$bind" != "127.0.0.1" && "$bind" != "::1" ]]; then
     printf '%s://%s:%s/mcp' "$scheme" "$bind" "$port"
+  else
+    printf '%s://127.0.0.1:%s/mcp' "$scheme" "$port"
+  fi
+}
+
+# OpenClaw gateway on the same host as the proxy: use LAN bind (avoid DNS hairpin to public IP).
+mcp_proxy_gateway_url() {
+  local bind="${1:-127.0.0.1}" port="${2:-8767}"
+  local domain scheme
+  domain="$(mcp_proxy_portal_domain)"
+  scheme="$(mcp_proxy_scheme)"
+  if [[ "$bind" != "127.0.0.1" && "$bind" != "::1" ]]; then
+    printf '%s://%s:%s/mcp' "$scheme" "$bind" "$port"
+  elif [[ "$scheme" == "https" && -n "$domain" ]]; then
+    printf '%s://%s:%s/mcp' "$scheme" "$domain" "$port"
   else
     printf '%s://127.0.0.1:%s/mcp' "$scheme" "$port"
   fi

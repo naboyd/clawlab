@@ -55,6 +55,53 @@ mcp_load_ssh_ops_token() {
   printf 'Bearer %s' "$token"
 }
 
+# curl HTTP code only (avoid "000" + || echo 000 → "000000" on connect failure).
+mcp_curl_http_code() {
+  local url="$1" auth="${2:-}" body="${3:-{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"harness\",\"version\":\"1\"}}}}"
+  local -a hdr=(
+    -H 'Content-Type: application/json'
+    -H 'Accept: application/json, text/event-stream'
+  )
+  [[ -n "$auth" ]] && hdr=(-H "Authorization: $auth" "${hdr[@]}")
+  local code
+  code="$(curl -sk -m5 -o /dev/null -w '%{http_code}' -X POST "$url" "${hdr[@]}" -d "$body" 2>/dev/null || true)"
+  printf '%s' "${code:-000}"
+}
+
+mcp_portal_lan_ip() {
+  local cfg="${CLAW_PORTALS_CONFIG:-$HOME/.claw-portals/config.env}"
+  [[ -f "$cfg" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$cfg" 2>/dev/null || true
+  printf '%s' "${LAN_IP:-}"
+}
+
+# Pick a reachable MCP URL: openclaw.json entry, then LAN/loopback :8767, then :8766.
+mcp_resolve_mcp_url() {
+  local auth="${1:-}" primary="${2:-}"
+  local lan scheme="https" url code lan_url=""
+  primary="${primary:-$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['url'])" 2>/dev/null || true)}"
+  lan="$(mcp_portal_lan_ip)"
+  [[ "$primary" == http://* ]] && scheme=http
+  [[ -n "$lan" ]] && lan_url="${scheme}://${lan}:8767/mcp"
+
+  for url in \
+    "$primary" \
+    "${SSH_OPS_MCP_PROXY_URL:-}" \
+    "$lan_url" \
+    "${scheme}://127.0.0.1:8767/mcp" \
+    "${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"; do
+    [[ -n "$url" ]] || continue
+    code="$(mcp_curl_http_code "$url" "$auth")"
+    if [[ "$code" != "000" && "$code" != "502" && "$code" != "500" ]]; then
+      MCP_URL="$url"
+      return 0
+    fi
+  done
+  MCP_URL="${primary:-${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}}"
+  return 1
+}
+
 mcp_sync_openclaw_auth() {
   local auth="${1:-}"
   [[ -n "$auth" ]] || return 1
@@ -95,19 +142,7 @@ mcp_load_config() {
   else
     MCP_AUTH="$oc_auth"
   fi
-  MCP_URL=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['url'])" 2>/dev/null || true)
-  if [ -n "$MCP_URL" ] && echo "$MCP_URL" | grep -q ':8767'; then
-    local code
-    code=$(curl -sk -m3 -o /dev/null -w '%{http_code}' -X POST "$MCP_URL" \
-      -H "Authorization: $MCP_AUTH" \
-      -H 'Content-Type: application/json' \
-      -H 'Accept: application/json, text/event-stream' \
-      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness","version":"1"}}}' \
-      2>/dev/null || echo 000)
-    if [ "$code" = "000" ] || [ "$code" = "502" ] || [ "$code" = "500" ]; then
-      MCP_URL="${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"
-    fi
-  fi
+  mcp_resolve_mcp_url "$MCP_AUTH" || true
   if [ -z "$MCP_URL" ]; then
     MCP_URL="${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"
   fi
@@ -375,7 +410,8 @@ mcp_session_start() {
   mcp_http_headers "$user" "$role"
   code="$(curl -sS -m12 -D "$hf" -o "$body" -w '%{http_code}' -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness","version":"1"}}}' \
-    2>"${body}.err" || echo 000)"
+    2>"${body}.err" || true)"
+  code="${code:-000}"
   MCP_SESSION_ID="$(grep -i '^mcp-session-id:' "$hf" | awk '{print $2}' | tr -d '\r')"
   if [[ "$code" != "200" && "$code" != "202" ]]; then
     MCP_LAST_ERR="MCP initialize HTTP ${code} at ${MCP_URL}$(head -c 120 "${body}.err" 2>/dev/null | sed 's/^/ — /')"

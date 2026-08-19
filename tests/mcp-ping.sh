@@ -25,12 +25,9 @@ else
 fi
 
 step "2) TCP reachability"
-code="$(curl -sS -m5 -o /dev/null -w '%{http_code}' -X POST "$MCP_URL" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ping","version":"1"}}}' \
-  2>/dev/null || echo 000)"
-if [ "$code" = "000" ]; then
-  fail "cannot connect to $MCP_URL (is ssh-ops MCP up? bash install/local-full-ctl.sh status)"
+code="$(mcp_curl_http_code "$MCP_URL")"
+if [[ "$code" == "000" || "$code" == "502" || "$code" == "500" ]]; then
+  fail "cannot connect to $MCP_URL (is mcp-identity-proxy :8767 up? bash admin-access/configure-portal-mcp-auth.sh)"
 fi
 ok "HTTP $code on POST initialize (401 without auth is OK)"
 

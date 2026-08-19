@@ -101,7 +101,7 @@ if [[ -z "$PROXY_BIND" && -f "$OVERRIDE_DIR/clawlab.conf" ]]; then
     | head -1 | sed 's/^Environment=SSH_OPS_MCP_PROXY_HOST=//' || true)"
 fi
 PROXY_BIND="${PROXY_BIND:-127.0.0.1}"
-PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
+PROXY_URL="${SSH_OPS_MCP_GATEWAY_URL:-${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_gateway_url "$PROXY_BIND")}}"
 SSH_OPS_CONFIG="$DATA_DIR/hosts.yaml" \
 SSH_OPS_ENV="$DATA_DIR/.env" \
 SSH_OPS_KEYFILE="$DATA_DIR/master.key" \

@@ -48,7 +48,7 @@ install_clawlab_mcp_identity_extension || exit 1
 
 LAN_IP="${LAN_IP:-127.0.0.1}"
 PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-${SSH_OPS_MCP_PROXY_HOST:-$LAN_IP}}"
-PROXY_URL="${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_public_url "$PROXY_BIND")}"
+PROXY_URL="${SSH_OPS_MCP_GATEWAY_URL:-${SSH_OPS_MCP_PROXY_URL:-$(mcp_proxy_gateway_url "$PROXY_BIND")}}"
 
 "$VENV_PY" - <<PY
 import sys
