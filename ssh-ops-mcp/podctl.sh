@@ -11,8 +11,8 @@
 #   ./podctl.sh --logs          append combined container logs to the log file
 #   ./podctl.sh --follow        also stream combined logs live afterwards
 #
-# It manages ssh-ops-gui (:8765) and optionally ssh-ops-mcp (:8766) when
-# CLAWLAB_MANAGE_MCP=1 (local-full / lab stack).
+# It manages ssh-ops-gui (:8765) and ssh-ops-mcp (:8766) when CLAWLAB_MANAGE_MCP=1
+# or when a lab portal config is present (https-le / :8443).
 set -euo pipefail
 
 # ---- config (override via env, or edit) -----------------------------------
@@ -36,9 +36,20 @@ LOG_FILE="$LOG_DIR/pods.log"
 MCP_TLS_CERT_HOST="${SSH_OPS_MCP_TLS_CERT:-}"
 MCP_TLS_KEY_HOST="${SSH_OPS_MCP_TLS_KEY:-}"
 
+_mcp_should_manage() {
+  [[ "${CLAWLAB_MANAGE_MCP:-0}" == "1" ]] && return 0
+  [[ -f "$PORTAL_ENV" ]] || return 1
+  local tls port
+  tls="$(grep -E '^TLS_MODE=' "$PORTAL_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs || true)"
+  port="$(grep -E '^PORT_PORTAL=' "$PORTAL_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs || true)"
+  [[ "$tls" == "https-le" ]] && return 0
+  [[ -n "$port" && "$port" != "8083" ]] && return 0
+  return 1
+}
+
 # Long-running containers: "name|mode".
 MANAGED=( "ssh-ops-gui|gui" )
-if [[ "${CLAWLAB_MANAGE_MCP:-0}" == "1" ]]; then
+if _mcp_should_manage; then
   MANAGED+=( "ssh-ops-mcp|mcp" )
 fi
 
