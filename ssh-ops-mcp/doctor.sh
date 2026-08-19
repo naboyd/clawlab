@@ -82,6 +82,8 @@ echo "--- recent MCP errors ---"
 if command -v podman >/dev/null 2>&1 && podman container exists ssh-ops-mcp 2>/dev/null; then
   if podman logs --tail 30 ssh-ops-mcp 2>&1 | grep -q "Config not found at /data/hosts.yaml"; then
     err "MCP log shows missing /data/hosts.yaml — sync data dir (see above)"
+  elif podman logs --tail 30 ssh-ops-mcp 2>&1 | grep -q "No module named 'ios_config_archive'"; then
+    err "MCP image missing ios_config_archive.py — rebuild: podman build -t ssh-ops:latest $PWD && CLAWLAB_MANAGE_MCP=1 ./podctl.sh --recreate"
   else
     ok "no recent hosts.yaml FileNotFoundError in MCP logs"
   fi
