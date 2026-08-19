@@ -41,3 +41,4 @@ echo "MCP auth summary:"
 echo "  OpenClaw (recommended): portal hub → Open OpenClaw ↗ (includes clawBind for identity)"
 echo "  OpenClaw (bookmarks):   bash admin-access/set-openclaw-mcp-pat.sh  # skops_… PAT"
 echo "  Cursor / external:      portal hub → MCP tokens → Bearer skops_… on :8767/mcp"
+mcp_proxy_warn_local_hosts

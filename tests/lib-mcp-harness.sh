@@ -81,6 +81,10 @@ mcp_load_ssh_ops_token() {
 }
 
 # curl HTTP code only (avoid "000" + || echo 000 → "000000" on connect failure).
+mcp_curl_tls_k() {
+  [[ "${1:-}" == https://* ]] && printf '%s' '-k'
+}
+
 mcp_curl_http_code() {
   local url="$1" auth="${2:-}" body="${3:-{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"harness\",\"version\":\"1\"}}}}"
   local -a hdr=(
@@ -101,18 +105,27 @@ mcp_portal_lan_ip() {
   printf '%s' "${LAN_IP:-}"
 }
 
-# Pick a reachable MCP URL: openclaw.json entry, then LAN/loopback :8767, then :8766.
+mcp_portal_domain() {
+  local cfg="${CLAW_PORTALS_CONFIG:-$HOME/.claw-portals/config.env}"
+  [[ -f "$cfg" ]] || return 0
+  grep -E '^DOMAIN=' "$cfg" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs
+}
+
+# Pick a reachable MCP URL: openclaw.json, domain :8767 (TLS), LAN/loopback :8767, then :8766.
 mcp_resolve_mcp_url() {
   local auth="${1:-}" primary="${2:-}"
-  local lan scheme="https" url code lan_url=""
+  local lan domain scheme="https" url code lan_url="" domain_url=""
   primary="${primary:-$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))['mcp']['servers']['ssh-ops']['url'])" 2>/dev/null || true)}"
   lan="$(mcp_portal_lan_ip)"
+  domain="$(mcp_portal_domain)"
   [[ "$primary" == http://* ]] && scheme=http
   [[ -n "$lan" ]] && lan_url="${scheme}://${lan}:8767/mcp"
+  [[ -n "$domain" ]] && domain_url="${scheme}://${domain}:8767/mcp"
 
   for url in \
     "$primary" \
     "${SSH_OPS_MCP_PROXY_URL:-}" \
+    "$domain_url" \
     "$lan_url" \
     "${scheme}://127.0.0.1:8767/mcp" \
     "${SSH_OPS_MCP_URL:-http://127.0.0.1:8766/mcp}"; do
@@ -433,7 +446,7 @@ mcp_session_start() {
   hf="$(mktemp)"
   body="$(mktemp)"
   mcp_http_headers "$user" "$role"
-  code="$(curl -sS -m12 -D "$hf" -o "$body" -w '%{http_code}' -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
+  code="$(curl -sS -m12 $(mcp_curl_tls_k "$MCP_URL") -D "$hf" -o "$body" -w '%{http_code}' -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness","version":"1"}}}' \
     2>"${body}.err" || true)"
   code="${code:-000}"
@@ -449,7 +462,7 @@ mcp_session_start() {
     return 1
   fi
   mcp_http_headers "$user" "$role"
-  curl -sS -m10 -o /dev/null -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
+  curl -sS -m10 $(mcp_curl_tls_k "$MCP_URL") -o /dev/null -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" \
     -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
     2>/dev/null || true
   rm -f "$hf" "$body" "${body}.err"
@@ -465,7 +478,7 @@ mcp_tool_call() {
     || { MCP_LAST_ERR="invalid MCP tool args for $tool"; return 1; }
   body="$(mktemp)"
   mcp_http_headers "$user" "$role"
-  if ! curl -sS -m30 -o "$body" -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" -d "$payload" 2>"${body}.err"; then
+  if ! curl -sS -m30 $(mcp_curl_tls_k "$MCP_URL") -o "$body" -X POST "$MCP_URL" "${MCP_HTTP_HDR[@]}" -d "$payload" 2>"${body}.err"; then
     MCP_LAST_ERR="MCP tools/call curl failed for $tool ($(tr '\n' ' ' <"${body}.err" | head -c 120))"
     rm -f "$body" "${body}.err"
     return 1

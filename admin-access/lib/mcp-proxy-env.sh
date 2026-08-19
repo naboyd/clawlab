@@ -69,19 +69,56 @@ mcp_proxy_public_url() {
   fi
 }
 
-# OpenClaw gateway on the same host as the proxy: use LAN bind (avoid DNS hairpin to public IP).
+# OpenClaw gateway on the same host: portal domain when TLS (cert SAN matches).
+# Pair with ensure-mcp-local-hosts.sh so the domain resolves to LAN_IP locally.
 mcp_proxy_gateway_url() {
   local bind="${1:-127.0.0.1}" port="${2:-8767}"
   local domain scheme
   domain="$(mcp_proxy_portal_domain)"
   scheme="$(mcp_proxy_scheme)"
-  if [[ "$bind" != "127.0.0.1" && "$bind" != "::1" ]]; then
-    printf '%s://%s:%s/mcp' "$scheme" "$bind" "$port"
-  elif [[ "$scheme" == "https" && -n "$domain" ]]; then
+  if [[ "$scheme" == "https" && -n "$domain" ]]; then
     printf '%s://%s:%s/mcp' "$scheme" "$domain" "$port"
+  elif [[ "$bind" != "127.0.0.1" && "$bind" != "::1" ]]; then
+    printf '%s://%s:%s/mcp' "$scheme" "$bind" "$port"
   else
     printf '%s://127.0.0.1:%s/mcp' "$scheme" "$port"
   fi
+}
+
+# Warn when co-located clients need /etc/hosts for domain -> LAN_IP (TLS + no hairpin).
+mcp_proxy_local_hosts_ok() {
+  local portal_env="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+  local domain lan_ip resolved
+  [[ -f "$portal_env" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$portal_env" 2>/dev/null || true
+  domain="${DOMAIN:-}"
+  lan_ip="${LAN_IP:-}"
+  [[ -n "$domain" && -n "$lan_ip" ]] || return 0
+  mcp_proxy_resolve_tls >/dev/null || return 0
+  resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk 'NR==1{print $1; exit}' || true)"
+  [[ "$resolved" == "$lan_ip" ]]
+}
+
+mcp_proxy_warn_local_hosts() {
+  local portal_env="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+  local domain lan_ip resolved
+  [[ -f "$portal_env" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$portal_env" 2>/dev/null || true
+  domain="${DOMAIN:-}"
+  lan_ip="${LAN_IP:-}"
+  [[ -n "$domain" && -n "$lan_ip" ]] || return 0
+  mcp_proxy_resolve_tls >/dev/null || return 0
+  if mcp_proxy_local_hosts_ok; then
+    return 0
+  fi
+  resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk 'NR==1{print $1; exit}' || true)"
+  echo ">> Co-located MCP: ${domain} should resolve to ${lan_ip} (lego TLS + avoid hairpin)"
+  if [[ -n "$resolved" && "$resolved" != "$lan_ip" ]]; then
+    echo ">> Now: ${domain} -> ${resolved} (expected ${lan_ip})"
+  fi
+  echo ">> Fix: bash admin-access/ensure-mcp-local-hosts.sh"
 }
 
 # Write ~/.config/systemd/user/mcp-identity-proxy.service.d/clawlab.conf
