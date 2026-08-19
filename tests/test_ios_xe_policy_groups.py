@@ -113,6 +113,25 @@ class IosXePolicyGroupTests(unittest.TestCase):
         self.assertEqual(risk, "medium")
         self.assertEqual(ios_xe_policy.get_group_access("ip_helpers"), "approve")
 
+    def test_wlan_create_validates(self) -> None:
+        lines = [
+            "wlan lab-wlan 10 LabSSID",
+            " no shutdown",
+            "wireless profile policy lab-wlan-policy",
+            " vlan 100",
+            " no shutdown",
+            "wireless tag policy default-policy-tag",
+            " wlan lab-wlan policy lab-wlan-policy",
+        ]
+        risk, errs, _warns, matched = ios_xe_policy.validate_config_lines(
+            lines,
+            group="wlan_create",
+        )
+        self.assertFalse(errs, errs)
+        self.assertEqual(matched, "wlan_create")
+        self.assertEqual(risk, "high")
+        self.assertEqual(ios_xe_policy.get_group_access("wlan_create"), "approve")
+
 
 if __name__ == "__main__":
     unittest.main()

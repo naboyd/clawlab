@@ -40,6 +40,7 @@ GROUP_CATEGORIES = [
     {"id": "system", "label": "System Management (Part XII, ch. 13)"},
     {"id": "multicast", "label": "Multicast (Part V, ch. 6)"},
     {"id": "fabric", "label": "SD-Access / TrustSec / Stacking"},
+    {"id": "wireless", "label": "Wireless / WLAN (Catalyst 9800)"},
 ]
 
 ALWAYS_BLOCK = [

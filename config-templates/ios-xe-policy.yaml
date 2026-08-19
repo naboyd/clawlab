@@ -170,6 +170,8 @@ group_categories:
   label: Multicast (Part V, ch. 6)
 - id: fabric
   label: SD-Access / TrustSec / Stacking
+- id: wireless
+  label: Wireless / WLAN (Catalyst 9800)
 allow_groups:
   vlan:
     category: vlan
@@ -815,4 +817,46 @@ allow_groups:
     - (?i)^switch\s+\d+\s+
     - (?i)^stackwise-virtual\b
     - (?i)^hw-module\s+switch\s+\d+\s+
+  wlan_create:
+    category: wireless
+    description: Create WLAN profile, wireless policy profile, and policy tag mapping
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^wlan\s+\S+(?:\s+\d+(?:\s+\S+)?)?
+    - (?i)^\s*ssid\s+\S+
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*description\s+
+    - (?i)^\s*security\s+
+    - (?i)^\s*radio\s+
+    - (?i)^\s*band-select\s+
+    - (?i)^\s*client\s+vlan\s+
+    - (?i)^wireless profile policy\s+\S+
+    - (?i)^\s*vlan\s+\S+
+    - (?i)^\s*no\s+central\s+switching\s*$
+    - (?i)^\s*central\s+switching\s*$
+    - (?i)^\s*ipv4\s+dhcp\s+
+    - (?i)^\s*ipv6\s+dhcp\s+
+    - (?i)^\s*accounting-list\s+
+    - (?i)^\s*idle-timeout\s+
+    - (?i)^wireless tag policy\s+\S+
+    - (?i)^\s*wlan\s+\S+\s+policy\s+\S+
+  wlan_profile:
+    category: wireless
+    description: WLAN profile only (SSID, security, enable)
+    access: approve
+    risk: high
+    defenseclaw_alert: true
+    patterns:
+    - (?i)^wlan\s+\S+(?:\s+\d+(?:\s+\S+)?)?
+    - (?i)^\s*ssid\s+\S+
+    - (?i)^\s*no\s+shutdown\s*$
+    - (?i)^\s*shutdown\s*$
+    - (?i)^\s*description\s+
+    - (?i)^\s*security\s+
+    - (?i)^\s*radio\s+
+    - (?i)^\s*band-select\s+
+    - (?i)^\s*client\s+vlan\s+
   static_route: *id001
