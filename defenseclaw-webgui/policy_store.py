@@ -436,19 +436,31 @@ def ios_xe_policy_path() -> Path:
 
 def ios_xe_policy_merge_path() -> Path:
     """Policy file used when merging into DefenseClaw (prefer live MCP runtime copy)."""
-    runtime = Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml"
-    if runtime.is_file():
-        return runtime
+    for path in _ssh_ops_runtime_policy_paths():
+        if path.is_file():
+            return path
     return ios_xe_policy_path()
+
+
+def _ssh_ops_runtime_policy_paths() -> list[Path]:
+    env_data = os.environ.get("SSH_OPS_DATA", "").strip()
+    candidates: list[Path] = []
+    if env_data:
+        candidates.append(Path(env_data).expanduser() / "ios-xe-policy.yaml")
+    candidates.extend([
+        Path.home() / ".clawlab" / "ssh-ops" / "data" / "ios-xe-policy.yaml",
+        Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml",
+    ])
+    return candidates
 
 
 def ios_xe_policy_mirror_paths() -> list[Path]:
     """Additional locations updated when saving from the DefenseClaw admin UI."""
     repo = clawlab_repo()
     mirrors = [repo / "ssh-ops-mcp" / "ios-xe-policy.yaml"]
-    runtime = Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml"
-    if runtime.parent.is_dir():
-        mirrors.append(runtime)
+    for path in _ssh_ops_runtime_policy_paths():
+        if path.parent.is_dir():
+            mirrors.append(path)
     return mirrors
 
 

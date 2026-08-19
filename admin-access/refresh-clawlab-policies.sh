@@ -2,7 +2,7 @@
 # Refresh Clawlab policy YAML from the repo and reload dependent services.
 #
 # Use after git pull when policy templates changed, or when runtime copies under
-# ~/.ssh_ops_mcp/data/ are stale (e.g. ssh-ops Policy tab shows too few groups).
+# ~/.clawlab/ssh-ops/data/ (lab portal) or legacy ~/.ssh_ops_mcp/data/ may be stale.
 #
 # Usage:
 #   bash admin-access/refresh-clawlab-policies.sh

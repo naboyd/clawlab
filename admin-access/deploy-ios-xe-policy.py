@@ -43,10 +43,32 @@ def _write(path: Path, data: dict) -> None:
         pass
 
 
+def _ssh_ops_data_policy_paths() -> list[Path]:
+    """Runtime ios-xe-policy.yaml locations (lab portal uses ~/.clawlab/ssh-ops/data)."""
+    dirs: list[Path] = []
+    env_data = os.environ.get("SSH_OPS_DATA", "").strip()
+    if env_data:
+        dirs.append(Path(env_data).expanduser())
+    dirs.extend([
+        Path.home() / ".clawlab" / "ssh-ops" / "data",
+        Path.home() / "ssh_ops_mcp" / "data",  # legacy Mac / older installs
+    ])
+    seen: set[Path] = set()
+    out: list[Path] = []
+    for data_dir in dirs:
+        path = (data_dir / "ios-xe-policy.yaml").expanduser()
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        out.append(path)
+    return out
+
+
 def deploy_targets() -> list[Path]:
     paths = [
         REPO / "ssh-ops-mcp" / "ios-xe-policy.yaml",
-        Path.home() / "ssh_ops_mcp" / "data" / "ios-xe-policy.yaml",
+        *_ssh_ops_data_policy_paths(),
     ]
     for key in ("IOS_XE_POLICY_PATH", "SSH_OPS_IOS_XE_POLICY"):
         env = os.environ.get(key, "").strip()
