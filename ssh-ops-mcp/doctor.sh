@@ -67,11 +67,17 @@ if curl -fsS "http://127.0.0.1:8765/healthz" >/dev/null 2>&1; then
 else
   err "GUI healthz http://127.0.0.1:8765/healthz"
 fi
-if curl -fsS "http://127.0.0.1:8766/" >/dev/null 2>&1; then
-  ok "MCP listener :8766"
-elif podman ps --filter "name=^ssh-ops-mcp$" --format '{{.Status}}' 2>/dev/null | grep -qE 'Up ([2-9]|[1-9][0-9]+) (minute|hour|day)'; then
+if python3 -c "import socket; s=socket.socket(); s.settimeout(0.4); s.connect(('127.0.0.1',8766)); s.close()" 2>/dev/null; then
+  ok "MCP listener :8766 (TCP)"
+elif curl -fsSk "https://127.0.0.1:8766/mcp" -o /dev/null -w '' -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"doctor","version":"1"}}}' \
+  2>/dev/null; then
+  ok "MCP HTTPS :8766/mcp"
+elif podman ps --filter "name=^ssh-ops-mcp$" --format '{{.Status}}' 2>/dev/null | grep -qE 'Up ([0-9]+ minute|About a minute|[2-9]|[1-9][0-9]+ (minute|hour|day))'; then
   ok "MCP container stable (streamable-http may not answer GET /)"
-elif podman logs --tail 20 ssh-ops-mcp 2>/dev/null | grep -qE 'Uvicorn running|Application startup complete'; then
+elif podman logs ssh-ops-mcp 2>/dev/null | grep -qE 'Uvicorn running|Application startup complete'; then
   ok "MCP process started (see podman logs ssh-ops-mcp)"
 else
   err "MCP not healthy on :8766 — check: podman logs ssh-ops-mcp"
