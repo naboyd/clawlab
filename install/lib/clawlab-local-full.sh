@@ -24,8 +24,21 @@ clawlab_sed_inplace() {
   fi
 }
 
-clawlab_local_full_supported() {
-  [[ "$CLAWLAB_PLATFORM" == "macos" || "$CLAWLAB_PLATFORM" == "linux" ]]
+clawlab_lab_portal_active() {
+  local cfg="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
+  [[ -f "$cfg" ]] || return 1
+  local port tls
+  port="$(grep -E '^PORT_PORTAL=' "$cfg" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs || true)"
+  tls="$(grep -E '^TLS_MODE=' "$cfg" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" | xargs || true)"
+  [[ "$tls" == "https-le" ]] && return 0
+  [[ -n "$port" && "$port" != "${LOCAL_FULL_PORT:-8083}" ]]
+}
+
+clawlab_lab_portal_warn_local_full() {
+  clawlab_lab_portal_active || return 0
+  local port="${PORT_PORTAL:-8443}"
+  warn "This host uses install-portals lab stack (:${port}), not local-full (:${LOCAL_FULL_PORT:-8083})."
+  warn "Prefer: systemctl --user restart claw-auth · ~/clawlab/ssh-ops-mcp/podctl.sh --recreate"
 }
 
 clawlab_local_full_write_config() {

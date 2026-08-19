@@ -178,6 +178,10 @@ MIME
 }
 
 start_claw_auth() {
+  if port_open 8780; then
+    info "claw-auth already listening on :8780 (systemd or prior instance)"
+    return 0
+  fi
   load_portal_env
   local -a extra_env=()
   if [[ -f "$HOME/.openclaw/.env" ]]; then
@@ -322,6 +326,7 @@ start_aux_services() {
 
 cmd_start() {
   log "Starting local-full stack"
+  clawlab_lab_portal_warn_local_full
   clawlab_local_full_ensure_hosts_inventory "$REPO"
   start_claw_auth
   start_defenseclaw_webgui
@@ -345,8 +350,12 @@ cmd_stop() {
   stop_bg dc-webex-bridge
   stop_openclaw_gateway
   if command -v podman >/dev/null 2>&1; then
-    podman rm -f ssh-ops-gui ssh-ops-mcp 2>/dev/null || true
-    info "stopped ssh-ops podman containers"
+    if clawlab_lab_portal_active; then
+      info "skipping podman rm (lab portal stack — use podctl.sh --recreate)"
+    else
+      podman rm -f ssh-ops-gui ssh-ops-mcp 2>/dev/null || true
+      info "stopped ssh-ops podman containers"
+    fi
   fi
 }
 

@@ -93,7 +93,10 @@ if isinstance(d,dict):
       ok "Podman direct SSH to Mac OK"
     else
       printf '  podman ssh: %s\n' "$(printf '%s' "$pod_err" | head -1)"
-      warn "run: bash install/local-full-ctl.sh restart  (authorized_keys + mac-local key_path)"
+      warn "run: bash install/local-full-ctl.sh restart  (Mac local-full: authorized_keys + mac-local key_path)"
+      if [[ -f "${HOME}/.claw-portals/config.env" ]] && grep -qE '^TLS_MODE=https-le' "${HOME}/.claw-portals/config.env" 2>/dev/null; then
+        warn "lab portal: step 5 mac-local probe is optional — use podctl.sh --recreate for container SSH keys"
+      fi
     fi
   fi
 fi
