@@ -25,6 +25,11 @@ if [[ "${TLS_MODE:-}" == "http" ]]; then
   PORT_PORTAL="${PORT_PORTAL:-8083}"
 fi
 
+if [[ -f "$REPO/admin-access/install-ssh-ops-mcp-quadlet.sh" ]] \
+  && command -v podman >/dev/null 2>&1; then
+  bash "$REPO/admin-access/install-ssh-ops-mcp-quadlet.sh"
+fi
+
 SSH_OPS_MCP_PROXY_BIND="${SSH_OPS_MCP_PROXY_BIND:-$LAN_IP}" \
 SSH_OPS_DATA="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}" \
   bash "$REPO/admin-access/configure-openclaw-mcp-identity.sh"

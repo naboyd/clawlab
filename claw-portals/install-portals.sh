@@ -593,4 +593,5 @@ MCP authentication (identity proxy :8767):
   OpenClaw: open from hub ↗ (clawBind) — or PAT: bash $REPO/admin-access/set-openclaw-mcp-pat.sh
   Cursor / external clients: hub → MCP tokens → Bearer skops_… at $(scheme_for_mode)://${DOMAIN}:8767/mcp
   Re-sync after changes: bash $REPO/admin-access/configure-portal-mcp-auth.sh
+  Refresh MCP quadlet only: bash $REPO/admin-access/install-ssh-ops-mcp-quadlet.sh
 EOF

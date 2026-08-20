@@ -190,6 +190,18 @@ else
 fi
 check_port ssh-ops-gui 8765
 check_port ssh-ops-mcp 8766
+quadlet="${HOME}/.config/containers/systemd/ssh-ops-mcp.container"
+if [[ -f "$quadlet" ]]; then
+  pub="$(grep -E '^PublishPort=' "$quadlet" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  if [[ "$pub" == *"192.168.1.10"* && "${LAN_IP:-}" != "192.168.1.10" ]]; then
+    bad "ssh-ops-mcp quadlet still uses example IP 192.168.1.10 (PublishPort=$pub)"
+    if [[ "$QUIET" -eq 0 ]]; then
+      echo "       fix: bash $REPO/admin-access/install-ssh-ops-mcp-quadlet.sh"
+    fi
+  elif [[ -n "$pub" ]]; then
+    ok "ssh-ops-mcp quadlet PublishPort=$pub"
+  fi
+fi
 if ! check_mcp_proxy_port mcp-identity-proxy 8767; then
   if [[ "$QUIET" -eq 0 ]]; then
     echo "       recent mcp-identity-proxy journal:"

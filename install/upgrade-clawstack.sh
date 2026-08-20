@@ -210,8 +210,16 @@ fi
 if [[ "$REBUILD_MCP" -eq 1 ]] && command -v podman >/dev/null 2>&1 \
   && [[ -x "$REPO/ssh-ops-mcp/podctl.sh" ]]; then
   log "Rebuilding ssh-ops Podman image"
-  CLAWLAB_MANAGE_MCP=1 SSH_OPS_DIR="$REPO/ssh-ops-mcp" bash "$REPO/ssh-ops-mcp/podctl.sh" --build --recreate \
-    || warn "ssh-ops podman rebuild failed"
+  if [[ -f "$HOME/.claw-portals/config.env" ]] \
+    && [[ -x "$REPO/admin-access/install-ssh-ops-mcp-quadlet.sh" ]]; then
+    podman build -t ssh-ops:latest "$REPO/ssh-ops-mcp" \
+      || warn "ssh-ops podman build failed"
+    bash "$REPO/admin-access/install-ssh-ops-mcp-quadlet.sh" \
+      || warn "ssh-ops-mcp quadlet refresh failed"
+  else
+    CLAWLAB_MANAGE_MCP=1 SSH_OPS_DIR="$REPO/ssh-ops-mcp" bash "$REPO/ssh-ops-mcp/podctl.sh" --build --recreate \
+      || warn "ssh-ops podman rebuild failed"
+  fi
   CHANGED=1
 fi
 

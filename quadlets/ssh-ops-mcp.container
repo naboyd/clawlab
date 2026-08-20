@@ -1,3 +1,13 @@
+# systemd Quadlet — ssh-ops MCP (streamable-http on :8766, internal upstream).
+#
+# Do NOT edit ~/.config/containers/systemd/ssh-ops-mcp.container by hand.
+# Install/render from portal config:
+#   bash admin-access/install-ssh-ops-mcp-quadlet.sh
+#
+# Clients use the identity proxy on :8767, not raw :8766.
+# Placeholders @MCP_PUBLISH@, @SSH_OPS_DATA_REL@, @MCP_TLS_LINES@ are
+# substituted by the install script from ~/.claw-portals/config.env.
+
 [Unit]
 Description=ssh-ops MCP server (streamable-http)
 After=network-online.target
@@ -8,8 +18,8 @@ Image=localhost/ssh-ops:latest
 Exec=mcp
 Environment=SSH_OPS_MCP_TRANSPORT=streamable-http
 Environment=SSH_OPS_MCP_PORT=8766
-PublishPort=192.168.1.10:8766:8766
-Volume=%h/ssh_ops_mcp/data:/data:Z
+PublishPort=@MCP_PUBLISH@
+Volume=%h/@SSH_OPS_DATA_REL@:/data:Z
 Volume=%h/.ssh:/root/.ssh:ro,Z
 Volume=%h/.claw-auth/users.db:/claw-auth/users.db:ro,Z
 Volume=%h/.defenseclaw:/defenseclaw:ro,Z
@@ -17,10 +27,7 @@ EnvironmentFile=%h/.claw-portals/config.env
 Environment=CLAW_AUTH_DB=/claw-auth/users.db
 Environment=DEFENSECLAW_HOME=/defenseclaw
 Environment=SSH_OPS_RBAC=1
-
-Volume=%h/mcp/acme/lego/certificates:/certs:ro,Z
-Environment=SSH_OPS_MCP_TLS_CERT=/certs/lab.example.com.crt
-Environment=SSH_OPS_MCP_TLS_KEY=/certs/lab.example.com.key
+@MCP_TLS_LINES@
 
 [Service]
 Restart=always
