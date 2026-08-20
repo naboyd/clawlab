@@ -2,13 +2,16 @@
 
 | File | Switch | Purpose |
 |------|--------|---------|
-| `9300-24-Office-mdt-test.conf` | 9300-24-Office | CPU, memory, interface MDT test |
+| `9300-24-Office-mdt-test.conf` | 9300-24-Office | CPU, memory, interface MDT test (601–603) |
 | `9300-24-Office-mdt-test-rollback.conf` | same | Remove subscriptions 601–603 |
+| `9300-24-Office-mdt-phase2.conf` | same | Platform, env, PoE, LLDP, STP (604–608); tune 603 → 30s |
+| `9300-24-Office-mdt-phase2-rollback.conf` | same | Remove subscriptions 604–608 |
 
 ## Generate (custom collector IP / VRF)
 
 ```bash
 bash iosxe-telemetry/scripts/gen-mdt-test-config.sh --host 9300-24-Office
+bash iosxe-telemetry/scripts/gen-mdt-phase2-config.sh --host 9300-24-Office
 ```
 
 Environment overrides:
@@ -65,7 +68,12 @@ Then Grafana → Telemetry tab → Explore → bucket `iosxe_telemetry`.
 |----|-------|------|
 | 601 | `.../cpu-utilization/five-seconds` | CPU |
 | 602 | `.../memory-statistic` | Memory |
-| 603 | `.../interfaces/interface` | Interface counters |
+| 603 | `.../interfaces/interface` | Interface counters (phase 2: 30s) |
+| 604 | `.../components/component` | Platform hardware |
+| 605 | `.../environment-sensor` | Temps / power sensors |
+| 606 | `.../poe-port-detail` | PoE per port |
+| 607 | `.../lldp-nbr` | LLDP neighbors |
+| 608 | `.../spanning-tree-oper-data` | STP state |
 
 ## Rollback
 

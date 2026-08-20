@@ -393,9 +393,12 @@ write_unified_portal_nginx() {
     echo "    }"
     echo
     echo "    # IOS-XE telemetry Grafana (Podman :3000 on ${LAN_IP})"
+    echo "    # Preserve /grafana/ in the upstream URI — GF_SERVER_SERVE_FROM_SUB_PATH=true"
+    echo "    # requires it. Trailing slash on proxy_pass strips the prefix and causes"
+    echo "    # redirect loops (browser: too many redirects)."
     echo "    location /grafana/ {"
     if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
-    echo "        proxy_pass http://${LAN_IP}:3000/;"
+    echo "        proxy_pass http://${LAN_IP}:3000;"
     nginx_proxy_common
     echo "    }"
     echo
