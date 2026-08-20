@@ -49,6 +49,8 @@ telemetry ietf subscription 1
 
 See Cisco [IOS-XE MDT documentation](https://www.cisco.com/c/en/us/td/docs/switches/lan/c9000/prog/mdt/model-driven-telemetry.html).
 
+**Ready-made lab config:** `config/switches/9300-24-Office-mdt-test.conf` (→ icecream Telegraf `192.168.128.93:57000`). See [config/switches/README.md](config/switches/README.md).
+
 ## Operations
 
 ```bash
