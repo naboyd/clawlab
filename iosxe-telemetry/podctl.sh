@@ -108,8 +108,10 @@ start_telegraf() {
     --network "$NETWORK" \
     -p "$TELEMETRY_MDT_PUBLISH" \
     --env-file "$ENV_FILE" \
+    --user 0:0 \
+    --entrypoint /usr/bin/telegraf \
     -v "$conf:/etc/telegraf/telegraf.conf:ro,Z" \
-    "$TELEGRAF_IMAGE" >/dev/null
+    "$TELEGRAF_IMAGE" --config /etc/telegraf/telegraf.conf >/dev/null
   say "started $TELEGRAF_NAME (MDT publish $TELEMETRY_MDT_PUBLISH)"
 }
 

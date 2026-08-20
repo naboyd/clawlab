@@ -46,8 +46,13 @@ if command -v influx >/dev/null 2>&1 && [[ -n "${INFLUX_TOKEN:-}" ]]; then
 fi
 
 step "4) Grafana"
-gcode="$(curl -sS -m5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health 2>/dev/null || echo 000)"
-[[ "$gcode" == "200" ]] || fail "Grafana /api/health HTTP $gcode"
+gcode="000"
+for i in 1 2 3 4 5 6; do
+  gcode="$(curl -sS -m5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health 2>/dev/null || echo 000)"
+  [[ "$gcode" == "200" ]] && break
+  sleep 2
+done
+[[ "$gcode" == "200" ]] || fail "Grafana /api/health HTTP $gcode (podman logs iosxe-grafana)"
 ok "Grafana healthy"
 
 step "5) Telegraf MDT port"

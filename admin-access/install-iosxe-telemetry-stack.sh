@@ -36,6 +36,7 @@ PY
 }
 
 mkdir -p "$DATA_ROOT/telegraf" "$DATA_ROOT/grafana/provisioning/datasources" \
+  "$DATA_ROOT/grafana/provisioning/dashboards" \
   "$DATA_ROOT/influx/data" "$DATA_ROOT/influx/config" "$DATA_ROOT/grafana/data"
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -109,7 +110,7 @@ repo, root, token = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
 src = repo / "iosxe-telemetry/config/grafana/provisioning/datasources/influx.yaml.template"
 dst = root / "grafana/provisioning/datasources/influx.yaml"
 dst.write_text(src.read_text().replace("@INFLUX_TOKEN@", token))
-dst.chmod(0o600)
+dst.chmod(0o644)
 PY
 
 chmod +x "$REPO/iosxe-telemetry/podctl.sh"
