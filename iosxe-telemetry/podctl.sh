@@ -120,7 +120,9 @@ start_telegraf() {
 
 start_grafana() {
   local prov="$DATA_ROOT/grafana/provisioning"
+  local dashboards="$DATA_ROOT/grafana/dashboards"
   [[ -d "$prov" ]] || die "missing $prov — re-run install-iosxe-telemetry-stack.sh"
+  [[ -d "$dashboards" ]] || die "missing $dashboards — re-run install-iosxe-telemetry-stack.sh"
 
   podman rm -f "$GRAFANA_NAME" >/dev/null 2>&1 || true
   mkdir -p "$DATA_ROOT/grafana/data"
@@ -136,6 +138,7 @@ start_grafana() {
     -e GF_SECURITY_ALLOW_EMBEDDING=true \
     -v "$DATA_ROOT/grafana/data:/var/lib/grafana:Z" \
     -v "$prov:/etc/grafana/provisioning:ro,Z" \
+    -v "$dashboards:/etc/grafana/dashboards:ro,Z" \
     "$GRAFANA_IMAGE" >/dev/null
   say "started $GRAFANA_NAME (${GRAFANA_ROOT_URL} publish ${TELEMETRY_GRAFANA_PUBLISH})"
 }

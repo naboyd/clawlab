@@ -2,6 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: InfluxDB
+    uid: influxdb-iosxe
     type: influxdb
     access: proxy
     url: http://iosxe-influxdb:8086

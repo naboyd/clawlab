@@ -113,6 +113,15 @@ dst.write_text(src.read_text().replace("@INFLUX_TOKEN@", token))
 dst.chmod(0o644)
 PY
 
+say "Installing Grafana dashboards"
+mkdir -p "$DATA_ROOT/grafana/dashboards"
+cp "$REPO/iosxe-telemetry/config/grafana/provisioning/dashboards/default.yaml" \
+  "$DATA_ROOT/grafana/provisioning/dashboards/default.yaml"
+cp "$REPO/iosxe-telemetry/config/grafana/dashboards/"*.json \
+  "$DATA_ROOT/grafana/dashboards/"
+chmod 644 "$DATA_ROOT/grafana/provisioning/dashboards/default.yaml" \
+  "$DATA_ROOT/grafana/dashboards/"*.json
+
 chmod +x "$REPO/iosxe-telemetry/podctl.sh"
 
 bash "$REPO/admin-access/install-clawlab-skills.sh" >/dev/null 2>&1 || true

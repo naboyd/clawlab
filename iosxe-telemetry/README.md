@@ -81,6 +81,25 @@ influx query 'from(bucket:"iosxe_telemetry") |> range(start: -1h) |> limit(n:5)'
   --host http://127.0.0.1:8086 --org clawlab --token "$INFLUX_TOKEN"
 ```
 
+## Grafana dashboard
+
+Provisioned dashboard **IOS-XE MDT — Catalyst Office** (subs 601–608):
+
+| Section | Metrics |
+|---------|---------|
+| Overview | CPU %, memory %, total PoE, LLDP neighbor count |
+| CPU & memory | Time series |
+| Environment | Temperature sensors |
+| Interfaces | Throughput & errors (variable `$interface`) |
+| PoE | Power per port |
+| LLDP & STP | Neighbor table, topology changes |
+
+```bash
+bash admin-access/sync-iosxe-telemetry-grafana-dashboards.sh
+```
+
+Opens under folder **IOS-XE Telemetry** in the portal Grafana UI.
+
 ## Next phases (not in this package yet)
 
 - OpenClaw **Grafana MCP** (`grafana/mcp-grafana`) for agent queries

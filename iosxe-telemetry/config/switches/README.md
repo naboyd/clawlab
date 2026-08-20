@@ -63,6 +63,12 @@ bash tests/iosxe-telemetry-ping.sh
 
 Then Grafana → Telemetry tab → Explore → bucket `iosxe_telemetry`.
 
+**Dashboard:** After install, open Grafana → folder **IOS-XE Telemetry** → **IOS-XE MDT — Catalyst Office**. Sync updates with:
+
+```bash
+bash admin-access/sync-iosxe-telemetry-grafana-dashboards.sh
+```
+
 ## Subscriptions
 
 | ID | XPath | Data |
