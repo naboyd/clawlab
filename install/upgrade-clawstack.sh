@@ -223,6 +223,14 @@ if [[ "$REBUILD_MCP" -eq 1 ]] && command -v podman >/dev/null 2>&1 \
   CHANGED=1
 fi
 
+if [[ -f "$HOME/.claw-portals/config.env" ]] \
+  && [[ -x "$REPO/admin-access/heal-clawlab-stack.sh" ]]; then
+  log "Healing lab stack (extensions, MCP quadlet, services)"
+  bash "$REPO/admin-access/heal-clawlab-stack.sh" --fix --quiet \
+    || warn "heal-clawlab-stack reported issues"
+  CHANGED=1
+fi
+
 # --- service restarts ---
 if [[ "$NEED_DC_RESTART" -eq 1 ]] && command -v defenseclaw-gateway >/dev/null 2>&1; then
   log "Restarting DefenseClaw gateway (rules or binary changed)"

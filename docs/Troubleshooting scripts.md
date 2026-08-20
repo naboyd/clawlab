@@ -223,6 +223,24 @@ CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --status
 CLAWLAB_MANAGE_MCP=1 bash ssh-ops-mcp/podctl.sh --build --recreate
 ```
 
+### `admin-access/heal-clawlab-stack.sh`
+
+Post-install / on-demand repair for common lab breakages (502 on `/openclaw/`, MCP bind failures, incomplete DefenseClaw extension).
+
+| Flag | Description |
+|------|-------------|
+| *(none)* | Report issues only |
+| `--fix` | Restore extensions, refresh MCP quadlet, restart failed units |
+| `--quiet` | Less output |
+
+```bash
+bash admin-access/heal-clawlab-stack.sh
+bash admin-access/heal-clawlab-stack.sh --fix
+bash install/verify-lab-portal.sh
+```
+
+Runs automatically at the end of `install-linux-lab.sh`, `configure-portal-mcp-auth.sh`, and `install-clawstack.sh` (non-local-full).
+
 ---
 
 ## Demos & policy tests

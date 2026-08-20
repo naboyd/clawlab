@@ -360,6 +360,34 @@ Hosts tagged `no_config_archive` are skipped; `config_archive` forces inclusion.
 
 **Scheduler:** systemd user timer on Linux; LaunchAgent on macOS (~04:00 local).
 
+---
+
+## Cisco ThousandEyes MCP (optional)
+
+OpenClaw can call Cisco's **hosted** ThousandEyes MCP for tests, alerts, events, and
+outages. This is separate from ssh-ops — no lab container; the gateway uses your
+ThousandEyes API token against `https://api.thousandeyes.com/mcp`.
+
+**Setup** (once per lab host):
+
+```bash
+cd ~/clawlab
+bash admin-access/configure-openclaw-thousandeyes-mcp.sh
+systemctl --user restart openclaw-gateway
+```
+
+Create the token in ThousandEyes with **API Access** permission. Secrets live in
+`~/.clawlab/thousandeyes/env` (not git). The **`thousandeyes`** skill is linked
+automatically by `install-clawlab-skills.sh`.
+
+| Item | Location |
+|------|----------|
+| Docs | [thousandeyes-mcp/README.md](../thousandeyes-mcp/README.md) |
+| Skill | `skills/thousandeyes/SKILL.md` |
+| Rotate token | `bash admin-access/rotate-openclaw-thousandeyes-token.sh` |
+
+Interactive installs can enable this via `install-clawstack.sh` (prompt after extras).
+
 > **Repo path:** Your clone is at **`~/AI/clawlab`** (there is no `~/clawlab` on this Mac).
 > Run all commands from that directory. Do not paste comment lines starting with `#`.
 

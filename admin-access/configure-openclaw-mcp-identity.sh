@@ -5,6 +5,8 @@ set -Eeuo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/mcp-proxy-env.sh
 source "$REPO/admin-access/lib/mcp-proxy-env.sh"
+# shellcheck source=lib/ensure-openclaw-extensions.sh
+source "$REPO/admin-access/lib/ensure-openclaw-extensions.sh"
 
 PORTAL_ENV="${CLAW_PORTAL_ENV:-$HOME/.claw-portals/config.env}"
 if [[ -f "$PORTAL_ENV" ]]; then
@@ -45,6 +47,8 @@ install_clawlab_mcp_identity_extension() {
 }
 
 install_clawlab_mcp_identity_extension || exit 1
+
+ensure_openclaw_extensions || exit 1
 
 LAN_IP="${LAN_IP:-127.0.0.1}"
 PROXY_BIND="$(mcp_proxy_resolve_bind)"

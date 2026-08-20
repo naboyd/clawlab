@@ -162,6 +162,16 @@ else
   warn "ios-config-drift skill not linked — bash admin-access/install-clawlab-skills.sh"
 fi
 
+if [[ -L "$HOME/.openclaw/workspace/skills/thousandeyes" ]] \
+  || [[ -d "$HOME/.openclaw/workspace/skills/thousandeyes" ]]; then
+  ok "thousandeyes skill linked in OpenClaw workspace"
+fi
+
+if [[ -f "$HOME/.openclaw/openclaw.json" ]] \
+  && python3 -c "import json; d=json.load(open('$HOME/.openclaw/openclaw.json')); exit(0 if 'thousandeyes' in (d.get('mcp') or {}).get('servers', {}) else 1)" 2>/dev/null; then
+  ok "thousandeyes MCP registered in openclaw.json"
+fi
+
 if [[ "$MCP_PING" -eq 1 && -x "$REPO/tests/mcp-ping.sh" ]]; then
   echo
   echo "--- mcp-ping ---"

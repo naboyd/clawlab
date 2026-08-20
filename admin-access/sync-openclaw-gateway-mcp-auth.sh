@@ -11,6 +11,8 @@ set -Eeuo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=lib/mcp-proxy-env.sh
 source "$REPO/admin-access/lib/mcp-proxy-env.sh"
+# shellcheck source=lib/ensure-openclaw-extensions.sh
+source "$REPO/admin-access/lib/ensure-openclaw-extensions.sh"
 OC_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 DATA_DIR="${SSH_OPS_DATA:-$HOME/.clawlab/ssh-ops/data}"
 VENV_PY="${CLAW_PYTHON:-$HOME/.clawlab/venv/bin/python}"
@@ -135,6 +137,7 @@ if mcp_proxy_resolve_tls >/dev/null; then
 fi
 
 systemctl --user daemon-reload
+ensure_openclaw_extensions || exit 1
 systemctl --user restart mcp-identity-proxy.service openclaw-gateway.service
 DC_GW="${DEFENSECLAW_GATEWAY_BIN:-$HOME/.local/bin/defenseclaw-gateway}"
 if [[ -x "$DC_GW" ]]; then

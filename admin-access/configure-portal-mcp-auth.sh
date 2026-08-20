@@ -41,6 +41,11 @@ else
   echo "skip sync-openclaw-gateway-mcp-auth: no ~/.openclaw/openclaw.json"
 fi
 
+if [[ -x "$REPO/admin-access/heal-clawlab-stack.sh" ]]; then
+  bash "$REPO/admin-access/heal-clawlab-stack.sh" --fix --quiet \
+    || echo "WARN: heal-clawlab-stack reported issues — run: bash $REPO/admin-access/heal-clawlab-stack.sh --fix"
+fi
+
 echo ""
 echo "MCP auth summary:"
 echo "  OpenClaw (recommended): portal hub → Open OpenClaw ↗ (includes clawBind for identity)"

@@ -276,6 +276,19 @@ OpenClaw / Cursor ──HTTPS :8767──► MCP identity proxy
 - **Policy file:** `/data/ios-xe-policy.yaml` (writable; seeded from image on first start)
 - **MCP Admin tabs:** Hosts, Discovery, **Changes** (propose/approve/apply), **Policy** (per-group access)
 
+### External MCP servers (OpenClaw)
+
+OpenClaw can register additional `mcp.servers` entries in `~/.openclaw/openclaw.json`.
+These bypass the lab identity proxy — each server carries its own auth.
+
+| Server | URL | Auth | ClawLab setup |
+|--------|-----|------|---------------|
+| **ssh-ops** | Lab `:8767/mcp` | PAT / clawBind / shared bearer | Auto (local-full) |
+| **ThousandEyes** | `https://api.thousandeyes.com/mcp` | ThousandEyes API token | `configure-openclaw-thousandeyes-mcp.sh` |
+
+See [thousandeyes-mcp/README.md](../thousandeyes-mcp/README.md) and
+[USER-GUIDE — ThousandEyes](USER-GUIDE.md#cisco-thousandeyes-mcp-optional).
+
 ### IOS-XE change governance
 
 Single source of truth: `config-templates/ios-xe-policy.yaml` (**60 granular `allow_groups`**

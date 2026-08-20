@@ -293,6 +293,22 @@ Cmnd_Alias SSHOPS_DHCP_SIDECAR = \\
   /bin/bash /opt/clawlab/dhcp-sidecar/install-dhcp-sidecar.sh
 SUDOERS_INNER
   SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_DHCP_SIDECAR"
+  if [[ -x /opt/splunk/bin/splunk ]]; then
+    cat <<SUDOERS_INNER
+Cmnd_Alias SSHOPS_SPLUNK = \\
+  /opt/splunk/bin/splunk enable boot-start *, \\
+  /opt/splunk/bin/splunk disable boot-start *, \\
+  /opt/splunk/bin/splunk disable boot-start
+Cmnd_Alias SSHOPS_SPLUNK_USER = \\
+  /opt/splunk/bin/splunk start *, \\
+  /opt/splunk/bin/splunk stop *, \\
+  /opt/splunk/bin/splunk restart *, \\
+  /opt/splunk/bin/splunk status *, \\
+  /opt/splunk/bin/splunk ftr *
+SUDOERS_INNER
+    SUDO_PARTS="\${SUDO_PARTS}, SSHOPS_SPLUNK"
+    printf '%s ALL=(splunk) NOPASSWD: SETENV: SSHOPS_SPLUNK_USER\n' "\${SSHOPS_USER}"
+  fi
   printf '%s ALL=(root) NOPASSWD: SETENV: %s\n' "\${SSHOPS_USER}" "\${SUDO_PARTS}"
 } > "\${TMP}"
 chmod 440 "\${TMP}"

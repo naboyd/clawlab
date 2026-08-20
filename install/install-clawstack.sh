@@ -268,6 +268,13 @@ if ! command -v defenseclaw >/dev/null; then
 fi
 info "defenseclaw $(defenseclaw --version 2>/dev/null | head -1)"
 
+# Ensure OpenClaw plugin extensions are complete before any gateway start.
+if [[ -f "$CLAWLAB_REPO/admin-access/lib/ensure-openclaw-extensions.sh" ]]; then
+  # shellcheck source=../admin-access/lib/ensure-openclaw-extensions.sh
+  source "$CLAWLAB_REPO/admin-access/lib/ensure-openclaw-extensions.sh"
+  ensure_openclaw_extensions || warn "OpenClaw extensions incomplete — run: bash $CLAWLAB_REPO/admin-access/heal-clawlab-stack.sh --fix"
+fi
+
 mkdir -p "$OC_HOME" "$DC_HOME"
 [ -f "$OC_HOME/openclaw.json" ] || echo '{}' > "$OC_HOME/openclaw.json"
 touch "$OC_ENV" "$DC_ENV"; chmod 600 "$OC_ENV" "$DC_ENV"
@@ -575,6 +582,9 @@ mkdir -p "$DC_HOME/webex-bridge"
 if install_asset defenseclaw-webex-bridge/dc-webex-bridge.py "$DC_HOME/webex-bridge/dc-webex-bridge.py" 755; then
   install_asset defenseclaw-webex-bridge/dc-webex-bridge.service "$UNIT_DIR/dc-webex-bridge.service"
 fi
+if install_asset systemd-user/openclaw-ext-heal.service "$UNIT_DIR/openclaw-ext-heal.service"; then
+  install_asset systemd-user/openclaw-ext-heal.path "$UNIT_DIR/openclaw-ext-heal.path"
+fi
 
 # =============================================== 10. SERVER MODE: TLS + PROXY =
 if [ "$MODE" = server ]; then
@@ -658,13 +668,13 @@ if [[ "$MODE" == "local-full" ]]; then
   clawlab_install_local_full "$CLAWLAB_REPO"
 elif [[ "$MODE" == "local" ]]; then
   log "Enabling services (systemd user units where available)"
-  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path openclaw-ext-heal.path
   if [[ "$CLAWLAB_SVC" != "systemd-user" ]]; then
     info "Start gateway manually: openclaw gateway start"
   fi
 else
   log "Enabling services"
-  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path
+  clawlab_enable_user_units openclaw-gateway dc-webex-bridge defenseclaw-shim-heal.path openclaw-ext-heal.path
 fi
 
 if [[ "$MODE" != "local-full" ]]; then
@@ -673,9 +683,21 @@ if [[ "$MODE" != "local-full" ]]; then
     || warn "install-clawlab-extras failed — run manually: bash admin-access/install-clawlab-extras.sh"
 fi
 
+if [[ "$AUTO_DEFAULTS" -ne 1 ]]; then
+  if yesno "Configure Cisco ThousandEyes MCP in OpenClaw (requires API token)?" n; then
+    bash "$CLAWLAB_REPO/admin-access/configure-openclaw-thousandeyes-mcp.sh" \
+      || warn "ThousandEyes MCP configure failed — run: bash admin-access/configure-openclaw-thousandeyes-mcp.sh"
+  fi
+fi
+
 echo
 python3 -c "import json;d=json.load(open('$OC_HOME/openclaw.json'));print('config valid, providers:',list(d.get('models',{}).get('providers',{}).keys()),'| mcp:',list(d.get('mcp',{}).get('servers',{}).keys()))" \
   || warn "openclaw.json failed to parse — run: openclaw config validate"
+
+if [[ -x "$CLAWLAB_REPO/admin-access/heal-clawlab-stack.sh" && "$MODE" != "local-full" ]]; then
+  bash "$CLAWLAB_REPO/admin-access/heal-clawlab-stack.sh" --fix --quiet \
+    || warn "Stack heal reported issues — run: bash $CLAWLAB_REPO/admin-access/heal-clawlab-stack.sh --fix"
+fi
 
 MAC_NOTE=""
 if [[ "$CLAWLAB_PLATFORM" == "macos" && "$MODE" == "local" ]]; then

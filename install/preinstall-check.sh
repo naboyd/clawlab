@@ -481,6 +481,7 @@ for f in admin-access/install-clawlab-guardrail-rules.sh \
          admin-access/refresh-clawlab-policies.sh \
          admin-access/configure-openclaw-mcp-identity.sh \
          admin-access/install-ssh-ops-mcp-quadlet.sh \
+         admin-access/heal-clawlab-stack.sh \
          quadlets/ssh-ops-gui.container \
          quadlets/ssh-ops-mcp.container; do
   if [[ -f "$REPO/$f" ]]; then pass "$f"; else fail "missing $f"; need_item "$f in clawlab repo"; fi

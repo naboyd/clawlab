@@ -202,6 +202,14 @@ if [[ -f "$quadlet" ]]; then
     ok "ssh-ops-mcp quadlet PublishPort=$pub"
   fi
 fi
+if [[ -f "$HOME/.openclaw/extensions/defenseclaw/dist/index.js" ]]; then
+  ok "defenseclaw OpenClaw extension dist/index.js"
+else
+  bad "defenseclaw OpenClaw extension missing dist/index.js (gateway CONFIG / 502)"
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "       fix: bash $REPO/admin-access/heal-clawlab-stack.sh --fix"
+  fi
+fi
 if ! check_mcp_proxy_port mcp-identity-proxy 8767; then
   if [[ "$QUIET" -eq 0 ]]; then
     echo "       recent mcp-identity-proxy journal:"

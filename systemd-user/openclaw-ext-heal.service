@@ -3,4 +3,5 @@ Description=Heal the DefenseClaw OpenClaw plugin extension if a sidecar restart 
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -lc 'test -f "$HOME/.openclaw/extensions/defenseclaw/dist/index.js" || { rm -rf "$HOME/.openclaw/extensions/defenseclaw"; cp -r "$HOME/.defenseclaw/extensions/defenseclaw" "$HOME/.openclaw/extensions/defenseclaw"; systemctl --user try-restart openclaw-gateway; echo restored; }'
+Environment=CLAWLAB_REPO=%h/clawlab
+ExecStart=/bin/bash -lc 'source "${CLAWLAB_REPO:-$HOME/clawlab}/admin-access/lib/ensure-openclaw-extensions.sh" && ensure_defenseclaw_openclaw_extension && systemctl --user try-restart openclaw-gateway.service'

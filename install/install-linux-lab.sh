@@ -64,6 +64,12 @@ bash "$REPO/claw-portals/install-portals.sh" "${PORTAL_ARGS[@]}"
 log "Step 4/4: claw-auth doctor"
 bash "$REPO/claw-auth/doctor.sh"
 
+log "Step 5/5: clawlab stack heal + verify"
+bash "$REPO/admin-access/heal-clawlab-stack.sh" --fix \
+  || warn "heal-clawlab-stack reported issues — run: bash $REPO/admin-access/heal-clawlab-stack.sh"
+bash "$REPO/install/verify-lab-portal.sh" --quiet \
+  || warn "verify-lab-portal failed — run: bash $REPO/install/verify-lab-portal.sh"
+
 log "Done."
 if [[ -f "$HOME/.claw-portals/config.env" ]]; then
   # shellcheck disable=SC1090
