@@ -155,9 +155,11 @@ CLAW_PORTAL_HUB_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/
 CLAW_PORTAL_SSH_OPS_PATH=/ssh-ops/
 CLAW_PORTAL_OPENCLAW_PATH=/openclaw/
 CLAW_PORTAL_DEFENSECLAW_PATH=/defenseclaw/
+CLAW_PORTAL_GRAFANA_PATH=/grafana/
 CLAW_PORTAL_SSH_OPS_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/ssh-ops/
 CLAW_PORTAL_OPENCLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/openclaw/
 CLAW_PORTAL_DEFENSECLAW_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/defenseclaw/
+CLAW_PORTAL_GRAFANA_URL=$(scheme_for_mode)://${DOMAIN}:${PORT_PORTAL}/grafana/
 CLAW_PORTAL_SSH_OPS_PORT=${PORT_PORTAL}
 CLAWLAB_VENV=${CLAWLAB_VENV:-$HOME/.clawlab/venv}
 CLAW_PYTHON=${CLAW_PYTHON:-$CLAWLAB_VENV/bin/python}
@@ -390,6 +392,13 @@ write_unified_portal_nginx() {
     nginx_proxy_common
     echo "    }"
     echo
+    echo "    # IOS-XE telemetry Grafana (Podman :3000 on ${LAN_IP})"
+    echo "    location /grafana/ {"
+    if [[ "$AUTH_MODE" == "claw-auth" ]]; then nginx_claw_auth_request; fi
+    echo "        proxy_pass http://${LAN_IP}:3000/;"
+    nginx_proxy_common
+    echo "    }"
+    echo
     echo "    # OpenClaw Control UI (:18789) — preserve /openclaw/ path (gateway basePath)"
     echo "    # No claw-auth auth_request here: gateway token auth handles WS; nginx"
     echo "    # auth_request on upgrade often yields 1006 (abnormal close) in browsers."
@@ -559,6 +568,10 @@ if [[ -f "$REPO/admin-access/install-clawlab-extras.sh" ]]; then
     || echo "WARN: install-clawlab-extras failed — run: bash $REPO/admin-access/install-clawlab-extras.sh"
 fi
 
+if [[ -f "$REPO/admin-access/sync-iosxe-telemetry-grafana-portal.sh" ]]; then
+  bash "$REPO/admin-access/sync-iosxe-telemetry-grafana-portal.sh" --no-restart 2>/dev/null || true
+fi
+
 cat <<EOF
 
 Done.
@@ -569,6 +582,7 @@ Portal hub (bookmark this):
 Tabs:
   OpenClaw          /openclaw/
   MCP Admin         /ssh-ops/
+  Telemetry         /grafana/
   DefenseClaw       /defenseclaw/
 
 Auth: $AUTH_MODE

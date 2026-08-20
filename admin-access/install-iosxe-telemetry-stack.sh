@@ -118,6 +118,11 @@ chmod +x "$REPO/iosxe-telemetry/podctl.sh"
 bash "$REPO/admin-access/install-clawlab-skills.sh" >/dev/null 2>&1 || true
 
 if [[ "$NO_START" -eq 0 ]]; then
+  if [[ -f "$PORTAL_ENV" && -x "$REPO/admin-access/sync-iosxe-telemetry-grafana-portal.sh" ]]; then
+    bash "$REPO/admin-access/sync-iosxe-telemetry-grafana-portal.sh" --no-restart
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+  fi
   say "Starting TIG stack"
   bash "$REPO/iosxe-telemetry/podctl.sh" --recreate
 fi
@@ -127,6 +132,7 @@ echo "IOS-XE telemetry stack installed."
 echo "  env:      $ENV_FILE"
 echo "  MDT:      $MDT_PUBLISH (configure switch subscriptions to this host:57000)"
 echo "  Influx:   http://127.0.0.1:8086  org=$INFLUX_ORG bucket=$INFLUX_BUCKET"
-echo "  Grafana:  http://127.0.0.1:3000/  user=${GRAFANA_ADMIN_USER:-admin}"
+echo "  Grafana:  ${GRAFANA_ROOT_URL:-http://127.0.0.1:3000/}  user=${GRAFANA_ADMIN_USER:-admin}"
+echo "  Portal:   hub → Telemetry tab or MCP Admin → Telemetry ↗"
 echo "  verify:   bash $REPO/tests/iosxe-telemetry-ping.sh"
 echo "  docs:     $REPO/iosxe-telemetry/README.md"

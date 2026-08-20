@@ -287,6 +287,7 @@ This UI is bound to <code>127.0.0.1</code> only.{% endif %}</div>
   <a href="{{ url_for('index', tab='discovery') }}" class="{% if tab=='discovery' %}active{% endif %}">Discovery{% if staging_count %}<span class="badge">{{ staging_count }}</span>{% endif %}</a>
   <a href="{{ url_for('index', tab='changes') }}" class="{% if tab=='changes' %}active{% endif %}">Changes{% if pending_change_count %}<span class="badge">{{ pending_change_count }}</span>{% endif %}</a>
   <a href="{{ url_for('index', tab='policy') }}" class="{% if tab=='policy' %}active{% endif %}">Policy</a>
+  {% if portal_grafana_url %}<a href="{{ portal_grafana_url }}" class="telemetry-link" target="_blank" rel="noopener noreferrer">Telemetry ↗</a>{% endif %}
 </nav>
 
 <div id="tab-hosts" class="tab-panel {% if tab=='hosts' %}active{% endif %}">
@@ -1084,6 +1085,7 @@ def _render_page(*, tab: str | None = None, msg: str | None = None, err: bool = 
         gui_user=_gui_user(),
         gui_role=_gui_role(),
         highlight_change=highlight_change,
+        portal_grafana_url=(os.environ.get("CLAW_PORTAL_GRAFANA_URL") or "").strip(),
     )
     ctx.update(extra)
     return render_template_string(PAGE, **ctx)

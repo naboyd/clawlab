@@ -42,6 +42,9 @@ load_env() {
   : "${TELEGRAF_IMAGE:=docker.io/library/telegraf:1.32-alpine}"
   : "${GRAFANA_IMAGE:=docker.io/grafana/grafana:11.4.0}"
   : "${TELEMETRY_MDT_PUBLISH:=0.0.0.0:57000:57000}"
+  : "${TELEMETRY_GRAFANA_PUBLISH:=127.0.0.1:3000:3000}"
+  : "${GRAFANA_ROOT_URL:=http://127.0.0.1:3000/}"
+  : "${GRAFANA_PROXY_URL:=http://127.0.0.1:3000}"
   [[ -n "${INFLUX_TOKEN:-}" ]] || die "INFLUX_TOKEN empty in $ENV_FILE"
   [[ -n "${GRAFANA_ADMIN_PASSWORD:-}" ]] || die "GRAFANA_ADMIN_PASSWORD empty in $ENV_FILE"
 }
@@ -123,15 +126,18 @@ start_grafana() {
   mkdir -p "$DATA_ROOT/grafana/data"
   podman run -d --name "$GRAFANA_NAME" --restart unless-stopped \
     --network "$NETWORK" \
-    -p "127.0.0.1:3000:3000" \
+    -p "$TELEMETRY_GRAFANA_PUBLISH" \
     -e "GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}" \
     -e "GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}" \
     -e GF_USERS_ALLOW_SIGN_UP=false \
-    -e GF_SERVER_ROOT_URL=http://127.0.0.1:3000/ \
+    -e "GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL}" \
+    -e GF_SERVER_SERVE_FROM_SUB_PATH=true \
+    -e GF_SECURITY_COOKIE_SAMESITE=lax \
+    -e GF_SECURITY_ALLOW_EMBEDDING=true \
     -v "$DATA_ROOT/grafana/data:/var/lib/grafana:Z" \
     -v "$prov:/etc/grafana/provisioning:ro,Z" \
     "$GRAFANA_IMAGE" >/dev/null
-  say "started $GRAFANA_NAME (http://127.0.0.1:3000/)"
+  say "started $GRAFANA_NAME (${GRAFANA_ROOT_URL} publish ${TELEMETRY_GRAFANA_PUBLISH})"
 }
 
 ensure_up() {
@@ -167,10 +173,11 @@ show_status() {
   else
     warn "InfluxDB not reachable on 127.0.0.1:8086"
   fi
-  if curl -sf -m2 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
-    say "Grafana /api/health OK"
+  local grafana_check="${GRAFANA_PROXY_URL:-http://127.0.0.1:3000}"
+  if curl -sf -m2 "${grafana_check}/api/health" >/dev/null 2>&1; then
+    say "Grafana /api/health OK ($grafana_check)"
   else
-    warn "Grafana not reachable on 127.0.0.1:3000"
+    warn "Grafana not reachable at $grafana_check"
   fi
 }
 
@@ -190,6 +197,12 @@ show_logs() {
   esac
 }
 
+recreate_grafana() {
+  load_env
+  ensure_network
+  start_grafana
+}
+
 # ---- main -----------------------------------------------------------------
 need_podman
 ACTION=ensure
@@ -197,6 +210,7 @@ LOG_TARGET=all
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --recreate) ACTION=recreate ;;
+    --recreate-grafana) ACTION=recreate-grafana ;;
     --stop) ACTION=stop ;;
     --status) ACTION=status ;;
     --logs) ACTION=logs; shift; LOG_TARGET="${1:-all}"; break ;;
@@ -209,6 +223,7 @@ done
 case "$ACTION" in
   ensure) ensure_up ;;
   recreate) recreate_all ;;
+  recreate-grafana) recreate_grafana ;;
   stop) stop_all ;;
   status) show_status ;;
   logs) show_logs "$LOG_TARGET" ;;

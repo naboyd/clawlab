@@ -873,6 +873,11 @@ def _portal_tabs(
                 "src": os.environ.get("CLAW_PORTAL_SSH_OPS_PATH", "/ssh-ops/"),
             },
             {
+                "id": "telemetry",
+                "label": "Telemetry",
+                "src": os.environ.get("CLAW_PORTAL_GRAFANA_PATH", "/grafana/"),
+            },
+            {
                 "id": "defenseclaw",
                 "label": "DefenseClaw Policies",
                 "src": os.environ.get("CLAW_PORTAL_DEFENSECLAW_PATH", "/defenseclaw/"),
@@ -891,6 +896,11 @@ def _portal_links() -> list[dict]:
             "CLAW_PORTAL_DEFENSECLAW_URL",
             "DefenseClaw policies",
             "Guardrail & rule-pack editor",
+        ),
+        (
+            "CLAW_PORTAL_GRAFANA_URL",
+            "IOS-XE telemetry",
+            "Grafana dashboards (InfluxDB MDT)",
         ),
     )
     for env_key, label, hint in mapping:

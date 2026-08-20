@@ -46,14 +46,18 @@ if command -v influx >/dev/null 2>&1 && [[ -n "${INFLUX_TOKEN:-}" ]]; then
 fi
 
 step "4) Grafana"
+gurl="${GRAFANA_PROXY_URL:-http://127.0.0.1:3000}"
 gcode="000"
 for i in 1 2 3 4 5 6; do
-  gcode="$(curl -sS -m5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health 2>/dev/null || echo 000)"
+  gcode="$(curl -sS -m5 -o /dev/null -w '%{http_code}' "${gurl}/api/health" 2>/dev/null || echo 000)"
   [[ "$gcode" == "200" ]] && break
   sleep 2
 done
-[[ "$gcode" == "200" ]] || fail "Grafana /api/health HTTP $gcode (podman logs iosxe-grafana)"
-ok "Grafana healthy"
+[[ "$gcode" == "200" ]] || fail "Grafana /api/health HTTP $gcode at $gurl (podman logs iosxe-grafana)"
+ok "Grafana healthy at $gurl"
+if [[ -n "${GRAFANA_ROOT_URL:-}" ]]; then
+  ok "portal subpath ${GRAFANA_ROOT_URL}"
+fi
 
 step "5) Telegraf MDT port"
 hostport="${TELEMETRY_MDT_PUBLISH%%:*}"
