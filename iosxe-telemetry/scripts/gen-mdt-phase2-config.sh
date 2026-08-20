@@ -91,7 +91,7 @@ ${VRF_BLOCK}
 !
 telemetry ietf subscription 606
  encoding encode-kvgpb
- filter xpath /poe-ios-xe-oper:poe-port-detail
+ filter xpath /poe-ios-xe-oper:poe-oper-data/poe-port-detail
  stream yang-push
  update-policy periodic 30000
 ${VRF_BLOCK}
@@ -99,7 +99,7 @@ ${VRF_BLOCK}
 !
 telemetry ietf subscription 607
  encoding encode-kvgpb
- filter xpath /lldp-ios-xe-oper:lldp-nbrs/lldp-nbr
+ filter xpath /lldp-ios-xe-oper:lldp-entries/lldp-entry
  stream yang-push
  update-policy periodic 60000
 ${VRF_BLOCK}
@@ -107,7 +107,7 @@ ${VRF_BLOCK}
 !
 telemetry ietf subscription 608
  encoding encode-kvgpb
- filter xpath /spanning-tree-ios-xe-oper:spanning-tree-oper-data
+ filter xpath /stp-ios-xe-oper:stp-details/stp-detail
  stream yang-push
  update-policy periodic 30000
 ${VRF_BLOCK}

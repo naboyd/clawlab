@@ -5,6 +5,7 @@
 | `9300-24-Office-mdt-test.conf` | 9300-24-Office | CPU, memory, interface MDT test (601–603) |
 | `9300-24-Office-mdt-test-rollback.conf` | same | Remove subscriptions 601–603 |
 | `9300-24-Office-mdt-phase2.conf` | same | Platform, env, PoE, LLDP, STP (604–608); tune 603 → 30s |
+| `9300-24-Office-mdt-phase2-fix.conf` | same | Correct XPaths for invalid 606–608 |
 | `9300-24-Office-mdt-phase2-rollback.conf` | same | Remove subscriptions 604–608 |
 
 ## Generate (custom collector IP / VRF)
@@ -71,9 +72,9 @@ Then Grafana → Telemetry tab → Explore → bucket `iosxe_telemetry`.
 | 603 | `.../interfaces/interface` | Interface counters (phase 2: 30s) |
 | 604 | `.../components/component` | Platform hardware |
 | 605 | `.../environment-sensor` | Temps / power sensors |
-| 606 | `.../poe-port-detail` | PoE per port |
-| 607 | `.../lldp-nbr` | LLDP neighbors |
-| 608 | `.../spanning-tree-oper-data` | STP state |
+| 606 | `.../poe-oper-data/poe-port-detail` | PoE per port |
+| 607 | `.../lldp-entries/lldp-entry` | LLDP neighbors |
+| 608 | `.../stp-details/stp-detail` | STP per-instance |
 
 ## Rollback
 
