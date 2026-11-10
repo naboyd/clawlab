@@ -11,34 +11,63 @@ hardened ssh-ops MCP, and a unified HTTPS admin portal.
 
 ## High-level view
 
-**System component diagram:** [clawlab-architecture-overview.png](clawlab-architecture-overview.png)
-(whiteboard layout). **Command flow (pass vs judge deny):**
+**System component diagram (Mermaid):** [clawlab-system-architecture.mmd](clawlab-system-architecture.mmd)
+(embedded below). **Whiteboard PNG:** [clawlab-architecture-overview.png](clawlab-architecture-overview.png).
+**Command flow (pass vs judge deny):**
 [clawlab-command-flow-pass-deny.png](clawlab-command-flow-pass-deny.png).
 **Demo & policy-test matrix:**
 [clawlab-demo-test-matrix.png](clawlab-demo-test-matrix.png).
-Regenerate: `python3 admin-access/render-architecture-overview-diagram.py`,
+Regenerate the PNGs: `python3 admin-access/render-architecture-overview-diagram.py`,
 `python3 admin-access/render-command-flow-diagram.py`, and
 `python3 admin-access/render-demo-test-matrix-diagram.py`.
-Detailed enforcement steps: [clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png) or
+Detailed enforcement steps: [clawlab-policy-enforcement-flow.mmd](clawlab-policy-enforcement-flow.mmd),
+[clawlab-policy-enforcement-flow.png](clawlab-policy-enforcement-flow.png), or
 [clawlab-policy-enforcement-flow.html](clawlab-policy-enforcement-flow.html).
 
-```text
-                         Internet / LAN
-                               │
-                    HTTPS :8443 (Let's Encrypt)
-                               │
-                    ┌──────────▼──────────┐
-                    │  nginx (system)     │
-                    │  clawlab-portal.conf│
-                    └──────────┬──────────┘
-           ┌───────────────────┼───────────────────┐
-           │                   │                   │
-      /  (hub)            /ssh-ops/          /defenseclaw/
-           │                   │                   │
-    claw-auth :8780      ssh-ops GUI :8765   DC webgui :8770
-           │
-    /openclaw/  ──────────────────────────► OpenClaw gateway :18789
-    (no nginx auth_request; token + device pairing)
+```mermaid
+flowchart TB
+  OP["Operator browser"] --> NGX
+
+  NGX["nginx unified portal<br/>HTTPS :8443 or local-full HTTP :8083"]
+
+  NGX --> HUB["Hub /<br/>claw-auth session cookie"]
+  NGX --> OCUI["/openclaw/<br/>WSS, gateway token, device pair<br/>no nginx auth_request"]
+  NGX --> SSHUI["/ssh-ops/<br/>nginx auth_request"]
+  NGX --> DCUI["/defenseclaw/<br/>nginx auth_request"]
+
+  HUB --> AUTH["claw-auth :8780<br/>users.db, roles, device admin, MCP PATs"]
+  OCUI --> OC["OpenClaw gateway :18789<br/>chat, tools, MCP client"]
+  SSHUI --> GUI["ssh-ops admin GUI :8765<br/>hosts, changes, policy"]
+  DCUI --> EDIT["DefenseClaw policy editor :8770<br/>rule packs, OPA actions, audit"]
+
+  AUTH -->|"X-Auth-User"| GUI
+  AUTH -->|"X-Auth-User"| EDIT
+  AUTH -->|"admin approves first browser"| OC
+
+  OC -->|"every LLM call via fetch interceptor"| DC["DefenseClaw<br/>guardrail proxy :4000<br/>tool inspect :18970<br/>exec shims"]
+  DC -->|"local judge"| OLL["Ollama :11434<br/>llama3.1 agent<br/>Foundation-Sec-8B judge"]
+  OC -->|"primary model"| OLL
+  OC -.->|"agent fallback"| CLAUDE["Anthropic Claude"]
+  DC -.->|"scanner mode remote or both"| AID["Cisco AI Defense"]
+  EDIT -->|"activate policy and rule pack"| DC
+
+  OC -->|"X-Claw-Mcp-Bind"| PROXY["MCP identity proxy :8767<br/>PAT or bind token to user and role"]
+  PROXY --> MCP["ssh-ops MCP :8766<br/>Podman"]
+  GUI --> MCP
+
+  MCP --> POL["ios-xe-policy.yaml<br/>60 allow_groups, default deny, always_block"]
+  MCP --> INV["hosts.yaml<br/>fleet inventory"]
+  DC -->|"merged IOS-DENY rules"| POL
+
+  MCP -->|"run_command read-only<br/>restart and write only if allowlisted"| LINUX["Linux hosts"]
+  MCP -->|"apply_change after approval<br/>backup, push, verify, write memory"| IOS["IOS-XE switches"]
+  MCP -->|"dhcp_include after approval<br/>SSH to sidecar"| DHCP["dhcp-sidecar :9080<br/>dhcpd -t, include, reload"]
+
+  DC --> AUDIT[("DefenseClaw audit.db")]
+  AUDIT --> BRIDGE["dc-webex-bridge"]
+  BRIDGE --> WX["Webex"]
+  MCP -->|"propose, apply, block, self-approval"| WX
+  WX -->|"adaptive card or signed link<br/>approver must differ from proposer"| GUI
 ```
 
 **Design principle:** one public admin listener (`:8443`). All app backends bind
@@ -54,9 +83,12 @@ loopback only.
 | 18789 | `127.0.0.1` only | OpenClaw gateway + Control UI |
 | 8765 | `127.0.0.1` only | ssh-ops admin GUI (Podman) |
 | 8766 | HTTPS (MCP bearer token) | ssh-ops MCP API |
+| 8767 | loopback, or LAN when TLS is on | MCP identity proxy (PAT or bind token) |
 | 8770 | `127.0.0.1` only | DefenseClaw policy editor |
 | 8780 | `127.0.0.1` only | claw-auth (login + verify) |
 | 4000 | `127.0.0.1` | DefenseClaw guardrail proxy |
+| 18970 | `127.0.0.1` | DefenseClaw tool-inspect sidecar |
+| 9080 | `127.0.0.1` on DHCP servers | dhcp-sidecar (ISC DHCP includes) |
 | 11434 | `127.0.0.1` | Ollama (local LLM) |
 
 ---
@@ -390,7 +422,8 @@ deny/approve/allow modes), four-eyes change approval, OPA admission actions.
 (proposed → needs approval, approved, applied, self-approval blocked) when webhook
 `events` includes `change`.
 
-**Diagrams:** [System overview PNG](clawlab-architecture-overview.png) ·
+**Diagrams:** [System Mermaid](clawlab-system-architecture.mmd) ·
+[System overview PNG](clawlab-architecture-overview.png) ·
 [Command flow pass/deny PNG](clawlab-command-flow-pass-deny.png) ·
 [Demo & policy-test matrix PNG](clawlab-demo-test-matrix.png) ·
 [Policy flow HTML](clawlab-policy-enforcement-flow.html) · [Policy flow PNG](clawlab-policy-enforcement-flow.png)
