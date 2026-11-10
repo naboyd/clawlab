@@ -10,7 +10,8 @@ portal (**claw-auth**), and **Webex** alerting on policy violations.
 
 ![Policy enforcement flow](docs/clawlab-policy-enforcement-flow.png)
 
-System overview: [docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
+System overview: [docs/clawlab-system-architecture.mmd](docs/clawlab-system-architecture.mmd) ·
+[docs/clawlab-architecture-overview.png](docs/clawlab-architecture-overview.png) ·
 Demo & test matrix: [docs/clawlab-demo-test-matrix.png](docs/clawlab-demo-test-matrix.png) ·
 Policy flow detail: [docs/clawlab-policy-enforcement-flow.png](docs/clawlab-policy-enforcement-flow.png).
 

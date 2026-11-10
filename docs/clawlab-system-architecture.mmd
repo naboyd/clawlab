@@ -1,0 +1,66 @@
+---
+title: Clawlab — System Architecture
+config:
+  theme: dark
+  themeVariables:
+    primaryColor: "#1a4a7a"
+    primaryTextColor: "#ecf0f1"
+    primaryBorderColor: "#3498db"
+    lineColor: "#7f8c8d"
+    secondaryColor: "#1e5c3a"
+    tertiaryColor: "#4a2c6e"
+    background: "#0f1419"
+    mainBkg: "#1c2128"
+    secondBkg: "#161b22"
+    border1: "#30363d"
+    fontFamily: "Segoe UI, Helvetica, Arial, sans-serif"
+  flowchart:
+    htmlLabels: true
+    curve: basis
+    padding: 16
+    nodeSpacing: 28
+    rankSpacing: 48
+---
+flowchart TB
+  OP["Operator browser"] --> NGX
+
+  NGX["nginx unified portal<br/>HTTPS :8443 or local-full HTTP :8083"]
+
+  NGX --> HUB["Hub /<br/>claw-auth session cookie"]
+  NGX --> OCUI["/openclaw/<br/>WSS, gateway token, device pair<br/>no nginx auth_request"]
+  NGX --> SSHUI["/ssh-ops/<br/>nginx auth_request"]
+  NGX --> DCUI["/defenseclaw/<br/>nginx auth_request"]
+
+  HUB --> AUTH["claw-auth :8780<br/>users.db, roles, device admin, MCP PATs"]
+  OCUI --> OC["OpenClaw gateway :18789<br/>chat, tools, MCP client"]
+  SSHUI --> GUI["ssh-ops admin GUI :8765<br/>hosts, changes, policy"]
+  DCUI --> EDIT["DefenseClaw policy editor :8770<br/>rule packs, OPA actions, audit"]
+
+  AUTH -->|"X-Auth-User"| GUI
+  AUTH -->|"X-Auth-User"| EDIT
+  AUTH -->|"admin approves first browser"| OC
+
+  OC -->|"every LLM call via fetch interceptor"| DC["DefenseClaw<br/>guardrail proxy :4000<br/>tool inspect :18970<br/>exec shims"]
+  DC -->|"local judge"| OLL["Ollama :11434<br/>llama3.1 agent<br/>Foundation-Sec-8B judge"]
+  OC -->|"primary model"| OLL
+  OC -.->|"agent fallback"| CLAUDE["Anthropic Claude"]
+  DC -.->|"scanner mode remote or both"| AID["Cisco AI Defense"]
+  EDIT -->|"activate policy and rule pack"| DC
+
+  OC -->|"X-Claw-Mcp-Bind"| PROXY["MCP identity proxy :8767<br/>PAT or bind token to user and role"]
+  PROXY --> MCP["ssh-ops MCP :8766<br/>Podman"]
+  GUI --> MCP
+
+  MCP --> POL["ios-xe-policy.yaml<br/>60 allow_groups, default deny, always_block"]
+  MCP --> INV["hosts.yaml<br/>fleet inventory"]
+  DC -->|"merged IOS-DENY rules"| POL
+
+  MCP -->|"run_command read-only<br/>restart and write only if allowlisted"| LINUX["Linux hosts"]
+  MCP -->|"apply_change after approval<br/>backup, push, verify, write memory"| IOS["IOS-XE switches"]
+  MCP -->|"dhcp_include after approval<br/>SSH to sidecar"| DHCP["dhcp-sidecar :9080<br/>dhcpd -t, include, reload"]
+
+  DC --> AUDIT[("DefenseClaw audit.db")]
+  AUDIT --> BRIDGE["dc-webex-bridge"]
+  BRIDGE --> WX["Webex"]
+  MCP -->|"propose, apply, block, self-approval"| WX
+  WX -->|"adaptive card or signed link<br/>approver must differ from proposer"| GUI
